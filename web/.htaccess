@@ -12,15 +12,22 @@
 # 검증: https://axexam.mycafe24.com/ → /exam/ 로 301
 #       /adm/ · /bbs/login.php · /exam/ 은 그대로 열려야 한다
 
+# ⚠ 301(영구)이 아니라 302(임시)를 쓴다.
+#   301 은 브라우저가 영구 캐시한다 — 한 번 뿌리면 방문자 쪽에서 되돌릴 방법이 없고,
+#   주소창 자동완성이 도메인만 잡을 때 캐시된 301 로 튀어 /bbs/register.php 같은
+#   멀쩡한 주소가 안 열리는 것처럼 보인다(실제로 겪음).
+#   주소 구조가 아직 바뀔 수 있으므로(커스텀 도메인, 상세 페이지 추가) 확정 전까지는 302.
+#   구조가 굳으면 R=302 → R=301 로 올린다. SEO 상 영구 이전을 알리는 건 그때다.
+
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
     # 루트에 정확히 일치할 때만 보낸다.
     # ^$ 라서 /adm/ · /bbs/ · /exam/ · /js/ 같은 하위 경로는 건드리지 않는다.
-    RewriteRule ^$ /exam/ [R=301,L]
+    RewriteRule ^$ /exam/ [R=302,L]
 
     # 카페24 자동설치가 남긴 기본 안내 페이지도 같이 막는다.
-    RewriteRule ^hosting_index\.html$ /exam/ [R=301,L]
+    RewriteRule ^hosting_index\.html$ /exam/ [R=302,L]
 </IfModule>
 
 # mod_rewrite 가 없는 경우의 폴백 — 디렉터리 인덱스 우선순위를 바꾼다.
