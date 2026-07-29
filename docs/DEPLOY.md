@@ -111,6 +111,19 @@ python scripts/build_check.py --prune
 
 **절대 덮어쓰면 안 되는 것**: `data/`, `data/dbconfig.php`
 
+### ⚠ 업데이트 후 반드시 다시 덮을 것
+
+그누보드 릴리스가 원본으로 되돌려 놓는 파일들이다. 업데이트 직후 확인한다.
+
+| 파일 | 증상 | 복구 |
+|---|---|---|
+| `/www/index.php` | **루트에 그누보드 메인이 다시 뜬다** | `web/index.php` 를 다시 올린다 |
+
+`web/.htaccess`·`web/extend/10_exam.php`·`web/adm/exam_*` 는 배포본에 없는 이름이라
+덮이지 않는다. **`index.php` 만 코어 파일을 교체한 것**이므로 이것만 챙기면 된다.
+
+확인: `curl -I https://axexam.mycafe24.com/` → `301` 이고 `Location: ./exam/` 이어야 한다.
+
 ---
 
 ## 릴리스 알림
