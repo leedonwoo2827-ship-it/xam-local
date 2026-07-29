@@ -50,7 +50,7 @@ $ex_url = G5_URL . '/exam';
             <h2>이용</h2>
             <?php if ($is_member) { ?>
                 <a href="<?php echo $ex_url ?>/mypage.php">마이페이지</a>
-                <a href="<?php echo G5_BBS_URL ?>/logout.php">로그아웃</a>
+                <a href="<?php echo G5_BBS_URL ?>/logout.php?url=<?php echo urlencode('/exam/') ?>">로그아웃</a>
             <?php } else { ?>
                 <a href="<?php echo G5_BBS_URL ?>/login.php">로그인</a>
                 <a href="<?php echo G5_BBS_URL ?>/register.php">회원가입</a>

@@ -38,9 +38,9 @@ $ex_url = G5_URL . '/exam';
     }
     ?>
 
-    <!-- 상단 얇은 바 —
-         basic 은 여기에 '커뮤니티 / 쇼핑몰' 과 'FAQ · Q&A · 새글 · 접속자' 를 하드코딩해 둔다.
-         영카트를 쓰지 않으므로 쇼핑몰을 빼고, 우리 동선으로 바꿨다. -->
+    <?php /* 상단 얇은 바. basic 은 여기에 '커뮤니티/쇼핑몰' 과 'FAQ·Q&A·새글·접속자' 를
+             하드코딩해 둔다. 영카트를 안 쓰므로 우리 동선으로 바꿨다.
+             ⚠ 설명은 PHP 주석으로 쓴다 — HTML 주석은 브라우저로 그대로 나간다. */ ?>
     <div id="tnb">
         <div class="inner">
             <ul id="hd_define">
@@ -85,9 +85,13 @@ $ex_url = G5_URL . '/exam';
 
         <ul class="hd_login">
         <?php if ($is_member) { ?>
+            <li class="hd_me"><?php echo htmlspecialchars($member['mb_nick'] ?: $member['mb_id']) ?>님</li>
             <li><a href="<?php echo $ex_url ?>/mypage.php">마이페이지</a></li>
             <?php if ($is_admin) { ?><li><a href="<?php echo G5_ADMIN_URL ?>/">관리자</a></li><?php } ?>
-            <li><a href="<?php echo G5_BBS_URL ?>/logout.php">로그아웃</a></li>
+            <?php /* 로그아웃 후 갈 곳을 명시한다. 지정하지 않으면 G5_URL(루트)로 가는데
+                     루트가 /exam/ 으로 리다이렉트돼서 '메인으로 튕겼다'로 읽힌다.
+                     ⚠ url 파라미터에 도메인을 넣으면 logout.php 가 거부한다 — 경로만 준다. */ ?>
+            <li><a href="<?php echo G5_BBS_URL ?>/logout.php?url=<?php echo urlencode('/exam/') ?>">로그아웃</a></li>
         <?php } else { ?>
             <li><a href="<?php echo G5_BBS_URL ?>/register.php">회원가입</a></li>
             <li><a href="<?php echo G5_BBS_URL ?>/login.php">로그인</a></li>
