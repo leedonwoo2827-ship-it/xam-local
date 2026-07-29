@@ -47,3 +47,8 @@ desktop.ini
 .DS_Store
 *.swp
 .idea/
+
+# 그누보드 코어 압축 해제본 — 업로드용 임시 폴더. repo 에 넣지 않는다
+# (내 코드만 커밋한다. 코어는 GitHub 릴리스에서 받으면 된다)
+gnuboard5-*/
+g5_*/
