@@ -33,6 +33,8 @@ from exam_meta import load_meta, load_rounds, load_subjects, src_id  # noqa: E40
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = Path(__file__).with_name("check_template.html")
+LANDING  = Path(__file__).with_name("landing_template.html")   # → 06/index.html  (포털 메인)
+DETAIL   = Path(__file__).with_name("detail_template.html")    # → 06/sqld.html   (자격증 상세)
 PRESENT_ASSETS = ROOT / "assets" / "present"
 YOUTUBE_MAP = ROOT / "data" / "youtube_map.json"
 KST = timezone(timedelta(hours=9))
@@ -435,13 +437,26 @@ def main(argv: list[str] | None = None) -> int:
     (out / "theory_content.js").write_text(
         "window.THEORY_HTML = " + json.dumps(theory_html, ensure_ascii=False) + ";\n", encoding="utf-8")
 
-    # 6) check.html — --api-base 가 있으면 EXAM_API 주입 (없으면 StaticDS 로 동작)
-    html = TEMPLATE.read_text(encoding="utf-8")
+    # 6) 화면 — --api-base 가 있으면 EXAM_API 주입 (없으면 StaticDS 로 동작)
+    inject = ""
     if args.api_base:
         inject = ('<script>window.EXAM_API=' + json.dumps(args.api_base) + ';'
                   'window.EXAM_PD=' + json.dumps(args.pd) + ';</script>\n')
-        html = html.replace("</head>", inject + "</head>", 1)
-    (out / "check.html").write_text(html, encoding="utf-8")
+
+    def emit(tpl: Path, name: str):
+        if not tpl.exists():
+            return False
+        h = tpl.read_text(encoding="utf-8")
+        if inject:
+            h = h.replace("</head>", inject + "</head>", 1)
+        (out / name).write_text(h, encoding="utf-8")
+        return True
+
+    emit(TEMPLATE, "check.html")
+    n_pages = 1
+    # 랜딩·상세는 있으면 굽는다 (없어도 빌드가 죽지 않게)
+    if emit(LANDING, "index.html"):  n_pages += 1
+    if emit(DETAIL, "sqld.html"):    n_pages += 1
 
     # 7) problems.json
     json_path = None
@@ -454,7 +469,7 @@ def main(argv: list[str] | None = None) -> int:
     subj = sorted({p["subject"] for p in probs if p["subject"]})
     n_rounds = len(set(p["round_num"] for p in probs if p["round_num"]))
     n_vid = sum(len(v) for v in vids.values())
-    print(f"[check] {len(probs)}문제 · {n_rounds}회 → {out / 'check.html'}")
+    print(f"[check] {len(probs)}문제 · {n_rounds}회 · 화면 {n_pages}개 → {out}")
     print(f"        과목 {len(subj)}종: {', '.join(subj) or '(없음)'}")
     print(f"        지문 {sum(1 for p in probs if p['passage'])} · SQL {sum(1 for p in probs if p['sql'])}"
           f" · 표 {sum(1 for p in probs if p['table'])} · SVG {len(copied)}")

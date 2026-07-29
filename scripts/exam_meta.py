@@ -71,11 +71,26 @@ def load_meta(book: Path) -> dict[str, dict]:
     return out
 
 
+# 회차 라벨에서 걷어낼 접두어.
+# `02/` 원본에는 '자사 모의고사 01회' 로 들어 있는데 노출 문구에서 '자사'를 빼기로 했다.
+# 원본(02/)을 고치지 않고 여기서 정규화하는 이유: 원본은 제작 파이프라인의 산물이고
+# 표기 규칙은 서비스 쪽 결정이라 서로 다른 속도로 바뀐다.
+LABEL_STRIP = ("자사 ",)
+
+
+def _clean_label(s: str) -> str:
+    s = str(s or "").strip()
+    for p in LABEL_STRIP:
+        if s.startswith(p):
+            s = s[len(p):].lstrip()
+    return s
+
+
 def load_rounds(meta: dict[str, dict]) -> list[dict]:
-    """회차 목록 → [{'rd_no':1, 'rd_label':'자사 모의고사 01회', 'rd_count':50}, ...]
+    """회차 목록 → [{'rd_no':1, 'rd_label':'모의고사 01회', 'rd_count':50}, ...]
 
     `rd_label` 은 `.md` frontmatter 의 `round_label` 에서만 나온다.
-    없으면 'N회' 로 폴백한다.
+    없으면 'N회' 로 폴백하고, `LABEL_STRIP` 접두어는 걷어낸다.
     """
     agg: dict[int, dict] = {}
     for m in meta.values():
@@ -85,7 +100,7 @@ def load_rounds(meta: dict[str, dict]) -> list[dict]:
         r = agg.setdefault(rn, {"rd_no": rn, "rd_label": "", "rd_count": 0})
         r["rd_count"] += 1
         if not r["rd_label"] and m.get("round_label"):
-            r["rd_label"] = str(m["round_label"])
+            r["rd_label"] = _clean_label(m["round_label"])
     for rn, r in agg.items():
         if not r["rd_label"]:
             r["rd_label"] = f"{rn}회"
