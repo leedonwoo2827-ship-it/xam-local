@@ -1,0 +1,287 @@
+/* ===========================================================
+   WOWPASS — AI 셀프 채점기 / 합격관리팩
+   Design system v2
+   · 본문 글꼴: Pretendard (jsDelivr CDN — @import, 번들 아님)
+   · 의미 기반 상태색 + 제품급 타이포/스페이싱 스케일
+   · Airtable design.md 규율: 근접 블랙 CTA · 여백 우선 ·
+     계층형 라디우스 · color-block first / shadow second
+   =========================================================== */
+
+/* @font-face 를 제거했다 — PretendardVariable.woff2 가 2.06MB 이고
+   카페24 뉴아우토반 일반형의 월 트래픽이 4,000MB 라서 신규 방문 약 1,940명이면
+   폰트만으로 한도가 소진된다(마이캐쉬 0원 + 자동리셋 꺼짐 = 사이트 정지).
+   대신 check_template.html <head> 에서 jsDelivr CDN <link> 로 받는다. */
+
+:root {
+  /* ---- Font ---- */
+  --font: "Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont,
+          "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", Roboto, sans-serif;
+
+  /* ---- Neutral ramp ---- */
+  --gray-0:  #ffffff;
+  --gray-25: #fbfcfe;
+  --gray-50: #f6f8fc;
+  --gray-100:#eef1f7;
+  --gray-150:#e6eaf2;
+  --gray-200:#dbe0ea;
+  --gray-300:#c4cbd9;
+  --gray-400:#9aa2b4;
+  --gray-500:#6b7385;
+  --gray-600:#4c5468;
+  --gray-700:#333a49;
+  --gray-800:#1f2533;
+  --gray-900:#141a26;
+
+  /* ---- Brand: navy + blue ---- */
+  --navy-900:#0e1730;
+  --navy-800:#14213d;
+  --navy-700:#1b2a52;
+  --navy-600:#26386b;
+  --navy-500:#33498a;
+
+  --blue-50: #eef3ff;
+  --blue-100:#dbe6ff;
+  --blue-300:#7ea0f5;
+  --blue-500:#2c5ce6;
+  --blue-600:#1f4ed8;
+  --blue-700:#1a3fae;
+
+  /* legacy/brand aliases (페이지 호환) */
+  --blue: var(--blue-500);
+  --blue-strong: var(--blue-600);
+  --blue-soft: var(--blue-50);
+  --purple:#7458e0;
+  --yellow:#ffd02f;
+  --yellow-deep:#f3c200;
+
+  /* ---- Ink / text ---- */
+  --ink:   #181d26;
+  --body:  #333840;
+  --muted: #5b6376;
+  --faint: #8e96a8;
+
+  /* ---- Surfaces ---- */
+  --canvas:        #ffffff;
+  --surface-soft:  #f6f8fc;
+  --surface-soft2: #eef2fb;
+  --surface-strong:#e6eaf2;
+  --hairline:      #e6eaf2;
+  --hairline-strong:#d4d9e4;
+
+  /* ---- Primary action (Airtable: near-black) ---- */
+  --primary:        #181d26;
+  --primary-active: #0d1218;
+
+  /* ---- Semantic status (base / text / soft-bg / border) ---- */
+  --success:#0f9d58; --success-text:#0c7a45; --success-soft:#e7f6ee; --success-bd:#bfe6cf;
+  --warning:#e8911c; --warning-text:#b46d09; --warning-soft:#fff3e1; --warning-bd:#f6dcae;
+  --danger: #e23b4e; --danger-text: #c22638; --danger-soft: #fdebed; --danger-bd: #f6c7cd;
+  --info:   #2c5ce0; --info-text:   #1f49b8; --info-soft:   #eaf0ff; --info-bd:  #cdddff;
+
+  /* legacy status aliases */
+  --red:var(--danger); --red-soft:var(--danger-soft);
+  --orange:var(--warning); --orange-soft:var(--warning-soft);
+  --teal:#11a594; --teal-soft:#e1f5f2;
+  --green:var(--success); --green-soft:var(--success-soft);
+  --crimson:#d8324a;
+
+  /* ---- Radius (Airtable hierarchy) ---- */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-2xl:22px;
+  --r-full:9999px;
+
+  /* ---- Spacing (4px base) ---- */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px;
+  --sp-6:24px; --sp-8:32px; --sp-10:40px; --sp-12:48px; --sp-16:64px; --sp-24:96px;
+  --sp-section: 96px;
+
+  /* ---- Elevation (minimal) ---- */
+  --shadow-xs: 0 1px 2px rgba(20,26,38,.06);
+  --shadow-sm: 0 1px 2px rgba(20,26,38,.05), 0 4px 14px rgba(20,26,38,.05);
+  --shadow-md: 0 2px 4px rgba(20,26,38,.05), 0 12px 34px rgba(20,26,38,.07);
+  --shadow-card: var(--shadow-sm);
+  --shadow-soft: var(--shadow-xs);
+
+  /* ---- Type scale ---- */
+  --t-display: 44px;
+  --t-h1: 34px;
+  --t-h2: 26px;
+  --t-h3: 20px;
+  --t-title: 17px;
+  --t-body: 15px;
+  --t-sm: 13.5px;
+  --t-xs: 12.5px;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  color: var(--body);
+  background: var(--canvas);
+  line-height: 1.55;
+  font-size: var(--t-body);
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+img { max-width: 100%; display: block; }
+a   { color: inherit; text-decoration: none; }
+
+h1,h2,h3,h4 { margin: 0; color: var(--ink); font-weight: 700; letter-spacing: -0.02em; line-height: 1.25; }
+h1 { font-size: var(--t-h1); }
+h2 { font-size: var(--t-h2); }
+h3 { font-size: var(--t-h3); }
+
+.wrap { max-width: 1140px; margin: 0 auto; padding: 0 28px; }
+.wrap-narrow { max-width: 980px; margin: 0 auto; padding: 0 28px; }
+
+/* ---------- SVG icon base ---------- */
+.ic { width: 20px; height: 20px; display: inline-block; flex: 0 0 auto;
+      fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.ic-sm { width: 17px; height: 17px; }
+.ic-lg { width: 26px; height: 26px; }
+
+/* navy gradient icon container (요청: 이모지 → 네이비 그라데이션 박스 + 단색 라인 아이콘) */
+.icon-box {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border-radius: var(--r-md); flex: 0 0 auto;
+  background: linear-gradient(150deg, var(--navy-600) 0%, var(--navy-800) 100%);
+  color: #fff; box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+}
+.icon-box .ic { stroke-width: 1.7; }
+.icon-box.sm { width: 36px; height: 36px; border-radius: var(--r-sm); }
+.icon-box.lg { width: 56px; height: 56px; border-radius: var(--r-lg); }
+.icon-box.xl { width: 64px; height: 64px; border-radius: var(--r-lg); }
+.icon-box.blue   { background: linear-gradient(150deg, var(--blue-500), var(--blue-700)); }
+.icon-box.ghost  { background: rgba(255,255,255,.10); box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); }
+.icon-box.soft   { background: var(--info-soft); color: var(--blue-600); box-shadow: none; }
+.icon-box.success{ background: var(--success-soft); color: var(--success-text); box-shadow:none; }
+.icon-box.warning{ background: var(--warning-soft); color: var(--warning-text); box-shadow:none; }
+.icon-box.danger { background: var(--danger-soft);  color: var(--danger-text);  box-shadow:none; }
+
+/* ---------- Top navigation ---------- */
+.topnav {
+  height: 68px; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 28px; border-bottom: 1px solid var(--hairline); background: var(--canvas);
+}
+.topnav .brand { display: flex; align-items: center; gap: 12px; }
+.topnav .brand img { height: 23px; }
+.topnav.dark { background: var(--navy-800); border-bottom: none; }
+.brand-sub { font-size: 13px; color: var(--muted); padding-left: 12px; border-left: 1px solid var(--hairline); }
+.topnav.dark .brand-sub { color: #aeb8d6; border-left-color: rgba(255,255,255,.22); }
+.nav-right { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.nav-link { color: var(--muted); display: inline-flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: var(--r-sm); }
+.topnav.dark .nav-link { color: #cdd5ea; }
+.nav-pill { border: 1px solid var(--hairline-strong); border-radius: var(--r-full); padding: 8px 16px; font-size: 13px; color: var(--ink); }
+.topnav.dark .nav-pill { border-color: rgba(255,255,255,.28); color: #fff; }
+/* WOWPASS 로고는 흰색 PNG → 밝은 헤더에서 네이비로 보정 */
+.logo-mark.dark { filter: brightness(0) saturate(100%) invert(11%) sepia(38%) saturate(1900%) hue-rotate(196deg) brightness(94%) contrast(96%); }
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-family: var(--font); font-size: 15px; font-weight: 600;
+  border: 0; cursor: pointer; border-radius: var(--r-lg);
+  padding: 13px 22px; line-height: 1; white-space: nowrap;
+  transition: transform .05s ease, background .15s ease, box-shadow .15s ease;
+}
+.btn:active { transform: translateY(1px); }
+.btn .ic { width: 18px; height: 18px; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:active { background: var(--primary-active); }
+.btn-blue    { background: var(--blue-600); color: #fff; }
+.btn-blue:active { background: var(--blue-700); }
+.btn-yellow  { background: var(--yellow); color: var(--ink); font-weight: 700; }
+.btn-yellow:active { background: var(--yellow-deep); }
+.btn-outline { background: #fff; color: var(--ink); border: 1px solid var(--hairline-strong); font-weight: 600; }
+.btn-ghost-dark { background: rgba(255,255,255,.10); color:#fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.22); }
+.btn-block { width: 100%; }
+.btn-lg { padding: 16px 28px; font-size: 16px; }
+
+/* ---------- Badges / pills ---------- */
+.badge { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; padding:6px 14px; border-radius:var(--r-full); }
+.badge-ghost { box-shadow: inset 0 0 0 1px rgba(255,255,255,.32); color:#fff; background: rgba(255,255,255,.06); }
+.badge-yellow { background: var(--yellow); color: var(--navy-800); font-weight:700; }
+.badge-soft { background: var(--info-soft); color: var(--blue-700); }
+.pill { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:700; padding:5px 13px; border-radius:var(--r-full); }
+.pill-red    { background: var(--danger-soft);  color: var(--danger-text); }
+.pill-orange { background: var(--warning-soft); color: var(--warning-text); }
+.pill-teal   { background: var(--success-soft); color: var(--success-text); }
+.pill-green  { background: var(--success-soft); color: var(--success-text); }
+.pill .dot { width:7px; height:7px; border-radius:50%; background: currentColor; }
+
+/* ---------- Cards ---------- */
+.card { background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--r-lg); box-shadow: var(--shadow-card); }
+
+/* ---------- Section heading ---------- */
+.section { padding: var(--sp-section) 0; }
+.sec-head { text-align: center; margin-bottom: 52px; }
+.sec-head .eyebrow { font-size: 13px; font-weight: 700; letter-spacing: .06em; color: var(--blue-600); text-transform: uppercase; }
+.sec-head h2 { font-size: var(--t-h2); line-height: 1.25; margin-top: 10px; }
+.sec-head p  { margin: 14px auto 0; color: var(--muted); font-size: 16px; max-width: 640px; }
+.sec-head .accent { color: var(--blue-600); }
+
+/* ---------- Progress bar ---------- */
+.bar { height: 8px; border-radius: var(--r-full); background: var(--surface-strong); overflow: hidden; }
+.bar > span { display: block; height: 100%; border-radius: var(--r-full); transition: width .5s cubic-bezier(.2,.7,.3,1); }
+
+/* ---------- Footer ---------- */
+.site-foot { background: var(--navy-900); color: #aab3cc; font-size: 13px; padding: 28px 0; text-align: center; }
+.site-foot a { color: #cdd5ea; }
+
+/* ---------- Forms ---------- */
+.field-label { font-size: 14px; font-weight: 600; color: var(--ink); }
+.input {
+  width: 100%; height: 46px; padding: 0 14px; font-size: 14px; font-family: var(--font);
+  border: 1px solid var(--hairline-strong); border-radius: var(--r-sm); background: #fff; color: var(--ink);
+}
+.input:focus { outline: none; border-color: var(--blue-500); box-shadow: 0 0 0 3px var(--blue-50); }
+select.input { appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 19px, calc(100% - 13px) 19px; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+.radio { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; color: var(--body); }
+.radio input { accent-color: var(--blue-600); width: 17px; height: 17px; }
+
+/* ---------- Step indicator ---------- */
+.steps { display: flex; align-items: center; gap: 8px; }
+.step-dot { display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; font-size:13px; font-weight:700; background: var(--surface-strong); color: var(--muted); }
+.step-dot.on { background: var(--blue-600); color:#fff; }
+.step-line { width: 46px; height: 2px; background: var(--surface-strong); }
+
+/* ---------- Utility ---------- */
+.muted{ color:var(--muted); } .tiny{ font-size:12.5px; } .center{ text-align:center; }
+.toast { position:fixed; left:50%; bottom:28px; transform:translateX(-50%) translateY(20px);
+  background:var(--ink); color:#fff; padding:13px 22px; border-radius:var(--r-full); font-size:14px;
+  opacity:0; pointer-events:none; transition:.25s; z-index:50; box-shadow: var(--shadow-md); }
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* sprite host (hidden) */
+.svg-sprite { position:absolute; width:0; height:0; overflow:hidden; }
+
+/* ---------- Charts (inline SVG, no deps) ---------- */
+.chart-donut .cd-val { font-family: var(--font); font-size: 30px; font-weight: 800; }
+.chart-donut .cd-sub { font-family: var(--font); font-size: 12.5px; font-weight: 600; }
+.chart-hbars { display:block; }
+.chart-hbars .hb-label { font-family: var(--font); font-size: 14px; font-weight: 600; fill: var(--ink); }
+.chart-hbars .hb-val   { font-family: var(--font); font-size: 14px; font-weight: 800; }
+.chart-radar { overflow: visible; }
+.chart-radar .rd-label { font-family: var(--font); font-size: 12px; font-weight: 700; fill: var(--gray-600); }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 980px) {
+  :root { --sp-section: 68px; --t-h1: 28px; --t-h2: 23px; --t-display: 34px; }
+  .sec-head { margin-bottom: 38px; }
+}
+@media (max-width: 640px) {
+  .topnav { padding: 0 16px; }
+  .brand-sub { display: none; }
+  .wrap, .wrap-narrow { padding: 0 18px; }
+}
