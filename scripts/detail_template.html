@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SQLD 문제집 — AXEXAM</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/axnav.css">
+<style>
+/* 자격증 상세 — 랜딩과 문제풀이 사이의 중간 계층 */
+.dt-hero{ background:linear-gradient(150deg,var(--navy-800),var(--navy-600)); color:#fff;
+  padding:52px 0 56px; }
+.dt-hero .eyebrow{ font-size:12.5px; font-weight:700; letter-spacing:.06em;
+  color:var(--yellow); margin-bottom:12px; }
+.dt-hero h1{ color:#fff; font-size:36px; letter-spacing:-.03em; margin:0 0 14px; }
+.dt-hero p{ color:#c4cee8; font-size:16px; line-height:1.7; margin:0 0 26px; max-width:36em; }
+.dt-cta{ display:flex; gap:10px; flex-wrap:wrap; }
+.dt-facts{ display:flex; gap:28px; margin-top:30px; padding-top:24px;
+  border-top:1px solid rgba(255,255,255,.14); flex-wrap:wrap; }
+.dt-fact b{ display:block; font-size:22px; font-weight:800; letter-spacing:-.02em; color:#fff; }
+.dt-fact span{ font-size:12.5px; color:#94a3c6; }
+
+.rd-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+.rd-card{ background:#fff; border:1px solid var(--hairline); border-radius:var(--r-lg);
+  padding:18px 20px; display:flex; flex-direction:column; gap:11px; }
+.rd-top{ display:flex; align-items:center; gap:9px; }
+.rd-top b{ font-size:16px; color:var(--ink); }
+.rd-n{ margin-left:auto; font-size:12.5px; color:var(--muted); }
+.rd-links{ display:flex; gap:7px; }
+.rd-links a{ flex:1; text-align:center; font-size:13px; font-weight:700; padding:9px 0;
+  border-radius:var(--r-sm); border:1px solid var(--hairline-strong); color:var(--ink); }
+.rd-links a.solve{ background:var(--blue-600); border-color:var(--blue-600); color:#fff; }
+.rd-links a.mute{ color:var(--faint); border-style:dashed; pointer-events:none; }
+
+.th-row{ display:flex; gap:12px; flex-wrap:wrap; }
+.th-row a{ display:inline-flex; align-items:center; gap:9px; background:#fff;
+  border:1px solid var(--hairline); border-radius:var(--r-lg); padding:15px 20px;
+  font-size:14.5px; font-weight:700; color:var(--ink); }
+.th-row a:hover{ border-color:var(--blue-500); background:var(--blue-50); }
+
+.dt-foot{ background:var(--gray-900); color:#8e99b3; padding:34px 0; font-size:13px; text-align:center; }
+.dt-foot a{ color:#8e99b3; margin:0 10px; }
+.dt-foot a:hover{ color:#cdd6ea; }
+
+@media (max-width:1024px){ .rd-grid{ grid-template-columns:repeat(2,1fr); } .dt-hero h1{ font-size:29px; } }
+@media (max-width:640px){ .rd-grid{ grid-template-columns:1fr; } .dt-hero h1{ font-size:24px; } }
+</style>
+</head>
+<body>
+
+<!-- ═══ 공용 네비 — index.html · check.html · theme/axexam/head.php 와 동일 마크업 ═══ -->
+<header class="axnav">
+  <div class="axnav-in">
+    <a class="axnav-logo" href="/exam/">AX<i>EXAM</i></a>
+    <nav class="axnav-main">
+      <a class="axnav-item on" href="/exam/"><svg class="ic"><use href="#i-clipboard"></use></svg>문제집</a>
+      <a class="axnav-item" href="/exam/check.html?pd=sqld"><svg class="ic"><use href="#i-edit"></use></svg>문제 풀기</a>
+      <a class="axnav-item" href="/exam/check.html?pd=sqld&amp;m=theory"><svg class="ic"><use href="#i-book"></use></svg>이론</a>
+      <a class="axnav-item" href="/exam/buy.php?pd=sqld"><svg class="ic"><use href="#i-cap"></use></svg>수강 신청</a>
+    </nav>
+    <nav class="axnav-util">
+      <a class="axnav-item" href="/bbs/board.php?bo_table=notice"><svg class="ic"><use href="#i-bell"></use></svg>공지</a>
+      <a class="axnav-item" href="/bbs/qalist.php"><svg class="ic"><use href="#i-help"></use></svg>문의</a>
+      <span class="axnav-sep"></span>
+      <a class="axnav-item" href="/exam/mypage.php"><svg class="ic"><use href="#i-user"></use></svg>마이페이지</a>
+      <a class="axnav-cta" href="/bbs/login.php">로그인</a>
+    </nav>
+  </div>
+</header>
+
+<header class="dt-hero">
+  <div class="wrap">
+    <div class="eyebrow">SQL 개발자</div>
+    <h1>SQLD 문제집</h1>
+    <p>모의고사 6회차 300문제. 정답과 해설 전문이 공개되어 있고,
+       채점하면 과목별 취약점을 정리해 드립니다. 막히는 문제는 그 자리에서 질문하세요.</p>
+    <div class="dt-cta">
+      <a class="btn btn-yellow btn-lg" href="/exam/check.html?pd=sqld">문제 풀기</a>
+      <a class="btn btn-ghost-dark btn-lg" href="/exam/buy.php?pd=sqld">수강 신청</a>
+    </div>
+    <div class="dt-facts" id="dtFacts">
+      <div class="dt-fact"><b>300</b><span>문제</span></div>
+      <div class="dt-fact"><b>6</b><span>회차</span></div>
+      <div class="dt-fact"><b>2</b><span>과목</span></div>
+      <div class="dt-fact"><b>30</b><span>해설 영상</span></div>
+    </div>
+  </div>
+</header>
+
+<section class="section">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">커리큘럼</div>
+      <h2>회차별 모의고사</h2>
+      <p>회차당 50문제. 과목·난이도로 좁혀 풀 수 있습니다.</p>
+    </div>
+    <div class="rd-grid" id="rdGrid"></div>
+  </div>
+</section>
+
+<section class="section" style="background:var(--surface-soft)">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">이론</div>
+      <h2>요약노트</h2>
+      <p>과목별 핵심 개념 정리. 오답이 몰린 과목을 다시 볼 때 씁니다.</p>
+    </div>
+    <div class="th-row">
+      <a href="/exam/check.html?pd=sqld&m=theory"><svg class="ic"><use href="#i-book"></use></svg>1과목 · 데이터 모델링의 이해</a>
+      <a href="/exam/check.html?pd=sqld&m=theory"><svg class="ic"><use href="#i-book"></use></svg>2과목 · SQL 기본 및 활용</a>
+    </div>
+  </div>
+</section>
+
+<footer class="dt-foot">
+  <div class="wrap">
+    <a href="/exam/">문제집</a>
+    <a href="/exam/buy.php?pd=sqld">수강 신청</a>
+    <a href="/bbs/board.php?bo_table=notice">공지사항</a>
+    <a href="/bbs/qalist.php">1:1 문의</a>
+    <div style="margin-top:14px;color:#6f7a94">© 2026 AXEXAM</div>
+  </div>
+</footer>
+
+<script src="assets/ui.js"></script>
+<script>
+/* 회차 카드 — 서버에서는 api/problems.php 의 rounds 를 쓰고,
+   정적(file://)에서는 problems.js 로 떨어진다. 어느 쪽이든 흰 화면이 되지 않게 한다. */
+const API = window.EXAM_API || "";
+const PD  = new URLSearchParams(location.search).get('pd') || window.EXAM_PD || 'sqld';
+const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function card(r){
+  return `<div class="rd-card">
+    <div class="rd-top">
+      <span class="icon-box sm soft"><svg class="ic ic-sm"><use href="#i-clipboard"></use></svg></span>
+      <b>${esc(r.label || (r.no+'회'))}</b>
+      <span class="rd-n">${r.count||0}문제</span>
+    </div>
+    <div class="rd-links">
+      <a class="solve" href="/exam/check.html?pd=${encodeURIComponent(PD)}&rd=${r.no}">문제 풀기</a>
+      <a class="mute">영상 준비 중</a>
+    </div>
+  </div>`;
+}
+
+async function load(){
+  let rounds = null;
+  if(API){
+    try{
+      const j = await (await fetch(API+"problems.php?pd="+encodeURIComponent(PD),
+                                   {credentials:"same-origin"})).json();
+      if(j && j.ok && j.rounds && j.rounds.length) rounds = j.rounds;
+    }catch(e){}
+  }
+  if(!rounds){
+    // 정적 폴백 — problems.js 가 있으면 거기서 회차를 만든다
+    const P = window.PROBLEMS || [];
+    const m = {};
+    P.forEach(p => { const n = p.round_num || 0; if(n) m[n] = (m[n]||0)+1; });
+    rounds = Object.keys(m).sort((a,b)=>a-b).map(n => ({no:+n, label:n+'회 모의고사', count:m[n]}));
+  }
+  if(!rounds.length){
+    document.getElementById("rdGrid").innerHTML =
+      '<div class="empty">회차 정보를 불러오지 못했습니다.</div>';
+    return;
+  }
+  document.getElementById("rdGrid").innerHTML = rounds.map(card).join("");
+  const tot = rounds.reduce((s,r)=>s+(r.count||0),0);
+  document.getElementById("dtFacts").children[0].querySelector("b").textContent = tot;
+  document.getElementById("dtFacts").children[1].querySelector("b").textContent = rounds.length;
+}
+load();
+</script>
+</body>
+</html>
