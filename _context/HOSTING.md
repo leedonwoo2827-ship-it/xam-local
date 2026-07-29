@@ -77,8 +77,8 @@
 ```
 그누보드 : 5.6.13          ← ⚠ 구버전. 최신 5.6.34로 업데이트 필수
 PHP      : 8.4.21p1        ← 그누보드가 8.4 에서 부팅됨. 8.2 로 내릴 필요 없음
-실행시간 : 0초              ← 무제한
-메모리   : -1               ← 무제한
+실행시간 : 0초              ← ⚠ 오측. 아래 재측정 절 참조 (실제 30)
+메모리   : -1               ← ⚠ 오측. 아래 재측정 절 참조 (실제 256M)
 DB 실제버전 : 10.6.17-MariaDB-log
 DB 콜레이션 : utf8mb3_general_ci   ← ⚠ utf8mb4 아님. 스키마 대응 필요
 curl / openssl / mysqli / mbstring / json / gd  → 전부 OK
@@ -93,8 +93,8 @@ curl / openssl / mysqli / mbstring / json / gd  → 전부 OK
 |---|---|
 | **아웃바운드 curl** | ✅ **DeepSeek·토스·구글 3개 전부 성공.** Phase 2(LLM)·Phase 3(결제)·소셜로그인 모두 가능. 카페24가 `allow_url_fopen`은 Off로 두지만 curl 아웃바운드는 열려 있다 |
 | **MariaDB 실제 버전** | ✅ **10.6.17** — 요구(10.6+) 충족. LTS. `-log`는 바이너리 로깅 활성 표시 |
-| `max_execution_time` | ✅ **0 = 무제한.** "LLM 응답 20~30초가 여기서 죽는다"는 우려가 해소됐다. 단 **웹서버(Apache) 타임아웃은 별개**이므로 검수 화면의 "1건씩 직렬 호출" 설계는 유지한다 |
-| `memory_limit` | ✅ **-1 = 무제한** |
+| `max_execution_time` | ⚠ **정정: 30초다.** 아래 재측정 절 참조. "우려가 해소됐다"는 **틀렸다** |
+| `memory_limit` | ⚠ **정정: 256M.** 무제한이 아니다 (우리 용도에는 충분) |
 | PHP 확장 | ✅ `curl`·`openssl`·`mysqli`·`mbstring`·`json`·`gd` 전부 |
 | PHP 8.4 + 그누보드 | ✅ `common.php` include가 정상 동작 = 부팅됨. **회원가입·로그인·글쓰기는 별도 테스트 필요** |
 
@@ -121,6 +121,46 @@ CREATE TABLE ex_qna (
 ```
 
 `mb_id`는 영문+숫자라 utf8mb3로 충분하고 질문 본문은 이모지가 들어간다. [PLAN.md](PLAN.md) §4 전체에 적용할 것.
+
+### probe_waf.php 재측정 (2026-07-29 오후, 5.6.34 업데이트 후) — 앞의 probe.php 를 정정한다
+
+```
+upload_max_filesize   100M          post_max_size        100M
+max_file_uploads      20            max_input_vars       1000
+max_execution_time    30      ←★    max_input_time       60
+memory_limit          256M    ←★    default_socket_timeout 60
+DOCUMENT_ROOT         /axexam/www
+웹루트 상위(/axexam) 쓰기  가능  ←★
+
+WAF SQL POST 테스트
+  A 전형적 SELECT/JOIN/WHERE            → POST 수신 OK (114B)
+  B 1=1 + UNION ALL + OR + LIKE 'A%'    → POST 수신 OK (161B)
+  C DDL/DML + 한글 테이블명 + 주석 + ;   → POST 수신 OK (250B)
+```
+
+**① `max_execution_time` = 30, `memory_limit` = 256M — 오전 `probe.php` 판독이 틀렸다.**
+
+오전에 "0 = 무제한 / -1 = 무제한"으로 기록했는데 재측정은 30 / 256M 이다. 두 값이 같은
+방향으로 어긋난 걸 보면 그 스크립트가 읽기 전에 `set_time_limit()`/`ini_set()` 을 했거나
+다른 값을 읽었을 가능성이 크다. **보수적인 쪽(30 / 256M)을 사실로 잡는다.**
+
+→ **설계는 바뀌지 않는다.** [PLAN.md](PLAN.md) §6 은 애초에 `max_execution_time 30` 을 전제로
+   `CURLOPT_TIMEOUT = 25` + "JS 가 1건씩 직렬 호출" 로 짜여 있다. 오전에 "우려가 해소됐다"고
+   적은 그 문장만 틀렸다. **직렬 루프는 선택이 아니라 필수다** — 병렬로 던지면 죽는다.
+
+**② WAF 3개 전부 통과 — 이 프로젝트의 최대 미지수가 해소됐다.**
+
+`1=1`·`UNION ALL` 은 물론 한글 테이블명이 든 DDL/DML 까지 통과한다.
+질문 등록이 막힐 위험이 없고 **ModSecurity 를 건드릴 이유도 없다**(끄면 공격면만 넓어진다).
+
+**③ 업로드 100M — `problems.json`(387KB) 분할이 불필요하다.** `--emit-json --pd sqld` 분할 대비가
+   필요 없어졌다. 자격증 5종이 다 들어와도 수 MB 라 여유가 크다.
+
+**④ 웹루트 상위 `/axexam` 에 쓰기가 된다** → LLM API 키를 `/axexam/private/exam_secret.php` 에
+   둘 수 있다. `.htaccess deny` 폴백이 필요 없다([PLAN.md](PLAN.md) §6 의 1순위 안).
+
+⚠ `max_input_vars` 1000 — 우리 API 는 JSON 바디를 쓰므로 무관하지만, 관리자 폼에서
+  체크박스를 수백 개 쓰는 화면을 만들면 조용히 잘린다.
 
 ### 지금 켜야 할 설정 2개
 
