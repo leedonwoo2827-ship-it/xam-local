@@ -137,16 +137,123 @@ body, input, textarea, select, button, table, th, td, .btn_submit, .btn_close{
    extend 에서 run_event 훅으로 붙이거나, 회원 스킨을 복제할 때 넣는다.
    지금은 배경만 우리 것이라 이질감이 없다. */
 
-/* ══ 게시판·기타 그누보드 화면 (최소 조정) ═══════════════════════════
-   지금은 공지·문의 게시판을 쓸 계획이 있으므로 색만 맞춰 둔다.
-   레이아웃은 건드리지 않는다 — 게시판 마크업은 넓고 깊어서 부분 수정이 더 위험하다. */
+/* ══ 테마 화면 (회원가입·게시판·기타) ════════════════════════════════
+
+   ⚠ 로그인(.mbskin)과 달리 **회원가입·게시판은 테마 헤더·푸터를 그대로 쓴다.**
+     처음에 login.php 만 보고 "회원 화면은 헤더가 없다"고 판단한 건 틀렸다.
+     register.php 에는 gnuboard 로고·커뮤니티/쇼핑몰 메뉴·검색바·로그인 위젯이 다 나온다.
+
+   실측한 DOM:
+     #hd > #tnb(상단바) / #hd_wrapper > #logo · .hd_sch_wr(검색) · .hd_login
+     #gnb(메뉴) · #wrapper > #container_wr > #container · #aside(로그인 위젯) · #ft(푸터)
+
+   여기서도 마크업은 고치지 않는다. 테마 파일(theme/basic)을 복제하면
+   그누보드 업데이트 추적이 하나 더 늘어난다. CSS 로 덮는 편이 싸고 안전하다. */
+
+body{ background:var(--ex-soft); }
 #wrapper, #container{ font-family:var(--ex-font); color:var(--ex-body); }
+
+/* ── 상단 헤더 ─────────────────────────────────────────────────────── */
+#hd{ background:var(--ex-navy-800) !important; border-bottom:0 !important; }
+#hd *{ border-color:rgba(255,255,255,.12) !important; }
+
+/* 상단 얇은 바 (커뮤니티/쇼핑몰 · FAQ/Q&A/새글/접속자) */
+#tnb{ background:var(--ex-navy-900) !important; border-bottom:1px solid rgba(255,255,255,.08) !important; }
+#tnb a, #tnb li{ color:#93a1c4 !important; }
+#tnb a:hover{ color:#fff !important; }
+#tnb li.active a{ color:#fff !important; }
+
+/* 로고 — gnuboard 이미지를 감추고 문자 워드마크로 대체한다.
+   실제 로고 이미지가 나오면 이 블록을 지우고 theme 로고 파일만 바꾸면 된다. */
+#logo img{ display:none !important; }
+#logo a{ display:inline-block; text-decoration:none; }
+#logo a::after{
+  content:"AXEXAM";
+  font-size:21px; font-weight:800; letter-spacing:-.03em; color:#fff;
+  font-family:var(--ex-font);
+}
+#logo a::before{ content:""; }
+
+/* 검색바 */
+#hd .hd_sch_wr input, #sch_stx{
+  background:rgba(255,255,255,.08) !important; border:1px solid rgba(255,255,255,.16) !important;
+  color:#fff !important; border-radius:var(--ex-r-full) !important;
+}
+#sch_stx::placeholder{ color:#8b99bd !important; }
+#hd .hd_sch_wr .btn_submit, #sch_submit{ background:transparent !important; color:#cfd8ee !important; }
+
+/* 헤더 우측 로그인/회원가입 링크 */
+.hd_login a, #hd_qnb a{ color:#c3cde6 !important; }
+.hd_login a:hover, #hd_qnb a:hover{ color:#fff !important; }
+
+/* 인기검색어 띠 — 지금 콘텐츠가 없어 빈 줄만 보인다 */
+#popular{ display:none !important; }
+
+/* ── 메뉴 (#gnb) ───────────────────────────────────────────────────
+   메뉴를 아직 등록하지 않아 "메뉴 준비 중입니다. 관리자모드 > ..." 안내가 뜬다.
+   이용자에게 보일 문구가 아니다. 메뉴가 비어 있으면 영역을 통째로 감춘다.
+   관리자에서 메뉴를 등록하면 .gnb_empty 가 사라지므로 자동으로 다시 보인다. */
+#gnb{ background:var(--ex-navy-700) !important; border:0 !important; }
+#gnb a{ color:#d3dcf0 !important; }
+#gnb a:hover{ color:#fff !important; }
+#gnb:has(.gnb_empty){ display:none !important; }
+.gnb_empty{ display:none !important; }        /* :has() 미지원 브라우저 폴백 */
+
+/* ── 본문 ──────────────────────────────────────────────────────────── */
+#container_wr{ background:transparent !important; }
+#container{
+  background:var(--ex-canvas) !important; border:1px solid var(--ex-hair) !important;
+  border-radius:var(--ex-r-xl) !important; padding:30px 28px !important;
+  box-shadow:0 1px 2px rgba(20,26,38,.05), 0 4px 14px rgba(20,26,38,.05) !important;
+}
+#container_title{
+  font-size:22px !important; font-weight:800 !important; letter-spacing:-.03em !important;
+  color:var(--ex-ink) !important; border:0 !important; margin:0 0 20px !important;
+}
+
+/* 약관 박스 */
+.fregister_term, #fregister_term, .fregister_terms{
+  border:1px solid var(--ex-hair) !important; border-radius:var(--ex-r-lg) !important;
+  background:var(--ex-canvas) !important;
+}
+#fregister_chkall{
+  background:var(--ex-soft) !important; border:1px solid var(--ex-hair) !important;
+  border-radius:var(--ex-r-lg) !important;
+}
+
+/* ── 사이드 로그인 위젯 (#aside) ───────────────────────────────────── */
+#aside .ol, #aside section{
+  background:var(--ex-canvas) !important; border:1px solid var(--ex-hair) !important;
+  border-radius:var(--ex-r-xl) !important;
+}
+#ol_be_cate a, #ol_be_cate h2{ font-size:14px !important; }
+#ol_id, #ol_pw{
+  border:1px solid var(--ex-hair-s) !important; border-radius:var(--ex-r-md) !important;
+  height:42px !important;
+}
+#ol_submit{
+  background:var(--ex-navy-800) !important; border:0 !important; color:#fff !important;
+  border-radius:var(--ex-r-md) !important; font-weight:700 !important;
+}
+
+/* ── 푸터 ──────────────────────────────────────────────────────────── */
+#ft{ background:var(--ex-navy-900) !important; border-top:0 !important; color:#8e99b3 !important; }
+#ft *{ color:#8e99b3 !important; border-color:rgba(255,255,255,.08) !important; }
+#ft a:hover{ color:#cdd6ea !important; }
+
+/* ── 버튼 공통 ─────────────────────────────────────────────────────── */
+.btn_b01, .btn_b02, .btn_b03, .btn_submit, .btn_cancel, .btn_close{
+  border-radius:var(--ex-r-md) !important;
+}
+.btn_b02, .btn_submit, .btn_confirm .btn_submit{
+  background:var(--ex-navy-800) !important; border-color:var(--ex-navy-800) !important; color:#fff !important;
+}
+.btn_b02:hover, .btn_submit:hover{ background:var(--ex-navy-700) !important; }
+.btn_b01, .btn_close{
+  border:1px solid var(--ex-hair-s) !important; background:#fff !important; color:var(--ex-ink) !important;
+}
 a{ color:var(--ex-blue-600); }
-.btn_b01, .btn_b02, .btn_b03, .btn_submit{ border-radius:var(--ex-r-md); }
-.btn_b02, .btn_submit{ background:var(--ex-navy-800); border-color:var(--ex-navy-800); color:#fff; }
-.btn_b02:hover, .btn_submit:hover{ background:var(--ex-navy-700); }
-.btn_b01{ border:1px solid var(--ex-hair-s); background:#fff; color:var(--ex-ink); }
-.btn_cancel{ border-radius:var(--ex-r-md); }
+.selec_chk{ accent-color:var(--ex-blue-600); }
 
 /* ── 반응형 ───────────────────────────────────────────────────────── */
 @media (max-width:480px){
