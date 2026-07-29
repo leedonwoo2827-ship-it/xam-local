@@ -1,36 +1,31 @@
 {
-  "_note": "수동 관리 파일. 빌드가 덮어쓰지 않는다. youtube 는 id 에 URL 의 v= 값을, file 은 provider:\"file\" + id 에 상대경로를 넣는다. 항목의 provider 가 전역 _provider 를 이긴다.",
+  "_note": "수동 관리 파일. 빌드가 절대 덮어쓰지 않는다.\n유튜브에 미등록(unlisted)으로 올린 뒤 URL 의 v= 값을 id 에 넣는다.\nid 가 빈 항목은 빌드가 건너뛴다 → 회차별로 하나씩 채워 나가면 된다.\n확정되면 유튜브에서 공개로 전환만 한다. 영상 ID 가 그대로라 이 파일은 안 고쳐도 된다.\n⚠ 유튜브에서 영상을 지웠다 다시 올리면 ID 가 바뀐다. 미등록으로 두고 내리지 않는다.",
   "_provider": "youtube",
   "videos": {
     "m01-1": {
-      "id": "videos/m01-1.static.mp4",
+      "id": "",
       "label": "1회 1~10번",
-      "sec": 0,
-      "provider": "file"
+      "sec": 0
     },
     "m01-2": {
-      "id": "videos/m01-2.static.mp4",
+      "id": "",
       "label": "1회 11~20번",
-      "sec": 0,
-      "provider": "file"
+      "sec": 0
     },
     "m01-3": {
-      "id": "videos/m01-3.static.mp4",
+      "id": "",
       "label": "1회 21~30번",
-      "sec": 0,
-      "provider": "file"
+      "sec": 0
     },
     "m01-4": {
-      "id": "videos/m01-4.static.mp4",
+      "id": "",
       "label": "1회 31~40번",
-      "sec": 0,
-      "provider": "file"
+      "sec": 0
     },
     "m01-5": {
-      "id": "videos/m01-5.static.mp4",
+      "id": "",
       "label": "1회 41~50번",
-      "sec": 0,
-      "provider": "file"
+      "sec": 0
     },
     "m02-1": {
       "id": "",
