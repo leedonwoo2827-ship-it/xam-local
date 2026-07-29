@@ -29,75 +29,59 @@ $ex_url = G5_URL . '/exam';
 
 <!-- 상단 시작 { -->
 <div id="hd">
-    <h1 id="hd_h1"><?php echo $g5['title'] ?></h1>
+    <h1 id="hd_h1" class="sound_only"><?php echo $g5['title'] ?></h1>
     <div id="skip_to_container"><a href="#container">본문 바로가기</a></div>
 
     <?php
     if (defined('_INDEX_')) {                 // index 에서만
         include G5_BBS_PATH . '/newwin.inc.php';   // 팝업레이어
     }
+
+    /* ═══ 공용 네비 ═══════════════════════════════════════════════════
+     * ⚠ /exam/index.html · /exam/check.html 과 **같은 마크업**을 유지한다.
+     *   한쪽만 고치면 화면마다 헤더가 달라진다. CSS 는 /exam/assets/axnav.css 하나를
+     *   세 곳이 공유하고, extend/10_exam.php 가 그누보드 쪽에 주입한다.
+     *
+     * 아이콘: ui.js 의 스프라이트(#i-*)를 쓴다. 그누보드 화면에는 ui.js 가 없으므로
+     *   여기서만 로드한다 — 48개 아이콘 + 차트, 10KB.
+     */
+    $ex_here = $_SERVER['REQUEST_URI'];
+    $on = function ($frag) use ($ex_here) {
+        return (strpos($ex_here, $frag) !== false) ? ' on' : '';
+    };
     ?>
+    <script src="<?php echo $ex_url ?>/assets/ui.js"></script>
 
-    <?php /* 상단 얇은 바. basic 은 여기에 '커뮤니티/쇼핑몰' 과 'FAQ·Q&A·새글·접속자' 를
-             하드코딩해 둔다. 영카트를 안 쓰므로 우리 동선으로 바꿨다.
-             ⚠ 설명은 PHP 주석으로 쓴다 — HTML 주석은 브라우저로 그대로 나간다. */ ?>
-    <div id="tnb">
-        <div class="inner">
-            <ul id="hd_define">
-                <li class="active"><a href="<?php echo $ex_url ?>/">문제집</a></li>
-                <li><a href="<?php echo $ex_url ?>/buy.php?pd=sqld">수강 신청</a></li>
-            </ul>
-            <ul id="hd_qnb">
-                <li><a href="<?php echo G5_BBS_URL ?>/board.php?bo_table=notice">공지사항</a></li>
-                <li><a href="<?php echo G5_BBS_URL ?>/qalist.php">1:1 문의</a></li>
-                <li><a href="<?php echo G5_BBS_URL ?>/faq.php">FAQ</a></li>
-            </ul>
-        </div>
-    </div>
-
-    <div id="hd_wrapper">
-        <div id="logo">
-            <!-- 문자 워드마크(임시). 실제 로고가 나오면 이 <a> 안을 <img> 로 바꾸면 된다. -->
-            <a href="<?php echo $ex_url ?>/" class="ax-word">AX<i>EXAM</i></a>
-        </div>
-
-        <div class="hd_sch_wr">
-            <fieldset id="hd_sch">
-                <legend>사이트 내 전체검색</legend>
-                <form name="fsearchbox" method="get" action="<?php echo G5_BBS_URL ?>/search.php" onsubmit="return fsearchbox_submit(this);">
-                    <input type="hidden" name="sfl" value="wr_subject||wr_content">
-                    <input type="hidden" name="sop" value="and">
-                    <label for="sch_stx" class="sound_only">검색어<strong class="sound_only"> 필수</strong></label>
-                    <input type="text" name="stx" id="sch_stx" maxlength="20" placeholder="검색어를 입력해주세요">
-                    <button type="submit" id="sch_submit" value="검색"><i class="fa fa-search" aria-hidden="true"></i><span class="sound_only">검색</span></button>
-                </form>
-            </fieldset>
-            <script>
-            function fsearchbox_submit(f){
-                if (f.stx.value.length < 2) { alert("검색어는 두 글자 이상 입력하십시오."); f.stx.select(); f.stx.focus(); return false; }
-                // 검색어에 아래 문자가 포함되어 있으면 검색되지 않는다
-                var re = /['\"%=\*]/;
-                if (re.test(f.stx.value)) { alert("특수문자는 검색할 수 없습니다."); f.stx.select(); f.stx.focus(); return false; }
-                return true;
-            }
-            </script>
-        </div>
-
-        <ul class="hd_login">
+    <header class="axnav">
+      <div class="axnav-in">
+        <a class="axnav-logo" href="<?php echo $ex_url ?>/">AX<i>EXAM</i></a>
+        <nav class="axnav-main">
+          <a class="axnav-item" href="<?php echo $ex_url ?>/"><svg class="ic"><use href="#i-clipboard"></use></svg>문제집</a>
+          <a class="axnav-item" href="<?php echo $ex_url ?>/check.html?pd=sqld"><svg class="ic"><use href="#i-edit"></use></svg>문제 풀기</a>
+          <a class="axnav-item" href="<?php echo $ex_url ?>/check.html?pd=sqld&amp;m=theory"><svg class="ic"><use href="#i-book"></use></svg>이론</a>
+          <a class="axnav-item<?php echo $on('buy.php') ?>" href="<?php echo $ex_url ?>/buy.php?pd=sqld"><svg class="ic"><use href="#i-cap"></use></svg>수강 신청</a>
+        </nav>
+        <nav class="axnav-util">
+          <a class="axnav-item<?php echo $on('bo_table=notice') ?>" href="<?php echo G5_BBS_URL ?>/board.php?bo_table=notice"><svg class="ic"><use href="#i-bell"></use></svg>공지</a>
+          <a class="axnav-item<?php echo $on('qalist') ?>" href="<?php echo G5_BBS_URL ?>/qalist.php"><svg class="ic"><use href="#i-help"></use></svg>문의</a>
+          <span class="axnav-sep"></span>
         <?php if ($is_member) { ?>
-            <li class="hd_me"><?php echo htmlspecialchars($member['mb_nick'] ?: $member['mb_id']) ?>님</li>
-            <li><a href="<?php echo $ex_url ?>/mypage.php">마이페이지</a></li>
-            <?php if ($is_admin) { ?><li><a href="<?php echo G5_ADMIN_URL ?>/">관리자</a></li><?php } ?>
-            <?php /* 로그아웃 후 갈 곳을 명시한다. 지정하지 않으면 G5_URL(루트)로 가는데
-                     루트가 /exam/ 으로 리다이렉트돼서 '메인으로 튕겼다'로 읽힌다.
-                     ⚠ url 파라미터에 도메인을 넣으면 logout.php 가 거부한다 — 경로만 준다. */ ?>
-            <li><a href="<?php echo G5_BBS_URL ?>/logout.php?url=<?php echo urlencode('/exam/') ?>">로그아웃</a></li>
+          <span class="axnav-me"><b><?php echo htmlspecialchars($member['mb_nick'] ?: $member['mb_id']) ?></b>님</span>
+          <a class="axnav-item" href="<?php echo $ex_url ?>/mypage.php"><svg class="ic"><use href="#i-user"></use></svg>마이페이지</a>
+          <?php if ($is_admin) { ?>
+          <a class="axnav-item" href="<?php echo G5_ADMIN_URL ?>/"><svg class="ic"><use href="#i-shield"></use></svg>관리자</a>
+          <?php } ?>
+          <?php /* 로그아웃 후 갈 곳을 명시한다. 지정하지 않으면 G5_URL(루트)로 가는데
+                   루트가 /exam/ 으로 리다이렉트돼서 '메인으로 튕겼다'로 읽힌다.
+                   ⚠ url 에 도메인을 넣으면 logout.php 가 거부한다 — 경로만 준다. */ ?>
+          <a class="axnav-cta" href="<?php echo G5_BBS_URL ?>/logout.php?url=<?php echo urlencode('/exam/') ?>">로그아웃</a>
         <?php } else { ?>
-            <li><a href="<?php echo G5_BBS_URL ?>/register.php">회원가입</a></li>
-            <li><a href="<?php echo G5_BBS_URL ?>/login.php">로그인</a></li>
+          <a class="axnav-item<?php echo $on('register') ?>" href="<?php echo G5_BBS_URL ?>/register.php"><svg class="ic"><use href="#i-user"></use></svg>회원가입</a>
+          <a class="axnav-cta" href="<?php echo G5_BBS_URL ?>/login.php">로그인</a>
         <?php } ?>
-        </ul>
-    </div>
+        </nav>
+      </div>
+    </header>
 
     <?php
     /* 메뉴(#gnb) — 관리자 → 환경설정 → 메뉴설정 에서 등록한 데이터로 그린다.

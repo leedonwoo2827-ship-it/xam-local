@@ -41,12 +41,16 @@ define('G5_EXAM_PATH', G5_PATH . '/exam');
  * ⚠ 코어 파일을 하나도 고치지 않는다. 이 파일과 /exam/assets/ 만 우리 것이다.
  */
 if (function_exists('add_stylesheet')) {
-    $__ex_css = G5_PATH . '/exam/assets/gnuboard-skin.css';
-    $__ex_ver = @filemtime($__ex_css);          // 캐시 무효화 — 없으면 0
-    add_stylesheet(
-        '<link rel="stylesheet" href="' . G5_EXAM_URL . '/assets/gnuboard-skin.css?v='
-        . (int)$__ex_ver . '">',
-        100
-    );
-    unset($__ex_css, $__ex_ver);
+    // Pretendard — /exam/ 화면과 같은 얼굴을 그누보드 화면에도 준다
+    add_stylesheet('<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>', 98);
+    add_stylesheet('<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/'
+                 . 'pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">', 99);
+
+    // 공용 네비 + 그누보드 스킨. 세 화면(랜딩·문제풀이·그누보드)이 axnav.css 를 공유한다.
+    foreach (array('axnav.css', 'gnuboard-skin.css') as $__f) {
+        $__v = @filemtime(G5_PATH . '/exam/assets/' . $__f);   // 캐시 무효화 — 없으면 0
+        add_stylesheet('<link rel="stylesheet" href="' . G5_EXAM_URL . '/assets/'
+                     . $__f . '?v=' . (int)$__v . '">', 100);
+    }
+    unset($__f, $__v);
 }

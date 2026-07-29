@@ -8,6 +8,7 @@
 <link rel="stylesheet"
       href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
 <link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/axnav.css">
 <style>
 /* ═══ 랜딩 전용 ═══════════════════════════════════════════════════════
    시안 단계라 이 파일에 모아둔다. 확정되면 style.css 로 올린다. */
@@ -177,6 +178,28 @@
 </head>
 <body>
 
+<!-- ═══ 공용 네비 ════════════════════════════════════════════════════
+     ⚠ check.html · theme/axexam/head.php 와 **같은 마크업**을 유지한다.
+        한쪽만 고치면 화면마다 헤더가 달라진다. -->
+<header class="axnav">
+  <div class="axnav-in">
+    <a class="axnav-logo" href="/exam/">AX<i>EXAM</i></a>
+    <nav class="axnav-main">
+      <a class="axnav-item on" href="/exam/"><svg class="ic"><use href="#i-clipboard"></use></svg>문제집</a>
+      <a class="axnav-item" href="/exam/check.html?pd=sqld"><svg class="ic"><use href="#i-edit"></use></svg>문제 풀기</a>
+      <a class="axnav-item" href="/exam/check.html?pd=sqld&amp;m=theory"><svg class="ic"><use href="#i-book"></use></svg>이론</a>
+      <a class="axnav-item" href="/exam/buy.php?pd=sqld"><svg class="ic"><use href="#i-cap"></use></svg>수강 신청</a>
+    </nav>
+    <nav class="axnav-util">
+      <a class="axnav-item" href="/bbs/board.php?bo_table=notice"><svg class="ic"><use href="#i-bell"></use></svg>공지</a>
+      <a class="axnav-item" href="/bbs/qalist.php"><svg class="ic"><use href="#i-help"></use></svg>문의</a>
+      <span class="axnav-sep"></span>
+      <a class="axnav-item" href="/exam/mypage.php"><svg class="ic"><use href="#i-user"></use></svg>마이페이지</a>
+      <a class="axnav-cta" href="/bbs/login.php">로그인</a>
+    </nav>
+  </div>
+</header>
+
 <!-- ═══ 히어로 ═══════════════════════════════════════════════════════ -->
 <header class="lp-hero">
   <div class="wrap">
@@ -184,9 +207,7 @@
 
       <div>
         <div class="lp-mark">
-          <!-- 문자 워드마크 (임시). 실제 로고가 나오면 <img> 한 줄로 교체 -->
-          <span class="lp-word">AX<i>EXAM</i></span>
-          <span class="lp-word-sub">IT 자격증 문제은행</span>
+          <span class="lp-word-sub" style="border:0;padding:0">IT 자격증 문제은행</span>
         </div>
 
         <h1>틀린 문제를 <em>왜</em> 틀렸는지<br>끝까지 알려주는 문제집</h1>

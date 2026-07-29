@@ -10,6 +10,7 @@
 <link rel="stylesheet"
       href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
 <link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/axnav.css">
 <style>
 .page{ background:var(--surface-soft); min-height:100vh; padding-bottom:64px; }
 .crumb-bar{ background:#fff; border-bottom:1px solid var(--hairline); }
@@ -107,23 +108,28 @@ pre.sql code{ background:none; padding:0; border-radius:0; color:inherit; font-s
 </head>
 <body>
 <div class="page">
-  <nav class="topnav">
-    <div class="brand">
-      <!-- 랜딩과 같은 문자 워드마크. 실제 로고가 나오면 <img> 로 바꾼다. -->
-      <a class="wordmark" href="/exam/">AX<i>EXAM</i></a>
-      <!-- 과정명을 누르면 이 자격증의 카탈로그(홈)로 돌아온다.
-           홈 탭을 없앤 대신 여기가 그 역할을 한다. -->
-      <a class="brand-sub" href="#" id="pdHome">SQLD 문제집</a>
+  <!-- ═══ 공용 네비 ══════════════════════════════════════════════════
+       ⚠ index.html · theme/axexam/head.php 와 **같은 마크업**을 유지한다.
+          한쪽만 고치면 화면마다 헤더가 달라진다. -->
+  <header class="axnav">
+    <div class="axnav-in">
+      <a class="axnav-logo" href="/exam/">AX<i>EXAM</i></a>
+      <nav class="axnav-main">
+        <a class="axnav-item" href="/exam/"><svg class="ic"><use href="#i-clipboard"></use></svg>문제집</a>
+        <a class="axnav-item on" href="/exam/check.html?pd=sqld"><svg class="ic"><use href="#i-edit"></use></svg>문제 풀기</a>
+        <a class="axnav-item" href="/exam/check.html?pd=sqld&amp;m=theory"><svg class="ic"><use href="#i-book"></use></svg>이론</a>
+        <a class="axnav-item" href="/exam/buy.php?pd=sqld"><svg class="ic"><use href="#i-cap"></use></svg>수강 신청</a>
+      </nav>
+      <nav class="axnav-util">
+        <a class="axnav-item" href="/bbs/board.php?bo_table=notice"><svg class="ic"><use href="#i-bell"></use></svg>공지</a>
+        <a class="axnav-item" href="/bbs/qalist.php"><svg class="ic"><use href="#i-help"></use></svg>문의</a>
+        <span class="axnav-sep"></span>
+        <a class="axnav-item" href="/exam/mypage.php"><svg class="ic"><use href="#i-user"></use></svg>마이페이지</a>
+        <a class="axnav-cta" href="/bbs/login.php" id="navLogin">로그인</a>
+      </nav>
     </div>
-    <div class="modes" id="modes">
-      <button data-m="theory">이론</button>
-      <button data-m="quiz">회차별 모의고사</button>
-    </div>
-    <div class="nav-right">
-      <a class="nav-link" href="/exam/buy.php?pd=sqld">반 신청</a>
-      <a class="nav-link" href="/bbs/login.php" id="navLogin">로그인</a>
-    </div>
-  </nav>
+  </header>
+
   <div class="crumb-bar"><div class="wrap">
     <div class="crumb"><svg class="ic"><use href="#i-list"></use></svg>
       <a href="/exam/">AXEXAM</a><span class="sep">›</span>
@@ -136,6 +142,14 @@ pre.sql code{ background:none; padding:0; border-radius:0; color:inherit; font-s
     <div class="head-block">
       <h1 id="pgTitle">이론 요약노트</h1>
       <div class="sub" id="pgSub">과목별 핵심 개념 요약입니다.</div>
+    </div>
+
+    <!-- 모드 탭 — 상단 네비에서 여기로 내렸다. 전역 네비(문제집·문제풀기·이론·수강신청)와
+         이 과정 안의 이동을 같은 줄에 두면 층위가 섞여 어디가 어디인지 안 잡힌다. -->
+    <div class="modes" id="modes">
+      <button data-m="home">홈</button>
+      <button data-m="theory">이론</button>
+      <button data-m="quiz">회차별 모의고사</button>
     </div>
 
     <div class="subtabs" id="subtabs"></div>
@@ -173,7 +187,8 @@ pre.sql code{ background:none; padding:0; border-radius:0; color:inherit; font-s
 <div class="vmodal" id="vmodal"><span class="vclose" onclick="closeVid()">×</span><div class="box" id="vbox"></div></div>
 <div class="toast" id="toast"></div>
 
-<script src="assets/app.js"></script>
+<!-- assets/app.js 는 뺐다. 전산세무회계 채점 로직(window.WP)뿐이고 우리는 안 쓴다.
+     아이콘 스프라이트 주입은 ui.js 담당이라 무관하다. 7.2KB 절약. -->
 <script src="assets/ui.js"></script>
 <script src="problems.js"></script>
 <script src="videos.js"></script>
