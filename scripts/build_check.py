@@ -247,7 +247,9 @@ def map_videos(book: Path) -> tuple[dict, int, int]:
         vids.setdefault(f"{rn}회", []).append({
             "label": e.get("label") or label,
             "part": part,
-            "provider": provider,
+            # 항목별 provider 가 전역 _provider 를 이긴다 →
+            # "1회차만 서버 파일로 테스트, 나머지는 유튜브" 혼용이 된다.
+            "provider": e.get("provider") or provider,
             "id": vid,
             "sec": int(e.get("sec") or 0),
         })
