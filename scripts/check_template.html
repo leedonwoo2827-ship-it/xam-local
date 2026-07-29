@@ -175,6 +175,27 @@ const VIDEOS=(window.VIDEOS||{});
 const THEORY=(window.THEORY||[]);
 let mode="quiz", curRound=null, curTheory=null, answers={}, graded=false;
 
+/* ── 풀던 답안 보존 ────────────────────────────────────────────────────
+   answers 가 메모리 변수라 새로고침·탭닫기에 날아갔다.
+   서버에 저장할 수도 있지만 localStorage 로 충분하다 —
+   비로그인도 되고, 왕복이 없고, 스키마 변경도 없다.
+   (기기를 옮기면 안 따라온다. 그게 문제가 되면 그때 서버 동기화를 붙인다.) */
+const ansKey = r => "exam:ans:" + PD + ":" + (r || "");
+function loadAns(){
+  try{
+    const s = localStorage.getItem(ansKey(curRound));
+    const o = s ? JSON.parse(s) : null;
+    return (o && typeof o === "object" && !Array.isArray(o)) ? o : {};
+  }catch(e){ return {}; }          // 시크릿 모드·차단 환경
+}
+function saveAns(){
+  try{
+    if(Object.keys(answers).length) localStorage.setItem(ansKey(curRound), JSON.stringify(answers));
+    else                            localStorage.removeItem(ansKey(curRound));
+  }catch(e){}                      // 용량 초과 등은 조용히 넘어간다 — 풀이를 막을 이유가 없다
+}
+let restoreNoticed = false;        // 복원 안내는 최초 1회만 (회차를 오갈 때마다 뜨면 시끄럽다)
+
 /* ── 데이터 소스 추상화 ────────────────────────────────────────────────
    window.EXAM_API 가 있으면(build_check.py --api-base 가 주입) 서버에서 읽고,
    없으면 구워넣은 window.PROBLEMS 로 동작한다.
@@ -281,12 +302,17 @@ function tableHtml(t){ if(!t||!t.columns) return "";
   (t.rows||[]).forEach(r=>{ h+="<tr>"+r.map(c=>"<td>"+esc(String(c))+"</td>").join("")+"</tr>"; }); return h+"</tbody></table>"; }
 
 function setMode(m){
-  mode=m; answers={}; graded=false;
+  mode=m; graded=false;
+  if(m!=="quiz") answers={};       // 이론·홈에서는 답안 상태를 들고 있을 이유가 없다
   document.querySelectorAll("#modes button").forEach(b=>b.classList.toggle("on",b.dataset.m===m));
   $("#layout").classList.toggle("tmode", m!=="quiz");      // home/theory = 전체폭(사이드 숨김)
   $("#filters").style.display = (m==="quiz") ? "flex" : "none";
   $("#subtabs").style.display = (m==="home") ? "none" : "flex";
   if(m==="quiz"){ const rs=rounds(); curRound=curRound&&rs.includes(curRound)?curRound:(rs[0]||null);
+    answers=loadAns();                      // 풀던 답안 복원
+    const n=Object.keys(answers).length;
+    if(n && !restoreNoticed){ restoreNoticed=true;
+      setTimeout(()=>toast("이전에 선택한 답안 "+n+"개를 불러왔습니다"), 400); }
     $("#pgTitle").textContent="회차별 모의고사 · 정답 체크"; $("#pgSub").textContent="보기를 고르고 채점하기를 누르면 정답·해설이 표시됩니다."; }
   else if(m==="theory"){ curTheory=curTheory||(THEORY[0]&&THEORY[0].href)||null;
     $("#pgTitle").textContent="이론 요약노트"; $("#pgSub").textContent="과목별 핵심 개념 요약입니다."; }
@@ -299,7 +325,7 @@ function buildSub(){
   const box=$("#subtabs");
   if(mode==="home"){ box.innerHTML=""; return; }
   if(mode==="quiz"){ box.innerHTML=rounds().map(r=>'<button data-v="'+r+'"'+(r===curRound?' class="on"':'')+'>'+r+'</button>').join("");
-    box.querySelectorAll("button").forEach(b=>b.onclick=()=>{ curRound=b.dataset.v; answers={}; graded=false; buildSub(); renderVideos(); render(); updateCrumb(); }); }
+    box.querySelectorAll("button").forEach(b=>b.onclick=()=>{ curRound=b.dataset.v; answers=loadAns(); graded=false; buildSub(); renderVideos(); render(); updateCrumb(); }); }
   else{ box.innerHTML=THEORY.map(t=>'<button data-v="'+t.href+'"'+(t.href===curTheory?' class="on"':'')+'>'+esc(t.label)+'</button>').join("");
     box.querySelectorAll("button").forEach(b=>b.onclick=()=>{ curTheory=b.dataset.v; buildSub(); render(); updateCrumb(); }); }
 }
@@ -342,7 +368,7 @@ function render(){
 
 document.addEventListener("click",e=>{
   const o=e.target.closest(".opt"); if(!o||graded||mode!=="quiz") return;
-  const k=o.dataset.k, ci=+o.dataset.ci; answers[k]=ci;
+  const k=o.dataset.k, ci=+o.dataset.ci; answers[k]=ci; saveAns();
   o.parentElement.querySelectorAll(".opt").forEach(x=>x.classList.remove("sel")); o.classList.add("sel"); updateGauge();
 });
 function updateGauge(){
@@ -388,7 +414,7 @@ async function reveal(){
   graded=true;
   applyResults(res.results.map(r=>({...r, chosen:-1})));
 }
-function resetAll(){ answers={}; graded=false; render(); }
+function resetAll(){ answers={}; graded=false; saveAns(); render(); }   // saveAns 가 빈 값이면 지운다
 
 function renderHome(list){
   let h='<div class="cat">';
@@ -472,7 +498,9 @@ async function loadMe(){
   loadMe();
   uniq(P.map(p=>p.subject)).forEach(s=>{ const o=document.createElement("option"); o.value=s; o.textContent=s; $("#fSubject").appendChild(o); });
   uniq(P.map(p=>p.difficulty)).forEach(s=>{ const o=document.createElement("option"); o.value=s; o.textContent=s; $("#fDiff").appendChild(o); });
-  ["#fSubject","#fDiff"].forEach(s=>$(s).onchange=()=>{ answers={}; graded=false; render(); });
+  /* 필터를 바꿔도 답안은 지우지 않는다 — 과목만 좁혀 봤는데 풀던 게 날아가면 안 된다.
+     채점 상태(graded)만 초기화해 새 범위로 다시 채점하게 한다. */
+  ["#fSubject","#fDiff"].forEach(s=>$(s).onchange=()=>{ graded=false; render(); });
   document.querySelectorAll("#modes button").forEach(b=>b.onclick=()=>setMode(b.dataset.m));
   curRound=(rounds()[0]||null); curTheory=(THEORY[0]&&THEORY[0].href)||null;
   setMode("home"); renderVideos();
