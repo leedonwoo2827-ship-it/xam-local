@@ -1,0 +1,50 @@
+# /exam/ — 문제풀이 앱
+#
+# ⚠ Apache + AllowOverride 전제. 카페24 웹호스팅은 Apache 다.
+#   nginx 로 바뀌면 전부 무효가 되므로 서버 설정으로 옮겨야 한다.
+
+# ── gzip ────────────────────────────────────────────────────────────────
+# 50문제 JSON 이 약 65KB → 15KB. 트래픽 한도가 월 4,000MB 라 이게 실질적이다.
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE application/json
+    AddOutputFilterByType DEFLATE application/javascript text/javascript
+    AddOutputFilterByType DEFLATE text/html text/css text/plain
+    AddOutputFilterByType DEFLATE image/svg+xml
+</IfModule>
+
+# ── 캐시 ────────────────────────────────────────────────────────────────
+# API 응답은 _boot.php 가 Cache-Control 을 직접 세팅한다(여기서 건드리지 않는다).
+# 정적 자산만 다룬다.
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/svg+xml            "access plus 7 days"
+    ExpiresByType text/css                 "access plus 7 days"
+    ExpiresByType application/javascript   "access plus 1 hour"
+    ExpiresByType text/javascript          "access plus 1 hour"
+</IfModule>
+
+# problems.js / theory_content.js 는 빌드마다 바뀐다.
+# 1시간 캐시라 배포 직후 최대 1시간 동안 옛 파일이 보일 수 있다 —
+# 급하면 파일명에 ?ver= 를 붙이거나 브라우저 강력 새로고침으로 넘긴다.
+
+# ── 노출 차단 ───────────────────────────────────────────────────────────
+# sql/ 은 자체 .htaccess 로 막는다. 여기서는 실수로 올라올 수 있는 것들.
+<FilesMatch "\.(json|sql|md|py|log|bak|orig)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# ⚠ 위 규칙이 problems.json 을 막는다 — 임포트용 파일이 실수로 웹루트에 남아도
+#   내려받을 수 없다. (원래 adm/exam_import.php 화면으로만 올린다.)
+
+# api/lib/ 은 include 전용이다. 직접 열 이유가 없다.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^api/lib/ - [F,L]
+    RewriteRule ^api/_boot\.php$ - [F,L]
+</IfModule>

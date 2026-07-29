@@ -184,6 +184,7 @@ let mode="quiz", curRound=null, curTheory=null, answers={}, graded=false;
    서버에서는 웹(adm/exam_problem_form.php)에서 고친 문제가 화면에 바로 반영되어야
    하므로 problems.js 를 그대로 쓸 수 없다. */
 const API = window.EXAM_API || "";
+const PD  = window.EXAM_PD  || "sqld";   // 자격증 확장 시 build_check.py --pd 가 주입한다
 
 const StaticDS = {
   async problems(){ return {problems:P, subjects:uniq(P.map(p=>p.subject))}; },
@@ -202,14 +203,22 @@ const StaticDS = {
 
 const ApiDS = {
   async problems(round){
-    const r=await fetch(API+"problems.php?pd=sqld&round="+encodeURIComponent(round||""),
+    const r=await fetch(API+"problems.php?pd="+encodeURIComponent(PD)
+                          +"&round="+encodeURIComponent(round||""),
                         {credentials:"same-origin"});
     return await r.json();
   },
+  /* 서버는 '화면에 보이던 문제 집합'을 알아야 미응답을 셀 수 있다.
+     과목·난이도 필터가 걸려 있으면 회차 전체가 아니라 그 부분집합이 채점 대상이다.
+     그래서 keys 를 함께 보낸다 — 서버는 이걸 DB 행과 교집합으로만 쓴다. */
   async grade(round, ans){
+    const rows=cur();
     const r=await fetch(API+"grade.php", {method:"POST", credentials:"same-origin",
       headers:{"Content-Type":"application/json","X-Exam-Csrf":(window.ME&&ME.csrf)||""},
-      body:JSON.stringify({round:round, answers:ans})});
+      body:JSON.stringify({
+        pd:PD, round:round, keys:rows.map(keyOf), answers:ans,
+        filter:[$("#fSubject").value,$("#fDiff").value].filter(Boolean).join("/")
+      })});
     return await r.json();
   },
   async me(){
@@ -450,7 +459,17 @@ function closeVid(){ $("#vbox").innerHTML=""; $("#vmodal").classList.remove("sho
 $("#vmodal").addEventListener("click",e=>{ if(e.target.id==="vmodal") closeVid(); });
 let tt; function toast(m){ const t=$("#toast"); t.textContent=m; t.classList.add("show"); clearTimeout(tt); tt=setTimeout(()=>t.classList.remove("show"),1900); }
 
+/* 서버 모드에서 내 상태와 CSRF 를 받아둔다.
+   grade.php 는 로그인 회원에게 CSRF 를 요구하므로 채점 전에 이게 끝나 있어야 한다.
+   API 가 비면(file:// 정적 폴백) 아무것도 하지 않는다.
+   ⚠ 헤더 계정칸 UI 는 S7 에서 붙인다. 지금은 데이터만 확보한다. */
+async function loadMe(){
+  if(!API) return;
+  try{ window.ME = await DS.me(); }catch(e){ window.ME = {login:0}; }
+}
+
 (function(){
+  loadMe();
   uniq(P.map(p=>p.subject)).forEach(s=>{ const o=document.createElement("option"); o.value=s; o.textContent=s; $("#fSubject").appendChild(o); });
   uniq(P.map(p=>p.difficulty)).forEach(s=>{ const o=document.createElement("option"); o.value=s; o.textContent=s; $("#fDiff").appendChild(o); });
   ["#fSubject","#fDiff"].forEach(s=>$(s).onchange=()=>{ answers={}; graded=false; render(); });

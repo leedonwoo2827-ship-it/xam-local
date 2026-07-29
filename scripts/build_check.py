@@ -436,7 +436,8 @@ def main(argv: list[str] | None = None) -> int:
     # 6) check.html — --api-base 가 있으면 EXAM_API 주입 (없으면 StaticDS 로 동작)
     html = TEMPLATE.read_text(encoding="utf-8")
     if args.api_base:
-        inject = ('<script>window.EXAM_API=' + json.dumps(args.api_base) + ';</script>\n')
+        inject = ('<script>window.EXAM_API=' + json.dumps(args.api_base) + ';'
+                  'window.EXAM_PD=' + json.dumps(args.pd) + ';</script>\n')
         html = html.replace("</head>", inject + "</head>", 1)
     (out / "check.html").write_text(html, encoding="utf-8")
 
