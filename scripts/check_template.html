@@ -108,16 +108,28 @@ pre.sql code{ background:none; padding:0; border-radius:0; color:inherit; font-s
 <body>
 <div class="page">
   <nav class="topnav">
-    <div class="brand"><img class="logo-mark dark" src="assets/logo_wowpass.png" alt="Wowpass" onerror="this.style.display='none'"><span class="brand-sub">SQLD 문제집</span></div>
+    <div class="brand">
+      <!-- 랜딩과 같은 문자 워드마크. 실제 로고가 나오면 <img> 로 바꾼다. -->
+      <a class="wordmark" href="/exam/">AX<i>EXAM</i></a>
+      <!-- 과정명을 누르면 이 자격증의 카탈로그(홈)로 돌아온다.
+           홈 탭을 없앤 대신 여기가 그 역할을 한다. -->
+      <a class="brand-sub" href="#" id="pdHome">SQLD 문제집</a>
+    </div>
     <div class="modes" id="modes">
-      <button data-m="home">홈</button>
       <button data-m="theory">이론</button>
       <button data-m="quiz">회차별 모의고사</button>
     </div>
-    <div class="nav-right"><span class="nav-link"><svg class="ic ic-sm"><use href="#i-help"></use></svg> 이용 가이드</span></div>
+    <div class="nav-right">
+      <a class="nav-link" href="/exam/buy.php?pd=sqld">반 신청</a>
+      <a class="nav-link" href="/bbs/login.php" id="navLogin">로그인</a>
+    </div>
   </nav>
   <div class="crumb-bar"><div class="wrap">
-    <div class="crumb"><svg class="ic"><use href="#i-list"></use></svg> 홈<span class="sep">›</span><span>문제집(SQLD)</span><span class="sep">›</span><b id="cMode">이론</b><span id="cSubWrap" style="display:none"><span class="sep">›</span><b id="cSub"></b></span></div>
+    <div class="crumb"><svg class="ic"><use href="#i-list"></use></svg>
+      <a href="/exam/">AXEXAM</a><span class="sep">›</span>
+      <a href="#" id="cPd">SQLD 문제집</a>
+      <span id="cModeWrap"><span class="sep">›</span><b id="cMode">이론</b></span>
+      <span id="cSubWrap" style="display:none"><span class="sep">›</span><b id="cSub"></b></span></div>
   </div></div>
 
   <div class="wrap">
@@ -330,7 +342,9 @@ function buildSub(){
     box.querySelectorAll("button").forEach(b=>b.onclick=()=>{ curTheory=b.dataset.v; buildSub(); render(); updateCrumb(); }); }
 }
 function updateCrumb(){
-  if(mode==="home"){ $("#cMode").textContent="홈"; $("#cSubWrap").style.display="none"; return; }
+  /* 홈에서는 '› 홈' 을 붙이지 않는다 — 과정명 자체가 홈이라 'SQLD 문제집 › 홈' 은 겹친다. */
+  if(mode==="home"){ $("#cModeWrap").style.display="none"; $("#cSubWrap").style.display="none"; return; }
+  $("#cModeWrap").style.display="";
   if(mode==="quiz"){ $("#cMode").textContent="회차별 모의고사"; $("#cSubWrap").style.display=""; $("#cSub").textContent=curRound||""; }
   else{ $("#cMode").textContent="이론"; const t=THEORY.find(x=>x.href===curTheory); $("#cSubWrap").style.display= t?"":"none"; $("#cSub").textContent=t?t.label:""; }
 }

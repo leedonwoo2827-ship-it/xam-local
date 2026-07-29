@@ -40,24 +40,36 @@ body, input, textarea, select, button, table, th, td, .btn_submit, .btn_close{
 
 /* ══ 회원 화면 (.mbskin) ══════════════════════════════════════════════ */
 
-/* 배경 — 기본 흰 화면 대신 우리 다크 네이비. '그누보드 느낌'이 여기서 대부분 사라진다. */
+/* 배경 — 기본 흰 화면 대신 우리 다크 네이비. '그누보드 느낌'이 여기서 대부분 사라진다.
+ *
+ * ⚠ 기본 스킨이 `.mbskin { margin:100px auto 0; width:360px }` 을 준다.
+ *   width 를 안 풀면 flex 센터링이 그 360px 안에서만 돌아서
+ *   카드가 화면 왼쪽에 붙고 오른쪽이 흰 여백으로 남는다(실제로 그렇게 깨졌다).
+ *   그래서 width / max-width / margin 을 전부 되돌린 뒤에 레이아웃을 잡는다. */
 .mbskin{
+  width:100% !important; max-width:none !important; margin:0 !important;
+  position:static !important;
   background:
     radial-gradient(760px 380px at 18% -12%, rgba(44,92,230,.30), transparent 62%),
     radial-gradient(620px 340px at 88% 6%,  rgba(17,165,148,.16), transparent 60%),
     linear-gradient(158deg, var(--ex-navy-900) 0%, var(--ex-navy-700) 60%, #1d2f5c 100%);
-  min-height:100vh; margin:0; padding:56px 16px;
-  display:flex; align-items:flex-start; justify-content:center;
+  min-height:100vh; padding:56px 16px; box-sizing:border-box;
+  display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
   color:var(--ex-body);
 }
+/* 기본 스킨이 :after 로 그림자 장식을 넣는다 — 우리 배경과 겹쳐 지저분해진다 */
+.mbskin:after, .mbskin:before{ display:none !important; }
 
 /* 카드 */
 .mbskin .mbskin_box{
   width:100%; max-width:420px; margin:0;
   background:var(--ex-canvas); border:0; border-radius:var(--ex-r-xl);
-  padding:36px 34px 30px;
+  padding:36px 34px 30px; box-sizing:border-box;
   box-shadow:0 24px 60px -18px rgba(6,12,30,.55);
+  text-align:left;
 }
+/* h1 여백도 기본 스킨이 margin:60px 0 30px 을 준다 */
+.mbskin h1{ margin:0 0 22px !important; font-size:23px !important; }
 
 /* 제목 */
 .mbskin h1{
@@ -240,6 +252,28 @@ body{ background:var(--ex-soft); }
 #ft{ background:var(--ex-navy-900) !important; border-top:0 !important; color:#8e99b3 !important; }
 #ft *{ color:#8e99b3 !important; border-color:rgba(255,255,255,.08) !important; }
 #ft a:hover{ color:#cdd6ea !important; }
+
+/* ⚠⚠ 더미 회사정보를 감춘다.
+ *   그누보드 기본값이 그대로 노출되고 있었다 —
+ *   "회사명 : 회사명 / 대표 : 대표자명 / 주소 : OO도 OO시 OO구 OO동 123-45 /
+ *    사업자 등록번호 : 123-45-67890 / 통신판매신고번호 : 제 OO구 - 123호"
+ *   실제 사업자 정보가 아니라 **표시하면 안 되는 값**이다. 전자상거래법상
+ *   사업자 정보는 사실이어야 하고, 거짓 표기는 없느니만 못하다.
+ *
+ *   → 사업자등록·통신판매업 신고가 끝나면
+ *     관리자 → 환경설정 → 기본환경설정 에서 실제 값을 채우고 이 블록을 지운다.
+ *     (그때 감추면 안 된다 — 표시가 법적 의무다.)
+ */
+#ft_company{ display:none !important; }
+
+/* 접속자집계·공지사항 위젯도 지금은 내용이 없어 빈 칸만 남는다 */
+#visit{ display:none !important; }
+#ft .notice:has(.empty_li){ display:none !important; }
+#ft .empty_li{ display:none !important; }
+
+/* 남은 링크 묶음을 가운데로 — 한 칸만 남으면 왼쪽에 치우쳐 보인다 */
+#ft_wr{ display:flex; justify-content:center; gap:40px; flex-wrap:wrap; }
+#ft_catch{ display:none !important; }   /* "소유하신 도메인" 문구 */
 
 /* ── 버튼 공통 ─────────────────────────────────────────────────────── */
 .btn_b01, .btn_b02, .btn_b03, .btn_submit, .btn_cancel, .btn_close{

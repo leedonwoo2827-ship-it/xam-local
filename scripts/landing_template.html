@@ -141,9 +141,16 @@
 .foot-grid{ display:grid; grid-template-columns:1.5fr 1fr 1fr 1fr; gap:34px; margin-bottom:34px; }
 .foot h5{ color:#fff; font-size:13.5px; font-weight:700; margin:0 0 13px; }
 .foot a{ display:block; padding:4px 0; color:#8e99b3; }
-.foot a:hover{ color:#cdd6ea; }
+.foot a:hover{ color:#cdd6ea; text-decoration:underline; }
+/* 아직 없는 자격증 — 링크가 아니라는 걸 커서와 색으로 알린다.
+   죽은 <a href="#"> 을 두면 눌렀는데 아무 일도 안 나서 고장으로 읽힌다. */
+.foot-soon{ display:block; padding:4px 0; color:#606b85; cursor:default; }
+.foot-soon em{ font-style:normal; font-size:11px; color:#4e586f;
+  border:1px solid #3a4257; border-radius:var(--r-full); padding:1px 7px; margin-left:5px; }
 .foot-bot{ border-top:1px solid rgba(255,255,255,.09); padding-top:20px;
   display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; font-size:12.5px; color:#6f7a94; }
+.foot-legal{ display:flex; gap:16px; }
+.foot-legal a{ display:inline; padding:0; color:#8e99b3; }
 
 /* ---- 반응형 3단: 1024 / 768 / 480 ---- */
 @media (max-width:1024px){
@@ -356,26 +363,34 @@
       </div>
       <div>
         <h5>문제집</h5>
-        <a href="check.html?pd=sqld">SQLD</a>
-        <a href="#">ADSP <span class="tiny">준비 중</span></a>
-        <a href="#">정보처리기사 <span class="tiny">준비 중</span></a>
+        <!-- 루트 기준 절대경로를 쓴다. /exam/ 과 /exam/index.html 어느 쪽으로 들어와도
+             같은 곳을 가리키고, 나중에 하위 디렉터리를 만들어도 안 깨진다. -->
+        <a href="/exam/check.html?pd=sqld">SQLD</a>
+        <span class="foot-soon">ADSP <em>준비 중</em></span>
+        <span class="foot-soon">정보처리기사 <em>준비 중</em></span>
+        <span class="foot-soon">컴퓨터활용능력 <em>준비 중</em></span>
       </div>
       <div>
         <h5>이용</h5>
-        <a href="check.html?pd=sqld">문제 풀기</a>
-        <a href="../bbs/login.php">로그인</a>
-        <a href="../bbs/register.php">회원가입</a>
+        <a href="/exam/check.html?pd=sqld">문제 풀기</a>
+        <a href="/bbs/login.php">로그인</a>
+        <a href="/bbs/register.php">회원가입</a>
+        <a href="/bbs/member_confirm.php?url=/bbs/member_form.php">내 정보</a>
       </div>
       <div>
         <h5>고객지원</h5>
-        <a href="#">이용 가이드</a>
-        <a href="#">공지사항</a>
-        <a href="#">문의하기</a>
+        <a href="/bbs/board.php?bo_table=notice">공지사항</a>
+        <a href="/bbs/qalist.php">1:1 문의</a>
+        <a href="/bbs/board.php?bo_table=qa">질문답변 게시판</a>
+        <a href="/bbs/faq.php">자주 묻는 질문</a>
       </div>
     </div>
     <div class="foot-bot">
       <span>© 2026 AXEXAM</span>
-      <span>이용약관 · 개인정보처리방침</span>
+      <span class="foot-legal">
+        <a href="/bbs/content.php?co_id=provision">이용약관</a>
+        <a href="/bbs/content.php?co_id=privacy">개인정보처리방침</a>
+      </span>
     </div>
   </div>
 </footer>
