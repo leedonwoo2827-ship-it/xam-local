@@ -1,0 +1,156 @@
+/* ============================================================================
+   gnuboard-skin.css — 그누보드 화면에 문제집 팔레트를 씌운다
+   ============================================================================
+
+   extend/10_exam.php 가 add_stylesheet(..., 100) 으로 주입한다.
+   순서 100 이라 theme/basic/css/default.css 와 skin/member/basic/style.css 뒤에 온다.
+
+   ★ 원칙: **마크업은 하나도 고치지 않는다.**
+     로그인·회원가입·비밀번호찾기는 법적 문구·검증·메일 흐름이 완성품이고,
+     소셜로그인(plugin/social) 배선도 이 마크업에 걸려 있다. 색만 덮는다.
+
+   ★ 코어 파일(theme/, skin/, bbs/)을 수정하지 않으므로 그누보드 업데이트에 안전하다.
+
+   대상 화면 (실측한 DOM):
+     #mb_login.mbskin > .mbskin_box > h1 / .mb_log_cate / form / #login_info
+     로그인·회원가입·비번찾기·정보수정이 전부 .mbskin 카드 구조를 공유한다.
+   ============================================================================ */
+
+/* ── 토큰 ──────────────────────────────────────────────────────────────
+   /exam/assets/style.css 와 같은 값이다. 그누보드 페이지는 그 파일을 로드하지
+   않으므로 필요한 것만 여기에 다시 선언한다(중복이지만 의존을 만들지 않는 편이 낫다). */
+:root{
+  --ex-navy-900:#0e1730; --ex-navy-800:#14213d; --ex-navy-700:#1b2a52; --ex-navy-600:#26386b;
+  --ex-blue-50:#eef3ff;  --ex-blue-500:#2c5ce6; --ex-blue-600:#1f4ed8; --ex-blue-700:#1a3fae;
+  --ex-yellow:#ffd02f;
+  --ex-ink:#181d26; --ex-body:#333840; --ex-muted:#5b6376; --ex-faint:#8e96a8;
+  --ex-canvas:#fff; --ex-soft:#f6f8fc; --ex-hair:#e6eaf2; --ex-hair-s:#d4d9e4;
+  --ex-r-md:10px; --ex-r-lg:12px; --ex-r-xl:16px; --ex-r-full:9999px;
+  --ex-font:"Pretendard Variable","Pretendard",-apple-system,BlinkMacSystemFont,
+            "Segoe UI","Malgun Gothic","Apple SD Gothic Neo",Roboto,sans-serif;
+}
+
+/* ── 본문 글꼴 ─────────────────────────────────────────────────────────
+   Pretendard 는 /exam/ 화면에서 CDN 으로 받는다. 그누보드 페이지에도 같은 얼굴을 준다.
+   @import 는 렌더를 막으므로 쓰지 않고, 폰트가 없으면 시스템 산세로 자연스럽게 떨어진다. */
+body, input, textarea, select, button, table, th, td, .btn_submit, .btn_close{
+  font-family: var(--ex-font) !important;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ══ 회원 화면 (.mbskin) ══════════════════════════════════════════════ */
+
+/* 배경 — 기본 흰 화면 대신 우리 다크 네이비. '그누보드 느낌'이 여기서 대부분 사라진다. */
+.mbskin{
+  background:
+    radial-gradient(760px 380px at 18% -12%, rgba(44,92,230,.30), transparent 62%),
+    radial-gradient(620px 340px at 88% 6%,  rgba(17,165,148,.16), transparent 60%),
+    linear-gradient(158deg, var(--ex-navy-900) 0%, var(--ex-navy-700) 60%, #1d2f5c 100%);
+  min-height:100vh; margin:0; padding:56px 16px;
+  display:flex; align-items:flex-start; justify-content:center;
+  color:var(--ex-body);
+}
+
+/* 카드 */
+.mbskin .mbskin_box{
+  width:100%; max-width:420px; margin:0;
+  background:var(--ex-canvas); border:0; border-radius:var(--ex-r-xl);
+  padding:36px 34px 30px;
+  box-shadow:0 24px 60px -18px rgba(6,12,30,.55);
+}
+
+/* 제목 */
+.mbskin h1{
+  font-size:23px; font-weight:800; letter-spacing:-.03em; color:var(--ex-ink);
+  margin:0 0 22px; text-align:center; line-height:1.3;
+}
+
+/* 로그인 / 회원가입 탭 */
+.mbskin .mb_log_cate{
+  display:flex; gap:6px; margin:0 0 24px; padding:4px;
+  background:var(--ex-soft); border-radius:var(--ex-r-full);
+}
+.mbskin .mb_log_cate h2,
+.mbskin .mb_log_cate .join{
+  flex:1; margin:0; text-align:center; font-size:14.5px; font-weight:700;
+  padding:9px 0; border-radius:var(--ex-r-full); border:0;
+  color:var(--ex-muted); background:transparent; line-height:1.4;
+}
+.mbskin .mb_log_cate h2{ background:var(--ex-navy-800); color:#fff; }   /* 현재 탭 */
+.mbskin .mb_log_cate .join:hover{ color:var(--ex-ink); }
+
+/* 입력 */
+.mbskin .frm_input,
+.mbskin input[type=text], .mbskin input[type=password],
+.mbskin input[type=email], .mbskin input[type=tel]{
+  width:100%; height:48px; padding:0 15px; margin:0 0 10px;
+  border:1px solid var(--ex-hair-s); border-radius:var(--ex-r-md);
+  background:var(--ex-canvas); color:var(--ex-ink);
+  font-size:15px; box-sizing:border-box; transition:border-color .15s, box-shadow .15s;
+}
+.mbskin .frm_input:focus,
+.mbskin input[type=text]:focus, .mbskin input[type=password]:focus,
+.mbskin input[type=email]:focus, .mbskin input[type=tel]:focus{
+  outline:0; border-color:var(--ex-blue-500);
+  box-shadow:0 0 0 3px rgba(44,92,230,.14);
+}
+.mbskin .frm_input::placeholder{ color:var(--ex-faint); }
+/* required 표시는 기본 스킨이 배경 이미지로 넣는다 — 지우고 테두리로 대신한다 */
+.mbskin .required{ background-image:none !important; }
+
+/* 주 버튼 */
+.mbskin .btn_submit{
+  width:100%; height:50px; margin:6px 0 0;
+  background:var(--ex-navy-800); color:#fff; border:0; border-radius:var(--ex-r-md);
+  font-size:15.5px; font-weight:700; letter-spacing:-.01em; cursor:pointer;
+  transition:background .15s, transform .08s;
+}
+.mbskin .btn_submit:hover{ background:var(--ex-navy-700); }
+.mbskin .btn_submit:active{ background:var(--ex-navy-900); transform:translateY(1px); }
+
+/* 자동로그인 · 아이디/비번 찾기 */
+.mbskin #login_info{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  margin-top:16px; padding-top:16px; border-top:1px solid var(--ex-hair);
+  font-size:13.5px; color:var(--ex-muted);
+}
+.mbskin #login_info .login_if_auto{ margin:0; }
+.mbskin #login_info label{ cursor:pointer; }
+.mbskin .login_if_lpl{ margin:0; }
+.mbskin .login_if_lpl a{ color:var(--ex-muted); }
+.mbskin .login_if_lpl a:hover{ color:var(--ex-blue-600); text-decoration:underline; }
+.mbskin .selec_chk{ accent-color:var(--ex-blue-600); width:15px; height:15px; margin-right:6px; }
+
+/* 링크 일반 */
+.mbskin a{ color:var(--ex-blue-600); }
+
+/* 소셜 로그인 버튼 (plugin/social 이 켜지면 나온다) */
+.mbskin #social_login{ margin-top:18px; padding-top:18px; border-top:1px solid var(--ex-hair); }
+.mbskin #social_login ul{ display:flex; gap:8px; justify-content:center;
+  list-style:none; margin:0; padding:0; }
+
+/* 안내·오류 문구 */
+.mbskin .msg, .mbskin p{ font-size:13.5px; color:var(--ex-muted); line-height:1.65; }
+
+/* 카드 아래 '문제집으로 돌아가기' 자리 — 마크업이 없어 CSS 로 만든다.
+   ⚠ CSS content 로 링크를 만들 수는 없다. 실제 링크는 나중에
+   extend 에서 run_event 훅으로 붙이거나, 회원 스킨을 복제할 때 넣는다.
+   지금은 배경만 우리 것이라 이질감이 없다. */
+
+/* ══ 게시판·기타 그누보드 화면 (최소 조정) ═══════════════════════════
+   지금은 공지·문의 게시판을 쓸 계획이 있으므로 색만 맞춰 둔다.
+   레이아웃은 건드리지 않는다 — 게시판 마크업은 넓고 깊어서 부분 수정이 더 위험하다. */
+#wrapper, #container{ font-family:var(--ex-font); color:var(--ex-body); }
+a{ color:var(--ex-blue-600); }
+.btn_b01, .btn_b02, .btn_b03, .btn_submit{ border-radius:var(--ex-r-md); }
+.btn_b02, .btn_submit{ background:var(--ex-navy-800); border-color:var(--ex-navy-800); color:#fff; }
+.btn_b02:hover, .btn_submit:hover{ background:var(--ex-navy-700); }
+.btn_b01{ border:1px solid var(--ex-hair-s); background:#fff; color:var(--ex-ink); }
+.btn_cancel{ border-radius:var(--ex-r-md); }
+
+/* ── 반응형 ───────────────────────────────────────────────────────── */
+@media (max-width:480px){
+  .mbskin{ padding:28px 14px; }
+  .mbskin .mbskin_box{ padding:28px 22px 24px; }
+  .mbskin h1{ font-size:20px; }
+}
