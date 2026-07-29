@@ -1,0 +1,19 @@
+# /exam/sql/ 직접 접근 차단.
+#
+# 이 폴더의 .sql 은 스키마 정의라 비밀은 아니지만, 테이블·컬럼 구조를 그대로 노출하면
+# 공격자에게 지도를 쥐여주는 것이다(어떤 컬럼이 크레딧 잔액인지, 멱등키가 뭔지).
+#
+# ⚠ 이 파일은 Apache + AllowOverride 전제다. nginx 로 바뀌면 무효가 되므로
+#    서버 설정으로 직접 막아야 한다. 카페24 웹호스팅은 Apache 다.
+#
+# 검증: https://axexam.mycafe24.com/exam/sql/schema.sql → 403 이어야 한다.
+
+<IfModule mod_authz_core.c>
+    # Apache 2.4+
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    # Apache 2.2
+    Order allow,deny
+    Deny from all
+</IfModule>
