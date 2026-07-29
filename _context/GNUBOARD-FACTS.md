@@ -369,6 +369,43 @@ function check_token($expire = 7200)
 
 `check_request_origin($redirect_url='')` L2708 — Origin/Referer 검증. 함께 쓰면 좋다.
 
+### ★★ 관리자 영역(`adm/`)은 토큰 체계가 아예 다르다 — 실측으로 확인
+
+`adm/` 안에서는 **`check_token()` 을 쓰면 안 된다. 반드시 실패한다.**
+2026-07-29 `adm/exam_import.php` 첫 배포에서 실제로 걸렸다("올바른 방법으로 이용해 주십시오").
+
+| 일반 | 관리자 |
+|---|---|
+| `get_token()` — 시각 기반 HMAC (`lib/common.lib.php` L2578) | `get_admin_token()` — 랜덤 16자를 세션 `ss_admin_token` 에 저장 (`adm/admin.lib.php` L390) |
+| `check_token()` — HMAC 재계산 비교 (L2592) | `check_admin_token()` — 세션과 대조 후 **즉시 소거(1회용)** (L482) |
+
+**원인은 `adm/admin.js` 다. 관리자 영역의 모든 submit 버튼을 가로챈다:**
+
+```js
+$(document).on("click", "form input:submit, form button:submit", function() {
+    var token = get_ajax_token();              // adm/ajax.token.php 로 동기 AJAX
+    if (typeof f.token === "undefined")
+        $f.prepend('<input type="hidden" name="token" value="">');
+    $f.find("input[name=token]").val(token);   // ★ 서버가 넣은 값을 덮어쓴다
+});
+```
+
+`adm/ajax.token.php` 가 `get_admin_token()` 을 돌려주므로, **서버에서 `get_token()` 으로
+렌더해 넣은 값은 제출 시점에 관리자 토큰으로 바뀌어 있다.** `check_token()` 이 통과할 방법이 없다.
+
+→ **규칙**
+- 관리자 폼의 토큰 필드는 **`value=""` 로 비워둔다** (코어 관리자 폼들이 전부 그렇다:
+  `adm/auth_list.php`, `adm/board_form.php`, `adm/boardgroup_form.php` …)
+- 검증은 **`check_admin_token()`**
+- 1회용이므로 **한 요청에 두 번 호출하지 않는다**
+- `ajax.token.php` 는 `admin_csrf_token_key()`(L494) 와 `admin_referer_check()` 도 검사한다 →
+  관리자 페이지는 `admin.head.php` 를 include 해야 `g5_admin_csrf_token_key` JS 전역이 주입된다
+
+⚠ `check_admin_token()` 은 `$_REQUEST['token']` 을 `isset()` 없이 읽는다 →
+PHP 8 에서 토큰이 없으면 `Undefined array key` 경고가 뜬다(동작은 한다). 코어 문제라 손대지 않는다.
+
+⚠ 이 구조 때문에 **관리자 화면에서 JS 가 꺼져 있으면 어떤 폼도 제출되지 않는다.**
+
 ### XSS
 
 - `get_text($str, $html=0, $restore=false)` L1853 — `< > " '` 엔티티화

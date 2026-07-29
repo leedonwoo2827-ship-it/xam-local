@@ -22,8 +22,25 @@ $fatal  = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     auth_check_menu($auth, $sub_menu, 'w');
-    check_token();   // 관리자 HTML 폼이라 check_token() 을 그대로 쓴다.
-                     // (JSON API 에서는 실패 시 alert() 를 뱉으므로 쓰면 안 된다 — S5 참조)
+
+    /* ★ 관리자 영역은 check_token() 이 아니라 check_admin_token() 이다.
+     *
+     * 실측으로 확인한 것: adm/admin.js 가 관리자 영역의 **모든 submit 버튼을 가로챈다.**
+     *   $(document).on("click", "form input:submit, form button:submit", ...)
+     *   → adm/ajax.token.php 로 동기 AJAX → get_admin_token() 값을 받아
+     *     input[name=token] 을 **덮어쓴다.**
+     *
+     * 그래서 서버에서 get_token() 으로 렌더해 넣어봐야 소용이 없다.
+     * 제출 시점엔 관리자 토큰으로 바뀌어 있으므로 check_token() 은 반드시 실패한다
+     * ("올바른 방법으로 이용해 주십시오").
+     *
+     * check_admin_token() 은 세션 ss_admin_token 과 대조하고 즉시 소거하는 1회용이다.
+     * 코어 관리자 폼들이 token 필드를 value="" 로 비워두는 이유도 이것이다. */
+    if (function_exists('check_admin_token')) {
+        check_admin_token();
+    } else {
+        check_token();   // 아주 구버전 대비
+    }
 
     $f = isset($_FILES['jsonfile']) ? $_FILES['jsonfile'] : null;
 
@@ -151,10 +168,11 @@ require_once './admin.head.php';
   <div class="box">
     <h2>problems.json 업로드</h2>
     <form method="post" enctype="multipart/form-data">
-      <?php /* get_token() 은 lib/common.lib.php L2578 로 존재가 확인된 함수다.
-               get_token_field() 류는 확인되지 않았으므로 쓰지 않는다 —
-               없는 함수는 폴백이 아니라 Fatal error 다. */ ?>
-      <input type="hidden" name="token" value="<?php echo get_token() ?>">
+      <?php /* value 를 비워둔다. adm/admin.js 가 submit 직전에 ajax.token.php 에서
+               관리자 토큰을 받아 이 필드를 채운다. 코어 관리자 폼들(adm/auth_list.php,
+               adm/board_form.php …)이 전부 value="" 인 이유다.
+               서버에서 미리 채워 넣으면 어차피 덮어써진다. */ ?>
+      <input type="hidden" name="token" value="">
       <p><input type="file" name="jsonfile" accept=".json,application/json" required></p>
       <p><input type="submit" value="임포트 실행" class="btn_submit"></p>
     </form>
