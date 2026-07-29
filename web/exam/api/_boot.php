@@ -9,6 +9,24 @@
 // /www/exam/api/_boot.php → /www/common.php
 include_once(dirname(__DIR__, 2) . '/common.php');
 
+/* ── 응답 압축 ──────────────────────────────────────────────────────────
+ * 실측: 카페24는 mod_deflate 가 켜져 있지만 **정적 파일에만** 적용된다
+ *   (css 27,451B → 6,490B 압축됨 / PHP JSON 61,820B → 그대로).
+ *   공유호스팅이 CPU 를 아끼려고 동적 콘텐츠를 제외한 것으로 보인다.
+ *   .htaccess 의 AddOutputFilterByType 로는 해결되지 않았다.
+ *
+ * 그래서 PHP 에서 직접 압축한다. 50문제 JSON 62KB → 약 15KB.
+ * 트래픽 한도가 월 4,000MB 라 4배 여유가 생긴다.
+ *
+ * ob_gzhandler 가 Content-Encoding 과 Vary 헤더를 알아서 붙인다.
+ * 출력이 시작되기 전에 걸어야 하므로 여기가 유일한 자리다. */
+if (function_exists('ob_gzhandler')
+    && !ini_get('zlib.output_compression')
+    && !empty($_SERVER['HTTP_ACCEPT_ENCODING'])
+    && strpos($_SERVER['HTTP_ACCEPT_ENCODING'], 'gzip') !== false) {
+    @ob_start('ob_gzhandler');
+}
+
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 header('Cache-Control: private, no-store');
