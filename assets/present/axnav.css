@@ -103,3 +103,18 @@
   .axnav-item{ padding:0 9px; font-size:13.5px; }
   .axnav-item .ic{ width:16px; height:16px; }
 }
+
+/* ══ SVG 스프라이트 숨김 ═══════════════════════════════════════════════════
+ * ui.js 가 <svg class="svg-sprite"> 를 body 에 주입한다(아이콘 <symbol> 48개).
+ * SVG 는 크기를 지정하지 않으면 **브라우저 기본 300×150** 을 차지한다.
+ * 심볼은 <use> 없이 그려지지 않으므로 화면에는 '빈 회색 박스'만 남는다.
+ *
+ * 이 규칙은 원래 assets/style.css 에만 있었다. 그런데 style.css 를 싣는 화면은
+ * /exam/index.html · check.php 뿐이고, /bbs/* · buy.php · mypage.php 는
+ * extend/10_exam.php 가 넣는 axnav.css · gnuboard-skin.css 만 받는다.
+ * → 그 화면들에서 헤더 위에 약 150px 빈 공간이 생겼다. 실측으로 확인한 원인이다.
+ *
+ * 스프라이트를 만드는 ui.js 는 theme/axexam/head.php 가 **모든 화면**에서 싣는다.
+ * 그래서 숨김 규칙도 모든 화면에 들어가는 이 파일에 있어야 한다.
+ * (style.css 의 같은 규칙은 남겨둔다 — 중복이지만 한쪽만 올려도 깨지지 않는다) */
+.svg-sprite{ position:absolute; width:0; height:0; overflow:hidden; }
