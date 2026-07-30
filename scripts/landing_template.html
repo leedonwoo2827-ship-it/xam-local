@@ -70,8 +70,27 @@
 .pv-dots b{ width:7px; height:7px; border-radius:50%; background:var(--gray-300);
   cursor:pointer; transition:background .2s, width .2s; }
 .pv-dots b.on{ width:18px; border-radius:var(--r-full); background:var(--blue-600); }
-.pv-body{ transition:opacity .32s; }
-.pv-body.fade{ opacity:0; }
+/* ── 히어로 카드 높이 고정 ──────────────────────────────────────────
+   4문제를 6초마다 돌려 보여주는데 문제마다 질문·보기 길이가 달라
+   카드 높이가 계속 튀었다(레이아웃 시프트). 아래 스탯밴드까지 밀려 올라간다.
+
+   해법: **4개를 다 그려서 그리드 한 칸에 겹쳐 둔다.**
+   그리드 칸의 높이는 자동으로 '가장 큰 자식' 기준이 되므로
+     · 높이가 절대 변하지 않는다
+     · 창 너비가 바뀌어 줄바꿈이 달라져도 항상 맞다 (고정 px 은 폭마다 틀어진다)
+     · JS 로 높이를 재지 않는다 (측정→적용 사이에 한 프레임 깜빡인다)
+
+   ⚠ visibility:hidden 을 쓴다. display:none 은 레이아웃에서 빠져 칸 크기 계산에
+     참여하지 않으므로 이 방식이 성립하지 않는다.
+     visibility 는 이산 전이라 숨길 때는 0.32s 뒤, 보일 때는 즉시 적용된다 — 우리가 원하는 동작이다. */
+.pv-body{ display:grid; }
+.pv-slide{ grid-area:1 / 1; opacity:0; visibility:hidden;
+  transition:opacity .32s, visibility .32s; }
+.pv-slide.on{ opacity:1; visibility:visible; }
+
+@media (prefers-reduced-motion: reduce){
+  .pv-slide{ transition:none; }
+}
 
 /* ---- 스탯 밴드 ---- */
 .statband{ background:#fff; border-bottom:1px solid var(--hairline); }
@@ -476,29 +495,46 @@ const CIRC = "①②③④⑤";
 const DF_PILL = {"하":"pill-green", "중":"pill-orange", "상":"pill-red"};
 let heroI = 0, heroTimer = null;
 
-function heroRender(i){
-  const p = HERO[i];
-  document.getElementById("pvTitle").textContent = `모의고사 ${p.rd} · ${p.no}번`;
-  document.getElementById("pvBody").innerHTML =
-    `<div class="pv-tags">
-       <span class="pill pill-teal"><span class="dot"></span>${esc(p.sj)}</span>
-       <span class="pill ${DF_PILL[p.df]||'pill-orange'}"><span class="dot"></span>난이도 ${esc(p.df)}</span>
-     </div>
-     <div class="pv-q">${esc(p.q)}</div>
-     <div class="pv-opts">${p.c.map((t,k)=>
-       `<div class="pv-opt${k===p.a?' ok':''}"><span class="n">${CIRC[k]}</span><span>${esc(t)}</span></div>`
-     ).join("")}</div>`;
+/* 4문제를 **한 번만** 그린다. 회전은 .on 클래스만 옮긴다.
+   innerHTML 을 갈아끼우면 그때마다 높이가 바뀐다 — 그게 원래 증상이었다. */
+function heroBuild(){
+  document.getElementById("pvBody").innerHTML = HERO.map((p,i)=>
+    `<div class="pv-slide${i===0?' on':''}" data-s="${i}">
+       <div class="pv-tags">
+         <span class="pill pill-teal"><span class="dot"></span>${esc(p.sj)}</span>
+         <span class="pill ${DF_PILL[p.df]||'pill-orange'}"><span class="dot"></span>난이도 ${esc(p.df)}</span>
+       </div>
+       <div class="pv-q">${esc(p.q)}</div>
+       <div class="pv-opts">${p.c.map((t,k)=>
+         `<div class="pv-opt${k===p.a?' ok':''}"><span class="n">${CIRC[k]}</span><span>${esc(t)}</span></div>`
+       ).join("")}</div>
+     </div>`).join("");
+
   document.getElementById("pvDots").innerHTML =
-    HERO.map((_,k)=>`<b class="${k===i?'on':''}" data-i="${k}"></b>`).join("");
+    HERO.map((_,k)=>`<b class="${k===0?'on':''}" data-i="${k}"></b>`).join("");
 }
+
+/* 보이는 슬라이드만 바꾼다. DOM 구조는 그대로이므로 높이가 움직이지 않는다. */
+function heroShow(i){
+  heroI = (i + HERO.length) % HERO.length;
+  const p = HERO[heroI];
+  document.getElementById("pvTitle").textContent = `모의고사 ${p.rd} · ${p.no}번`;
+  document.querySelectorAll("#pvBody .pv-slide").forEach(el=>{
+    el.classList.toggle("on", +el.dataset.s === heroI);
+  });
+  document.querySelectorAll("#pvDots b").forEach(b=>{
+    b.classList.toggle("on", +b.dataset.i === heroI);
+  });
+}
+
 function heroGo(i, manual){
-  const body = document.getElementById("pvBody");
-  body.classList.add("fade");
-  setTimeout(()=>{ heroI = (i+HERO.length)%HERO.length; heroRender(heroI); body.classList.remove("fade"); }, 320);
+  heroShow(i);
   if(manual){ clearInterval(heroTimer); heroTimer = setInterval(()=>heroGo(heroI+1), 6000); }
 }
+
 function heroInit(){
-  heroRender(0);
+  heroBuild();
+  heroShow(0);
   document.getElementById("pvDots").addEventListener("click", e=>{
     const b = e.target.closest("b[data-i]"); if(b) heroGo(+b.dataset.i, true);
   });
