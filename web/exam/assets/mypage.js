@@ -112,18 +112,23 @@
       return empty('아직 응시 기록이 없습니다.',
         ['1회차 풀어보기', '/exam/check.html?pd=' + encodeURIComponent(PD)]);
     }
+    /* 행 전체를 성적표 링크로 만든다.
+       응시 이력은 점수만 보여주고 끝나는 화면이 아니어야 한다 — 누른 뒤에 분석이 나와야
+       "왜 틀렸는지" 로 이어진다. 그게 이 제품이 파는 것이다. */
     return d.items.map(function (a) {
-      return '<div class="mp-row">' +
+      var href = '/exam/report.php?pd=' + encodeURIComponent(PD) + '&at=' + (a.at_id | 0);
+      return '<a class="mp-row mp-row-link" href="' + href + '">' +
         '<div class="mp-row-top">' +
           '<span class="mp-tag blue">' + esc(a.round) + '</span>' +
           '<span class="mp-tag ' + band(a.pct) + '">' + a.correct + ' / ' + a.total + '</span>' +
           (a.filter ? '<span class="mp-tag">' + esc(a.filter) + '</span>' : '') +
           '<span class="mp-when">' + ymd(a.at) + '</span>' +
+          '<span class="mp-go">성적표 →</span>' +
         '</div>' +
         '<div class="mp-score">' +
           '<span class="pct">' + a.pct + '%</span>' +
           '<span class="mp-bar"><span style="width:' + a.pct + '%;background:' + bandColor(a.pct) + '"></span></span>' +
-        '</div></div>';
+        '</div></a>';
     }).join('');
   }
 

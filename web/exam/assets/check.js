@@ -337,6 +337,21 @@ async function grade(){
   graded=true; applyResults(res.results);
   const sc=res.score||{correct:0,total:0,pct:0}; showScore(sc);
   toast(sc.total+"문항 중 "+sc.correct+"문항 정답 ("+sc.pct+"%)");
+
+  /* 성적표로 가는 버튼을 사이드바에 붙인다.
+     at_id 는 로그인 회원일 때만 온다(grade.php 가 mb_id 있을 때만 기록한다) —
+     비로그인은 채점 결과가 남지 않으므로 성적표가 성립하지 않는다.
+     점수만 보여주고 끝나지 않게 하는 것이 이 제품의 핵심이라 채점 직후가 가장 좋은 자리다. */
+  if(res.at_id){
+    const box=$("#rpLink");
+    if(box){
+      box.innerHTML='<a class="btn btn-blue btn-block" href="report.php?pd='
+        +encodeURIComponent(PD)+'&at='+(res.at_id|0)+'">'
+        +'<svg class="ic"><use href="#i-chart"></use></svg> 성적표 보기</a>'
+        +'<div class="rp-hint">과목별 취약도 · 취약 개념 · 계속 틀리는 문제</div>';
+      box.style.display="";
+    }
+  }
 }
 /* "정답 보기" = 전 문항 미응답 채점. 별도 경로를 두지 않는다. */
 async function reveal(){

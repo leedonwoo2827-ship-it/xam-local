@@ -156,6 +156,9 @@ window.EXAM_API = EXAM_CFG.api; window.EXAM_PD = EXAM_CFG.pd;</script>
             <button class="btn btn-outline btn-block" onclick="reveal()">정답 보기</button>
             <button class="btn btn-outline btn-block" onclick="resetAll()"><svg class="ic"><use href="#i-refresh"></use></svg> 초기화</button>
           </div>
+          <?php /* 채점 후 check.js 가 채운다. 성적표는 로그인 회원만 가능하다 —
+                   grade.php 가 mb_id 있을 때만 기록하므로 비회원은 at_id 가 없다. */ ?>
+          <div class="side-actions" id="rpLink" style="display:none"></div>
         </div>
         <div class="side-card">
           <h3><span class="icon-box sm soft"><svg class="ic ic-sm"><use href="#i-play"></use></svg></span> 해설 영상</h3>

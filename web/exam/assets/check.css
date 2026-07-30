@@ -128,3 +128,7 @@ pre.sql code{ background:none; padding:0; border-radius:0; color:inherit; font-s
   .bd-m{ grid-column:2; }
   .bd-t{ white-space:normal; }
 }
+
+/* 채점 후 나타나는 성적표 버튼 (check.js 가 #rpLink 를 채운다) */
+#rpLink{ margin-top:10px; padding-top:12px; border-top:1px solid var(--hairline); }
+#rpLink .rp-hint{ margin-top:7px; font-size:12px; color:var(--faint); line-height:1.55; text-align:center; }

@@ -37,7 +37,8 @@ IGNORE = {
     "lo_location", "lo_url",        # 그누보드 내부 $g5[...]
 }
 # JSON 출력 키라서 컬럼이 아닌 이름 (ex_qna_row() 등이 만드는 응답 필드)
-IGNORE |= {"answer", "answered_at", "question", "chosen", "status", "refunded"}
+IGNORE |= {"answer", "answered_at", "question", "chosen", "status", "refunded",
+           "wrong", "correct", "total", "skipped"}   # 성적표 집계 배열의 키
 
 # ★ 접두어 단위 제외 — **그누보드 코어 테이블**의 컬럼이다.
 #   ex_qna 에 bo_table · wr_id 를 넣은 순간 'bo_' · 'wr_' 접두어가 ex_qna 로 추정돼

@@ -2,7 +2,9 @@
    그누보드 테마 안에서 렌더되므로 #container 하위에 들어간다.
    axnav.css 의 토큰(--ax-*)을 재사용하지 않고 지역 변수를 쓴다 —
    이 파일만 보고도 값을 알 수 있게. */
-.mp, .apply{
+/* .rp(성적표)도 같은 토큰을 쓴다. report.css 에서 다시 정의하지 않는 이유:
+   두 벌이 되면 한쪽만 고쳐 색이 갈린다. 값의 출처는 이 한 곳이다. */
+.mp, .apply, .rp{
   --c-ink:#181d26; --c-body:#333840; --c-muted:#5b6376; --c-faint:#8e96a8;
   --c-navy:#14213d; --c-navy2:#1b2a52; --c-blue:#1f4ed8; --c-blue-soft:#eef3ff;
   --c-soft:#f6f8fc; --c-hair:#e6eaf2; --c-hair2:#d4d9e4;
@@ -177,3 +179,9 @@
 .ap-done-btns{ display:flex; gap:9px; justify-content:center; margin-top:24px; flex-wrap:wrap; }
 
 @media (max-width:900px){ .ap-grid{ grid-template-columns:1fr; gap:22px; } }
+
+/* 응시 이력 행 → 성적표 링크 (mypage.js 가 <a class="mp-row mp-row-link"> 로 그린다) */
+.mp-row-link{ display:block; text-decoration:none; color:inherit; transition:border-color .15s; }
+.mp-row-link:hover{ border-color:var(--c-blue); }
+.mp-go{ margin-left:auto; font-size:12.5px; font-weight:700; color:var(--c-blue); white-space:nowrap; }
+.mp-row-link:hover .mp-go{ text-decoration:underline; }
