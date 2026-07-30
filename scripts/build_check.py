@@ -262,6 +262,39 @@ def init_youtube_map(book: Path) -> Path:
     return YOUTUBE_MAP
 
 
+def video_id(raw: str, provider: str) -> str:
+    """사람이 붙여넣은 값에서 실제 ID 만 뽑는다.
+
+    공유 버튼으로 복사한 **URL 을 그대로 붙여넣는 게 정상적인 사용**이다.
+    그걸 ID 로 오인하면 embed 가 조용히 깨지고(빈 iframe), 원인 찾기가 짜증난다.
+
+      드라이브  https://drive.google.com/file/d/1AbC.../view?usp=sharing  → 1AbC...
+      유튜브    https://youtu.be/dQw4w9WgXcQ                              → dQw4w9WgXcQ
+                https://www.youtube.com/watch?v=dQw4w9WgXcQ               → dQw4w9WgXcQ
+    """
+    s = (raw or "").strip()
+    if not s or "/" not in s:
+        return s                                   # 이미 ID 다
+
+    if provider == "drive":
+        m = re.search(r"/file/d/([A-Za-z0-9_-]{10,})", s)
+        if m:
+            return m.group(1)
+        m = re.search(r"[?&]id=([A-Za-z0-9_-]{10,})", s)   # 옛 형식 open?id=
+        if m:
+            return m.group(1)
+    elif provider == "youtube":
+        m = re.search(r"(?:youtu\.be/|[?&]v=|/embed/|/shorts/)([A-Za-z0-9_-]{11})", s)
+        if m:
+            return m.group(1)
+    elif provider == "vimeo":
+        m = re.search(r"vimeo\.com/(?:video/)?(\d+)", s)
+        if m:
+            return m.group(1)
+
+    return s        # provider=file 이거나 못 알아본 형식 — 그대로 쓴다
+
+
 def map_videos(book: Path) -> tuple[dict, int, int]:
     """data/youtube_map.json → VIDEOS 맵. **mp4 를 복사하지 않는다.**
 
@@ -270,15 +303,18 @@ def map_videos(book: Path) -> tuple[dict, int, int]:
     """
     entries: dict[str, dict] = {}
     provider = "youtube"
+    dflt_lv = 0
     if YOUTUBE_MAP.exists():
         try:
             raw = json.loads(YOUTUBE_MAP.read_text(encoding="utf-8"))
             entries = raw.get("videos") or {}
             provider = raw.get("_provider") or "youtube"
+            dflt_lv = int(raw.get("_min_level") or 0)
         except Exception as e:
             print(f"[warn] youtube_map.json 파싱 실패({e}) — 영상 없이 빌드한다")
 
-    vids: dict[str, list] = {}
+    vids: dict[str, list] = {}       # 공개 — videos.js 로 구워진다
+    priv: dict[str, list] = {}       # 레벨 제한 — videos.private.json (서버가 읽는다)
     filled = 0
     total = 0
     for bundle, rn, part, label in _bundles(book):
@@ -288,18 +324,34 @@ def map_videos(book: Path) -> tuple[dict, int, int]:
         if not vid:
             continue
         filled += 1
-        vids.setdefault(f"{rn}회", []).append({
+        # 항목별 provider 가 전역 _provider 를 이긴다 →
+        # "검토 끝난 회차만 유튜브, 나머지는 아직 마이박스 링크" 혼용이 된다.
+        # 완성품으로 한 번에 넘기려면 _provider 만 youtube 로 바꾸면 된다.
+        prov = e.get("provider") or provider
+        lv = int(e.get("min_level", dflt_lv) or 0)
+
+        item = {
             "label": e.get("label") or label,
             "part": part,
-            # 항목별 provider 가 전역 _provider 를 이긴다 →
-            # "1회차만 서버 파일로 테스트, 나머지는 유튜브" 혼용이 된다.
-            "provider": e.get("provider") or provider,
-            "id": vid,
+            "provider": prov,
+            "id": video_id(vid, prov),      # 붙여넣은 URL 에서 ID 를 뽑는다
             "sec": int(e.get("sec") or 0),
-        })
-    for k in vids:
-        vids[k].sort(key=lambda v: v.get("part") or 0)
-    return vids, filled, total
+        }
+
+        # ★ 레벨 제한이 있으면 videos.js 에 **넣지 않는다.**
+        #   videos.js 는 정적 파일이라 누구나 내려받을 수 있다 — JS 에서 버튼만 숨겨도
+        #   링크는 파일 안에 그대로 남는다. 가리려면 브라우저에 아예 안 내려가야 한다.
+        #   api/videos.php 가 로그인 레벨을 보고 내려준다.
+        if lv > 1:
+            item["min_level"] = lv
+            priv.setdefault(f"{rn}회", []).append(item)
+        else:
+            vids.setdefault(f"{rn}회", []).append(item)
+
+    for m in (vids, priv):
+        for k in m:
+            m[k].sort(key=lambda v: v.get("part") or 0)
+    return vids, filled, total, priv
 
 
 def build_theory(book: Path, out: Path) -> tuple[list[dict], dict]:
@@ -477,8 +529,8 @@ def main(argv: list[str] | None = None) -> int:
     # 2) 문제 수집 + 도식 SVG  → 06/pd/<pd>/figs/
     probs, copied, missing = collect(book, pdir / "figs", meta, strict=args.strict_meta)
 
-    # 3) 영상 — 유튜브 매핑. mp4 를 복사하지 않는다.
-    vids, vfilled, vtotal = map_videos(book)
+    # 3) 영상 — 유튜브/링크 매핑. mp4 를 복사하지 않는다.
+    vids, vfilled, vtotal, vpriv = map_videos(book)
 
     # 4) 이론(03 요약노트)  → 06/pd/<pd>/theory/
     theory, theory_html = build_theory(book, pdir)
@@ -488,6 +540,16 @@ def main(argv: list[str] | None = None) -> int:
         "window.PROBLEMS = " + json.dumps(probs, ensure_ascii=False) + ";\n", encoding="utf-8")
     (pdir / "videos.js").write_text(
         "window.VIDEOS = " + json.dumps(vids, ensure_ascii=False) + ";\n", encoding="utf-8")
+
+    # 레벨 제한 영상 — **정적 파일로 내보내지 않는다.**
+    # api/videos.php 가 파일시스템으로 읽어 로그인 레벨을 보고 내려준다.
+    # /exam/.htaccess 의 <FilesMatch "\.(json|...)$"> 가 직접 조회를 이미 막고 있다.
+    if vpriv:
+        (pdir / "videos.private.json").write_text(
+            json.dumps(vpriv, ensure_ascii=False, indent=1), encoding="utf-8")
+    elif (pdir / "videos.private.json").exists():
+        # 전부 공개로 바뀌었으면 남겨두지 않는다 — 낡은 링크가 서버에 계속 살아 있게 된다
+        (pdir / "videos.private.json").unlink()
     (pdir / "theory.js").write_text(
         "window.THEORY = " + json.dumps(theory, ensure_ascii=False) + ";\n", encoding="utf-8")
     (pdir / "theory_content.js").write_text(

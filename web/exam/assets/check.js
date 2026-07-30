@@ -26,7 +26,11 @@ let SUBJECTS=[];                       // [{sj_no, sj_name}] — API 가 주면 
 let ROUNDS=[];                         // [{no, label, count, free}]
 let PD_NAME=(CFG.product&&CFG.product.pd_name)||"";
 
-const VIDEOS=(window.VIDEOS||{});
+/* ★ let 이다. api/videos.php 가 레벨 제한 영상을 합쳐 넣는다.
+   공개 영상만 videos.js 에 구워져 있고, 저자 검토용 링크는 서버가 레벨을 보고 준다 —
+   정적 파일에 넣으면 버튼을 숨겨도 링크가 파일 안에 남는다. */
+let VIDEOS=(window.VIDEOS||{});
+let vidHidden=0;                   // 레벨이 부족해 안 보이는 개수 (라벨·링크는 받지 않는다)
 const THEORY=(window.THEORY||[]);
 let mode="quiz", curRound=null, curTheory=null, answers={}, graded=false;
 
@@ -389,13 +393,47 @@ function loadTheory(href){
 function openVidAt(round, i){ openVid((VIDEOS[round]||[])[i]); }
 function vidButtons(round){
   const vids=VIDEOS[round]||[];
-  return vids.map((v,i)=>'<button onclick="openVidAt(\''+esc(round)+'\','+i+')">'
-    +'<svg class="ic ic-sm"><use href="#i-play"></use></svg>'+esc(v.label)+'</button>').join("");
+  return vids.map((v,i)=>{
+    /* provider=link 는 새 창으로 나간다(내려받아 보는 검토용 링크).
+       아이콘을 바꿔 "여기서 재생되지 않는다"를 눌러보기 전에 알 수 있게 한다. */
+    const ext = v.provider==="link";
+    return '<button onclick="openVidAt(\''+esc(round)+'\','+i+')"'
+      + (ext?' title="새 창에서 열립니다 — 내려받아 보는 링크입니다"':'') + '>'
+      + '<svg class="ic ic-sm"><use href="#i-'+(ext?'arrow-right':'play')+'"></use></svg>'
+      + esc(v.label) + (ext?' <small>(링크)</small>':'') + '</button>';
+  }).join("");
 }
 function renderVideos(){
   const box=$("#vidList");
-  box.innerHTML = (VIDEOS[curRound]||[]).length ? vidButtons(curRound)
-    : '<div class="vid-empty">이 회차의 영상이 없습니다.</div>';
+  const has=(VIDEOS[curRound]||[]).length;
+  box.innerHTML = (has ? vidButtons(curRound)
+                       : '<div class="vid-empty">이 회차의 영상이 없습니다.</div>')
+    /* 레벨이 부족해 가려진 것이 있으면 사실만 알린다. 라벨·링크는 서버가 주지 않는다 —
+       "무슨 영상이 있는지"까지 알려주면 가린 의미가 절반 사라진다. */
+    + (vidHidden ? '<div class="vid-empty">검토용 영상 ' + vidHidden
+                 + '개는 권한이 있는 계정만 볼 수 있습니다.</div>' : '');
+}
+
+/* 레벨 제한 영상을 받아 VIDEOS 에 합친다.
+   비로그인이면 서버가 빈 목록을 주므로 그냥 아무 일도 안 일어난다. */
+async function loadPrivateVideos(){
+  if(!API || !PD) return;
+  try{
+    const r=await fetch(API+"videos.php?pd="+encodeURIComponent(PD),{credentials:"same-origin"});
+    const d=await r.json();
+    if(!d || !d.ok) return;
+    vidHidden = d.hidden|0;
+    const it=d.items;
+    if(it && typeof it==="object"){
+      Object.keys(it).forEach(round=>{
+        const add=it[round]||[];
+        if(!add.length) return;
+        VIDEOS[round]=(VIDEOS[round]||[]).concat(add);
+        VIDEOS[round].sort((a,b)=>(a.part||0)-(b.part||0));
+      });
+    }
+    renderVideos();
+  }catch(e){ /* 영상은 부가 기능이다. 실패해도 문제풀이를 막지 않는다. */ }
 }
 /* {provider,id} 추상화를 유지한다 — 유튜브 정책 문제가 생기면 provider 를
    'vimeo'/'file' 로 바꾸고 여기 분기 한 줄만 늘리면 된다. 비용이 거의 0이라 지금 해둔다. */
@@ -403,10 +441,29 @@ function embedUrl(v){
   const id=encodeURIComponent(v.id||""), t=(v.sec|0)>0?("&start="+(v.sec|0)):"";
   if(v.provider==="vimeo") return "https://player.vimeo.com/video/"+id;
   if(v.provider==="file")  return v.id;
+  /* 구글 드라이브 — **저자 검토 단계용**이다.
+     ⚠ 운영에 쓰지 않는다: 드라이브는 조회 쿼터가 있어 사람이 몰리면
+       "죄송합니다. 현재 이 파일을 볼 수 없습니다" 로 막힌다. 그리고 시작시간(sec)을 못 넘긴다.
+     완성되면 youtube_map.json 의 provider 를 youtube 로 바꿔 다시 빌드한다 —
+     videos.js 한 파일(수 KB)만 다시 올리면 끝난다. */
+  if(v.provider==="drive") return "https://drive.google.com/file/d/"+id+"/preview";
   return "https://www.youtube-nocookie.com/embed/"+id+"?rel=0&autoplay=1"+t;
 }
 function openVid(v){
   if(!v||!v.id){ toast("영상이 아직 준비되지 않았습니다."); return; }
+
+  /* ★ provider=link — embed 하지 않고 새 창으로 보낸다.
+     저자 검토 단계의 실제 사용 방식이 "링크를 눌러 내려받아 각자 PC 에서 본다" 이므로
+     네이버 마이박스·구글 드라이브·드롭박스 등 **어디든 링크만 있으면 된다.**
+     서비스별 embed API·조회 쿼터·공유 정책을 신경 쓸 필요가 없어 이게 가장 튼튼하다.
+     완성되면 youtube_map.json 의 provider 를 youtube 로 바꿔 재빌드한다. */
+  if(v.provider==="link"){
+    /* noopener 를 붙인다 — 새 창이 window.opener 로 우리 페이지를 조작할 수 있다.
+       외부 저장소 링크라 신뢰 경계 밖이다. */
+    window.open(v.id, "_blank", "noopener,noreferrer");
+    return;
+  }
+
   const box=$("#vbox");
   if(v.provider==="file"){
     box.innerHTML='<video controls autoplay style="width:100%;display:block"'
@@ -545,4 +602,7 @@ function buildFilters(){
   if(m==="quiz" && !rs.length) m="home";
 
   setMode(m); renderVideos();
+
+  /* 레벨 제한 영상은 나중에 합친다 — 첫 화면을 기다리게 하지 않는다. */
+  loadPrivateVideos();
 })();
