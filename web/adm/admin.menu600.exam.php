@@ -20,6 +20,7 @@ if (!defined('_GNUBOARD_')) exit;
 $menu['menu600'] = array(
     array('600000', '문제은행',      G5_ADMIN_URL.'/exam_import.php',       'exam'),
     array('600200', '질문 검수',     G5_ADMIN_URL.'/exam_qna_list.php',     'exam_qna'),
+    array('600300', '과목게시판',    G5_ADMIN_URL.'/exam_board_sync.php',   'exam_board'),
     array('600400', '문제 임포트',   G5_ADMIN_URL.'/exam_import.php',       'exam_import'),
     array('600500', '포인트 지급',   G5_ADMIN_URL.'/exam_credit_grant.php', 'exam_credit'),
     array('600600', '수강 신청',     G5_ADMIN_URL.'/exam_orders.php',       'exam_orders'),

@@ -35,11 +35,15 @@ IGNORE = {
     "lo_act", "lo_ref", "lo_ip",
     "has_draft",            # SQL 별칭: `qa_draft is not null as has_draft`
     "lo_location", "lo_url",        # 그누보드 내부 $g5[...]
-    "bo_use_dhtml_editor",          # 그누보드 $board[...]
-    "bo_table", "wr_id",            # 그누보드 게시판 식별자. 우리 ex_qna 에도 있고 코어에도 있다
 }
 # JSON 출력 키라서 컬럼이 아닌 이름 (ex_qna_row() 등이 만드는 응답 필드)
 IGNORE |= {"answer", "answered_at", "question", "chosen", "status", "refunded"}
+
+# ★ 접두어 단위 제외 — **그누보드 코어 테이블**의 컬럼이다.
+#   ex_qna 에 bo_table · wr_id 를 넣은 순간 'bo_' · 'wr_' 접두어가 ex_qna 로 추정돼
+#   g5_board.bo_category_list · g5_write_*.wr_subject 같은 코어 컬럼이 전부 오탐이 됐다.
+#   우리 스키마에는 이 접두어로 시작하는 '우리 것'이 그 둘뿐이므로 접두어를 통째로 뺀다.
+IGNORE_PREFIX = {"bo_", "wr_", "mb_", "cf_", "g5_", "od_v", "sca"}
 
 TYPE = r"(VARCHAR|INT|TINYINT|SMALLINT|BIGINT|CHAR|TEXT|MEDIUMTEXT|LONGTEXT|DATETIME|DATE|TIME|DECIMAL|FLOAT|DOUBLE|BLOB|ENUM)"
 
@@ -93,6 +97,8 @@ def main() -> int:
             for m in re.finditer(r"\['([a-z][a-z0-9_]{2,})'\]|(?<![\w.$'\"])([a-z]+_[a-z0-9_]+)\s*=", line):
                 c = m.group(1) or m.group(2)
                 if not c or c in IGNORE:
+                    continue
+                if any(c.startswith(p) for p in IGNORE_PREFIX):
                     continue
                 pref = c.split("_")[0] + "_"
                 tbl = unique_pref.get(pref)

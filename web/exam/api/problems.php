@@ -23,7 +23,14 @@ $pdq = sql_real_escape_string($pd);
 $where = "pd_id = '$pdq' and pr_open = 1" . ($round ? " and rd_no = " . (int)$round : '');
 $sig = sql_fetch("select count(*) as c, coalesce(max(updated_at), '') as m
                     from ex_problem where $where");
-$etag = '"' . md5($pd . '|' . $round . '|' . $sig['m'] . '|' . $sig['c']) . '"';
+
+/* 품목 표시명. 화면 제목·breadcrumb 이 이걸 쓴다.
+ * ★ pd_name 을 ETag 에 넣는다. 안 넣으면 문제집 이름을 바꿨을 때
+ *   304 가 돌아가 옛 제목이 계속 나온다(문제 본문은 안 바뀌었으니 updated_at 도 그대로다). */
+$prod = sql_fetch("select pd_id, pd_name from ex_product where pd_id = '$pdq'");
+$pd_name = $prod ? $prod['pd_name'] : $pd;
+
+$etag = '"' . md5($pd . '|' . $pd_name . '|' . $round . '|' . $sig['m'] . '|' . $sig['c']) . '"';
 
 header('ETag: ' . $etag);
 header('Cache-Control: private, max-age=0, must-revalidate');
@@ -98,6 +105,7 @@ ex_out(array(
     'ok'       => 1,
     'pd'       => $pd,
     'round'    => $round,
+    'product'  => array('pd_id' => $pd, 'pd_name' => $pd_name),
     'problems' => $problems,
     'rounds'   => $rounds,
     'subjects' => $subjects,

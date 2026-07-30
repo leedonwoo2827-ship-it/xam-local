@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AXEXAM — IT 자격증 문제은행</title>
+<title>{{BRAND}} — {{TAGLINE}}</title>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet"
       href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
@@ -183,12 +183,12 @@
         한쪽만 고치면 화면마다 헤더가 달라진다. -->
 <header class="axnav">
   <div class="axnav-in">
-    <a class="axnav-logo" href="/exam/">AX<i>EXAM</i></a>
+    <a class="axnav-logo" href="/exam/">{{BRAND_HTML}}</a>
     <nav class="axnav-main">
       <a class="axnav-item on" href="/exam/"><svg class="ic"><use href="#i-clipboard"></use></svg>문제집</a>
-      <a class="axnav-item" href="/exam/check.html?pd=sqld"><svg class="ic"><use href="#i-edit"></use></svg>문제 풀기</a>
-      <a class="axnav-item" href="/exam/check.html?pd=sqld&amp;m=theory"><svg class="ic"><use href="#i-book"></use></svg>이론</a>
-      <a class="axnav-item" href="/exam/buy.php?pd=sqld"><svg class="ic"><use href="#i-cap"></use></svg>수강 신청</a>
+      <a class="axnav-item" href="/exam/check.php?pd={{PD}}"><svg class="ic"><use href="#i-edit"></use></svg>문제 풀기</a>
+      <a class="axnav-item" href="/exam/check.php?pd={{PD}}&amp;m=theory"><svg class="ic"><use href="#i-book"></use></svg>이론</a>
+      <a class="axnav-item" href="/exam/buy.php?pd={{PD}}"><svg class="ic"><use href="#i-cap"></use></svg>수강 신청</a>
     </nav>
     <nav class="axnav-util">
       <a class="axnav-item" href="/bbs/board.php?bo_table=notice"><svg class="ic"><use href="#i-bell"></use></svg>공지</a>
@@ -207,7 +207,7 @@
 
       <div>
         <div class="lp-mark">
-          <span class="lp-word-sub" style="border:0;padding:0">IT 자격증 문제은행</span>
+          <span class="lp-word-sub" style="border:0;padding:0">{{TAGLINE}}</span>
         </div>
 
         <h1>틀린 문제를 <em>왜</em> 틀렸는지<br>끝까지 알려주는 문제집</h1>
@@ -227,10 +227,10 @@
         </div>
 
         <div class="hero-cta">
-          <a class="btn btn-yellow btn-lg" href="sqld.html">
+          <a class="btn btn-yellow btn-lg" href="detail.html?pd={{PD}}">
             SQLD 시작하기 <svg class="ic"><use href="#i-arrow-right"></use></svg>
           </a>
-          <a class="btn btn-ghost-dark btn-lg" href="check.html?pd=sqld">문제 미리 풀어보기</a>
+          <a class="btn btn-ghost-dark btn-lg" href="check.php?pd={{PD}}">문제 미리 풀어보기</a>
         </div>
 
         <div class="hero-trust">
@@ -368,8 +368,8 @@
     <h2>지금 1회차부터 풀어보세요</h2>
     <p>회원가입 없이도 문제와 해설을 볼 수 있습니다.</p>
     <div style="display:flex;gap:11px;justify-content:center;flex-wrap:wrap">
-      <a class="btn btn-yellow btn-lg" href="check.html?pd=sqld">무료로 풀어보기</a>
-      <a class="btn btn-ghost-dark btn-lg" href="/exam/buy.php?pd=sqld">SQLD 수강 신청</a>
+      <a class="btn btn-yellow btn-lg" href="check.php?pd={{PD}}">무료로 풀어보기</a>
+      <a class="btn btn-ghost-dark btn-lg" href="/exam/buy.php?pd={{PD}}">SQLD 수강 신청</a>
     </div>
   </div>
 </section>
@@ -379,21 +379,21 @@
   <div class="wrap">
     <div class="foot-grid">
       <div>
-        <h5>AXEXAM</h5>
+        <h5>{{BRAND}}</h5>
         <p style="margin:0;line-height:1.7">IT 자격증 문제은행과 1:1 질문 서비스.<br>문제·정답·해설을 전면 공개합니다.</p>
       </div>
       <div>
         <h5>문제집</h5>
         <!-- 루트 기준 절대경로를 쓴다. /exam/ 과 /exam/index.html 어느 쪽으로 들어와도
              같은 곳을 가리키고, 나중에 하위 디렉터리를 만들어도 안 깨진다. -->
-        <a href="/exam/check.html?pd=sqld">SQLD</a>
+        <a href="/exam/check.php?pd={{PD}}">SQLD</a>
         <span class="foot-soon">ADSP <em>준비 중</em></span>
         <span class="foot-soon">정보처리기사 <em>준비 중</em></span>
         <span class="foot-soon">컴퓨터활용능력 <em>준비 중</em></span>
       </div>
       <div>
         <h5>이용</h5>
-        <a href="/exam/check.html?pd=sqld">문제 풀기</a>
+        <a href="/exam/check.php?pd={{PD}}">문제 풀기</a>
         <a href="/bbs/login.php">로그인</a>
         <a href="/bbs/register.php">회원가입</a>
         <a href="/bbs/member_confirm.php?url=/bbs/member_form.php">내 정보</a>
@@ -407,7 +407,7 @@
       </div>
     </div>
     <div class="foot-bot">
-      <span>© 2026 AXEXAM</span>
+      <span>© 2026 {{BRAND}}</span>
       <span class="foot-legal">
         <a href="/bbs/content.php?co_id=provision">이용약관</a>
         <a href="/bbs/content.php?co_id=privacy">개인정보처리방침</a>
@@ -419,15 +419,27 @@
 <script src="assets/ui.js"></script>
 <script>
 /* ── 자격증 카드 ───────────────────────────────────────────────────
-   서버에서는 api/products.php 가 ex_product 를 돌려준다.
-   정적(file://)에서는 아래 폴백으로 그린다 — 랜딩이 흰 화면이 되면 안 된다. */
-const PD_FALLBACK = [
-  {pd_id:"sqld",   name:"SQL 개발자 (SQLD)", open:1, rounds:6, problems:300,
-   desc:"모의고사 6회차 · 해설 영상 30강 · 이론 요약노트", thumb:"pd-t1", icon:"i-cpu"},
-  {pd_id:"adsp",   name:"데이터분석 준전문가", open:0, desc:"준비 중입니다.", thumb:"pd-t2", icon:"i-chart"},
-  {pd_id:"gisa-w", name:"정보처리기사 필기",   open:0, desc:"준비 중입니다.", thumb:"pd-t3", icon:"i-doc"},
-  {pd_id:"comp",   name:"컴퓨터활용능력",     open:0, desc:"준비 중입니다.", thumb:"pd-t4", icon:"i-calculator"},
-];
+   서버에서는 api/products.php 가 ex_product 를 돌려준다. 그게 유일한 출처다.
+
+   ★ 표본 데이터를 두지 않는다.
+     예전에는 sqld/adsp/gisa-w/comp 4개를 지어서 박아뒀는데, 이 사이트를 복사해
+     어학XAMpass·금융XAMpass 를 만들면 **존재하지 않는 IT 자격증 4개가 그려진다.**
+     그래서 file:// 폴백은 빌드가 방금 만든 품목 1개(EXAM_CFG.product)만 쓴다.
+     서버에서는 어차피 API 가 이긴다. */
+const PD_FALLBACK = (function(){
+  const p = (window.EXAM_CFG && EXAM_CFG.product) || null;
+  if(!p) return [];
+  return [{
+    pd_id: p.pd_id, name: p.pd_name, open: p.problems > 0 ? 1 : 0,
+    rounds: p.rounds, problems: p.problems,
+    desc: p.problems > 0
+      ? `모의고사 ${p.rounds}회차 · 정답과 해설 전문 포함`
+      : "준비 중입니다.",
+    thumb: "pd-t1", icon: "i-clipboard",
+    href: `detail.html?pd=${encodeURIComponent(p.pd_id)}`,
+    solve: `check.php?pd=${encodeURIComponent(p.pd_id)}`,
+  }];
+})();
 const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 /* ── 히어로 프리뷰: 진짜 문제 4개 순환 ────────────────────────────
@@ -506,10 +518,14 @@ function pdCard(p){
       <div class="pd-tag"><span class="dot"></span>${esc(meta)}</div>
       <h3>${esc(p.name)}</h3>
       <p>${esc(p.desc||"")}</p>
-      ${on ? `<a class="btn btn-blue" href="sqld.html">자세히 보기 <svg class="ic"><use href="#i-arrow-right"></use></svg></a>`
+      ${on ? `<a class="btn btn-blue" href="${esc(p.href||('detail.html?pd='+encodeURIComponent(p.pd_id)))}">자세히 보기 <svg class="ic"><use href="#i-arrow-right"></use></svg></a>`
            : `<span class="btn btn-outline" style="opacity:.55;pointer-events:none">준비 중</span>`}
     </div></div>`;
 }
+/* ★ href 를 데이터에서 받는다.
+     예전에는 열려 있는 모든 품목이 `sqld.html` 로 갔다 — 자격증을 하나 추가해
+     문제를 넣는 순간, 그 카드가 SQLD 상세로 가는 버그가 된다.
+     api/products.php 가 href(상세)와 solve(문제풀이)를 따로 준다. */
 
 async function loadProducts(){
   let list = PD_FALLBACK;

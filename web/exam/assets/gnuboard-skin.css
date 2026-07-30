@@ -175,16 +175,17 @@ body{ background:var(--ex-soft); }
 #tnb a:hover{ color:#fff !important; }
 #tnb li.active a{ color:#fff !important; }
 
-/* 로고 — gnuboard 이미지를 감추고 문자 워드마크로 대체한다.
-   실제 로고 이미지가 나오면 이 블록을 지우고 theme 로고 파일만 바꾸면 된다. */
+/* 로고 — 여기서 다루지 않는다.
+ *
+ * 예전에는 `#logo a::after{ content:"AXEXAM" }` 로 워드마크를 CSS 로 박아넣었다.
+ * 두 가지 이유로 지웠다:
+ *   ① theme/axexam/head.php 는 #logo 를 **아예 렌더하지 않는다**(.axnav-logo 를 쓴다).
+ *      즉 이 블록은 죽은 코드였다.
+ *   ② 브랜드 문자열이 CSS 에 박히면 단일 출처(data/brand.json)가 깨진다.
+ *      형제 사이트로 복사할 때 CSS 까지 고쳐야 하는데, 이건 반드시 잊는다.
+ *
+ * 로고는 head.php 가 $EX_BRAND_HTML(06/brand.php)로 그린다. */
 #logo img{ display:none !important; }
-#logo a{ display:inline-block; text-decoration:none; }
-#logo a::after{
-  content:"AXEXAM";
-  font-size:21px; font-weight:800; letter-spacing:-.03em; color:#fff;
-  font-family:var(--ex-font);
-}
-#logo a::before{ content:""; }
 
 /* 검색바 */
 #hd .hd_sch_wr input, #sch_stx{

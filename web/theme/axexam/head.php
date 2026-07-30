@@ -25,6 +25,39 @@ include_once(G5_LIB_PATH . '/connect.lib.php');
 include_once(G5_LIB_PATH . '/popular.lib.php');
 
 $ex_url = G5_URL . '/exam';
+
+/* ── 브랜드 ─────────────────────────────────────────────────────────────────
+ * 06/brand.php 는 build_check.py 가 data/brand.json 에서 생성해 06/ 업로드에 실려 온다.
+ * @include_once 로 부르고 인라인 기본값을 남겨두는 이유: 테마만 올리고 06/ 을 아직
+ * 안 올린 상태에서도 화면이 떠야 한다. 없으면 로고가 빈 채로 배포된다.
+ */
+@include_once(G5_PATH . '/exam/brand.php');
+if (!isset($EX_BRAND))      $EX_BRAND      = 'XAMpass';
+if (!isset($EX_BRAND_HTML)) $EX_BRAND_HTML = '<i>XAM</i>pass';
+if (!isset($EX_TAGLINE))    $EX_TAGLINE    = '자격증 문제은행';
+if (!isset($EX_INTRO))      $EX_INTRO      = '자격증 문제은행과 1:1 질문 서비스.';
+
+/* ── 문제집 목록 ────────────────────────────────────────────────────────────
+ * nav 의 '문제 풀기'·'이론'·'수강 신청' 이 어느 문제집을 가리킬지 DB 에서 정한다.
+ * pd=sqld 를 박아두면 문제집을 추가할 때마다 이 파일을 고치게 되고,
+ * 형제 사이트로 복사하면 존재하지 않는 자격증으로 링크가 간다.
+ *
+ * 노출 중이고 **문제가 실제로 있는** 것만. 문제 0건인 품목으로 보내면 빈 화면이 뜬다
+ * (api/products.php:40 과 같은 판정이다).
+ *
+ * 쿼리 1회이고 품목은 많아도 수십 행이라 매 페이지 부담이 없다.
+ */
+$ex_books = array();
+$ex_res = sql_query("select d.pd_id, d.pd_name
+                       from ex_product d
+                      where d.pd_open = 1
+                        and exists (select 1 from ex_problem x
+                                     where x.pd_id = d.pd_id and x.pr_open = 1)
+                      order by d.pd_sort, d.pd_id", false);
+while ($ex_res && $ex_r = sql_fetch_array($ex_res)) $ex_books[] = $ex_r;
+
+// nav 가 가리킬 기본 문제집. 하나도 없으면(문제 임포트 전) 링크를 문제집 목록으로 보낸다.
+$ex_pd = $ex_books ? $ex_books[0]['pd_id'] : '';
 ?>
 
 <!-- 상단 시작 { -->
@@ -54,12 +87,21 @@ $ex_url = G5_URL . '/exam';
 
     <header class="axnav">
       <div class="axnav-in">
-        <a class="axnav-logo" href="<?php echo $ex_url ?>/">AX<i>EXAM</i></a>
+        <a class="axnav-logo" href="<?php echo $ex_url ?>/"><?php echo $EX_BRAND_HTML ?></a>
         <nav class="axnav-main">
+          <?php
+          /* pd 를 붙인 링크. 문제집이 하나도 없으면 목록으로 보낸다 —
+             빈 pd 로 check.php 를 열면 어느 문제집인지 정해지지 않는다. */
+          $ex_q  = $ex_pd !== '' ? '?pd=' . urlencode($ex_pd) : '';
+          $ex_go = function ($page, $extra = '') use ($ex_url, $ex_pd, $ex_q) {
+              if ($ex_pd === '') return $ex_url . '/';
+              return $ex_url . '/' . $page . $ex_q . $extra;
+          };
+          ?>
           <a class="axnav-item" href="<?php echo $ex_url ?>/"><svg class="ic"><use href="#i-clipboard"></use></svg>문제집</a>
-          <a class="axnav-item" href="<?php echo $ex_url ?>/check.html?pd=sqld"><svg class="ic"><use href="#i-edit"></use></svg>문제 풀기</a>
-          <a class="axnav-item" href="<?php echo $ex_url ?>/check.html?pd=sqld&amp;m=theory"><svg class="ic"><use href="#i-book"></use></svg>이론</a>
-          <a class="axnav-item<?php echo $on('buy.php') ?>" href="<?php echo $ex_url ?>/buy.php?pd=sqld"><svg class="ic"><use href="#i-cap"></use></svg>수강 신청</a>
+          <a class="axnav-item<?php echo $on('check.php') ?>" href="<?php echo $ex_go('check.php') ?>"><svg class="ic"><use href="#i-edit"></use></svg>문제 풀기</a>
+          <a class="axnav-item" href="<?php echo $ex_go('check.php', '&amp;m=theory') ?>"><svg class="ic"><use href="#i-book"></use></svg>이론</a>
+          <a class="axnav-item<?php echo $on('buy.php') ?>" href="<?php echo $ex_go('buy.php') ?>"><svg class="ic"><use href="#i-cap"></use></svg>수강 신청</a>
         </nav>
         <nav class="axnav-util">
           <a class="axnav-item<?php echo $on('bo_table=notice') ?>" href="<?php echo G5_BBS_URL ?>/board.php?bo_table=notice"><svg class="ic"><use href="#i-bell"></use></svg>공지</a>

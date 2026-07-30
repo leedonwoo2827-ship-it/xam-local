@@ -1,0 +1,22 @@
+{
+  "_comment": [
+    "브랜드 단일 출처. 형제 사이트를 만들 때 고치는 유일한 파일이다.",
+    "",
+    "이 사이트를 복사해 어학XAMpass·금융XAMpass 를 만든다. 그때 고쳐야 하는 것은",
+    "  (a) ex_product DB 행,  (b) 이 파일",
+    "둘뿐이어야 하고 코드 수정은 0 이어야 한다. 화면에 자격증 이름이나 분야가",
+    "박혀 있으면 복사할 때마다 코드를 만지게 된다.",
+    "",
+    "brand_html 의 <i> 안쪽에 axnav.css 의 --ax-nav-accent(노랑)가 칠해진다.",
+    "XAM 을 강조하는 이유: 프로덕트군 공통 자산이라 형제 사이트에서도 같은 글자가 눈에 든다.",
+    "",
+    "build_check.py 가 {{BRAND}} · {{BRAND_HTML}} · {{TAGLINE}} · {{INTRO}} 토큰을 치환하고,",
+    "같은 값으로 06/brand.php 를 만들어 PHP 쪽(theme/head.php · tail.php)이 include 한다.",
+    "JS 로는 <title> 과 로고 마크업을 못 바꾼다 — 바꿔도 한 번 깜빡인다."
+  ],
+
+  "brand": "XAMpass",
+  "brand_html": "<i>XAM</i>pass",
+  "tagline": "IT 자격증 문제은행",
+  "intro": "자격증 문제은행과 1:1 질문 서비스. 문제·정답·해설을 전면 공개합니다."
+}

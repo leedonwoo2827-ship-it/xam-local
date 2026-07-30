@@ -36,14 +36,30 @@ $ex_url = G5_URL . '/exam';
 <div id="ft">
     <div id="ft_wr">
         <div class="ft_cnt">
-            <h2>AXEXAM</h2>
-            <p class="ft_info">IT 자격증 문제은행과 1:1 질문 서비스.<br>문제·정답·해설을 전면 공개합니다.</p>
+            <?php /* $EX_* · $ex_books · $ex_pd 는 head.php 가 정의한다.
+                     tail 이 head 없이 불리는 경로는 없지만(그누보드가 짝으로 include),
+                     방어적으로 기본값을 둔다 — 푸터 하나 때문에 페이지가 죽으면 안 된다. */ ?>
+            <h2><?php echo isset($EX_BRAND) ? htmlspecialchars($EX_BRAND) : 'XAMpass' ?></h2>
+            <p class="ft_info"><?php
+              echo isset($EX_INTRO)
+                ? nl2br(htmlspecialchars($EX_INTRO))
+                : '자격증 문제은행과 1:1 질문 서비스.' ?></p>
         </div>
 
         <div class="ft_cnt">
             <h2>문제집</h2>
-            <a href="<?php echo $ex_url ?>/check.html?pd=sqld">SQLD</a>
-            <a href="<?php echo $ex_url ?>/buy.php?pd=sqld">수강 신청</a>
+            <?php /* 문제집 목록을 DB 에서 그린다. 'SQLD' 를 박아두면 문제집을 추가할 때마다
+                     푸터를 고치게 되고, 형제 사이트로 복사하면 없는 자격증이 뜬다.
+                     푸터라 5개까지만 — 그 이상은 문제집 목록으로 보낸다. */ ?>
+            <?php foreach (array_slice(isset($ex_books) ? $ex_books : array(), 0, 5) as $ex_b) { ?>
+              <a href="<?php echo $ex_url ?>/check.php?pd=<?php echo urlencode($ex_b['pd_id']) ?>"><?php
+                echo htmlspecialchars($ex_b['pd_name']) ?></a>
+            <?php } ?>
+            <?php if (count(isset($ex_books) ? $ex_books : array()) > 5) { ?>
+              <a href="<?php echo $ex_url ?>/">전체 보기</a>
+            <?php } ?>
+            <a href="<?php echo $ex_url ?>/buy.php<?php
+              echo (isset($ex_pd) && $ex_pd !== '') ? '?pd=' . urlencode($ex_pd) : '' ?>">수강 신청</a>
         </div>
 
         <div class="ft_cnt">
@@ -86,7 +102,8 @@ $ex_url = G5_URL . '/exam';
     <div id="ft_copy">
         <a href="<?php echo get_pretty_url('content', 'provision') ?>">이용약관</a>
         <a href="<?php echo get_pretty_url('content', 'privacy') ?>">개인정보처리방침</a>
-        <span>&copy; <?php echo date('Y') ?> AXEXAM</span>
+        <span>&copy; <?php echo date('Y') ?> <?php
+          echo isset($EX_BRAND) ? htmlspecialchars($EX_BRAND) : 'XAMpass' ?></span>
     </div>
 
     <button type="button" id="top_btn">

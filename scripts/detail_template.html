@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SQLD 문제집 — AXEXAM</title>
+<title>{{BRAND}}</title>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet"
       href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
@@ -54,12 +54,12 @@
 <!-- ═══ 공용 네비 — index.html · check.html · theme/axexam/head.php 와 동일 마크업 ═══ -->
 <header class="axnav">
   <div class="axnav-in">
-    <a class="axnav-logo" href="/exam/">AX<i>EXAM</i></a>
+    <a class="axnav-logo" href="/exam/">{{BRAND_HTML}}</a>
     <nav class="axnav-main">
       <a class="axnav-item on" href="/exam/"><svg class="ic"><use href="#i-clipboard"></use></svg>문제집</a>
-      <a class="axnav-item" href="/exam/check.html?pd=sqld"><svg class="ic"><use href="#i-edit"></use></svg>문제 풀기</a>
-      <a class="axnav-item" href="/exam/check.html?pd=sqld&amp;m=theory"><svg class="ic"><use href="#i-book"></use></svg>이론</a>
-      <a class="axnav-item" href="/exam/buy.php?pd=sqld"><svg class="ic"><use href="#i-cap"></use></svg>수강 신청</a>
+      <a class="axnav-item" href="/exam/check.php?pd={{PD}}"><svg class="ic"><use href="#i-edit"></use></svg>문제 풀기</a>
+      <a class="axnav-item" href="/exam/check.php?pd={{PD}}&amp;m=theory"><svg class="ic"><use href="#i-book"></use></svg>이론</a>
+      <a class="axnav-item" href="/exam/buy.php?pd={{PD}}"><svg class="ic"><use href="#i-cap"></use></svg>수강 신청</a>
     </nav>
     <nav class="axnav-util">
       <a class="axnav-item" href="/bbs/board.php?bo_table=notice"><svg class="ic"><use href="#i-bell"></use></svg>공지</a>
@@ -73,20 +73,18 @@
 
 <header class="dt-hero">
   <div class="wrap">
-    <div class="eyebrow">SQL 개발자</div>
-    <h1>SQLD 문제집</h1>
-    <p>모의고사 6회차 300문제. 정답과 해설 전문이 공개되어 있고,
-       채점하면 과목별 취약점을 정리해 드립니다. 막히는 문제는 그 자리에서 질문하세요.</p>
+    <!-- 이 페이지는 detail.html 하나가 ?pd= 로 N개 문제집을 렌더한다.
+         제목·숫자·과목을 하드코딩하지 않는다 — load() 가 API 로 채운다.
+         아래 값은 JS 가 오기 전 한 프레임만 보이는 자리표시자다. -->
+    <div class="eyebrow" id="dtEyebrow">{{BRAND}}</div>
+    <h1 id="dtTitle">문제집</h1>
+    <p id="dtDesc">정답과 해설 전문이 공개되어 있고, 채점하면 과목별 취약점을 정리해 드립니다.
+       막히는 문제는 그 자리에서 질문하세요.</p>
     <div class="dt-cta">
-      <a class="btn btn-yellow btn-lg" href="/exam/check.html?pd=sqld">문제 풀기</a>
-      <a class="btn btn-ghost-dark btn-lg" href="/exam/buy.php?pd=sqld">수강 신청</a>
+      <a class="btn btn-yellow btn-lg" id="dtSolve" href="/exam/check.php?pd={{PD}}">문제 풀기</a>
+      <a class="btn btn-ghost-dark btn-lg" id="dtBuy" href="/exam/buy.php?pd={{PD}}">수강 신청</a>
     </div>
-    <div class="dt-facts" id="dtFacts">
-      <div class="dt-fact"><b>300</b><span>문제</span></div>
-      <div class="dt-fact"><b>6</b><span>회차</span></div>
-      <div class="dt-fact"><b>2</b><span>과목</span></div>
-      <div class="dt-fact"><b>30</b><span>해설 영상</span></div>
-    </div>
+    <div class="dt-facts" id="dtFacts"></div>
   </div>
 </header>
 
@@ -108,20 +106,20 @@
       <h2>요약노트</h2>
       <p>과목별 핵심 개념 정리. 오답이 몰린 과목을 다시 볼 때 씁니다.</p>
     </div>
-    <div class="th-row">
-      <a href="/exam/check.html?pd=sqld&m=theory"><svg class="ic"><use href="#i-book"></use></svg>1과목 · 데이터 모델링의 이해</a>
-      <a href="/exam/check.html?pd=sqld&m=theory"><svg class="ic"><use href="#i-book"></use></svg>2과목 · SQL 기본 및 활용</a>
-    </div>
+    <!-- 과목 목록도 API 에서 온다.
+         예전에는 SQLD 의 두 과목이 여기 박혀 있었다 — 다른 문제집을 열면 거짓말이 된다.
+         api/problems.php 가 이미 subjects[] 를 주므로 코드가 줄어든다. -->
+    <div class="th-row" id="thRow"></div>
   </div>
 </section>
 
 <footer class="dt-foot">
   <div class="wrap">
     <a href="/exam/">문제집</a>
-    <a href="/exam/buy.php?pd=sqld">수강 신청</a>
+    <a href="/exam/buy.php?pd={{PD}}">수강 신청</a>
     <a href="/bbs/board.php?bo_table=notice">공지사항</a>
     <a href="/bbs/qalist.php">1:1 문의</a>
-    <div style="margin-top:14px;color:#6f7a94">© 2026 AXEXAM</div>
+    <div style="margin-top:14px;color:#6f7a94">© 2026 {{BRAND}}</div>
   </div>
 </footer>
 
@@ -130,7 +128,7 @@
 /* 회차 카드 — 서버에서는 api/problems.php 의 rounds 를 쓰고,
    정적(file://)에서는 problems.js 로 떨어진다. 어느 쪽이든 흰 화면이 되지 않게 한다. */
 const API = window.EXAM_API || "";
-const PD  = new URLSearchParams(location.search).get('pd') || window.EXAM_PD || 'sqld';
+const PD  = new URLSearchParams(location.search).get('pd') || (window.EXAM_CFG&&EXAM_CFG.pd) || '';
 const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 function card(r){
@@ -141,37 +139,80 @@ function card(r){
       <span class="rd-n">${r.count||0}문제</span>
     </div>
     <div class="rd-links">
-      <a class="solve" href="/exam/check.html?pd=${encodeURIComponent(PD)}&rd=${r.no}">문제 풀기</a>
+      <a class="solve" href="/exam/check.php?pd=${encodeURIComponent(PD)}&m=quiz&rd=${r.no}">문제 풀기</a>
       <a class="mute">영상 준비 중</a>
     </div>
   </div>`;
 }
 
+function fact(n, l){ return `<div class="dt-fact"><b>${n}</b><span>${esc(l)}</span></div>`; }
+
 async function load(){
-  let rounds = null;
+  /* 링크에 pd 를 반영한다 — {{PD}}(빌드 품목)로 구워졌으니 ?pd= 로 들어온 값으로 덮는다.
+     이걸 안 하면 detail.html?pd=bdae-w 의 '문제 풀기' 가 SQLD 로 간다. */
+  if(PD){
+    document.getElementById("dtSolve").href = "/exam/check.php?pd="+encodeURIComponent(PD);
+    document.getElementById("dtBuy").href   = "/exam/buy.php?pd="+encodeURIComponent(PD);
+  }
+
+  let rounds = null, subjects = [], name = "", videos = 0;
+
   if(API){
     try{
       const j = await (await fetch(API+"problems.php?pd="+encodeURIComponent(PD),
                                    {credentials:"same-origin"})).json();
-      if(j && j.ok && j.rounds && j.rounds.length) rounds = j.rounds;
+      if(j && j.ok){
+        if(j.rounds && j.rounds.length) rounds = j.rounds;
+        if(j.subjects) subjects = j.subjects;
+        if(j.product && j.product.pd_name) name = j.product.pd_name;
+      }
     }catch(e){}
   }
+
+  /* 정적 폴백 — EXAM_CFG.product(빌드가 주입) 또는 problems.js */
+  const cfgp = (window.EXAM_CFG && EXAM_CFG.product) || null;
+  if(!name && cfgp && cfgp.pd_name) name = cfgp.pd_name;
+  if(!subjects.length && cfgp && cfgp.subjects) subjects = cfgp.subjects;
+
   if(!rounds){
-    // 정적 폴백 — problems.js 가 있으면 거기서 회차를 만든다
     const P = window.PROBLEMS || [];
     const m = {};
     P.forEach(p => { const n = p.round_num || 0; if(n) m[n] = (m[n]||0)+1; });
     rounds = Object.keys(m).sort((a,b)=>a-b).map(n => ({no:+n, label:n+'회 모의고사', count:m[n]}));
   }
-  if(!rounds.length){
-    document.getElementById("rdGrid").innerHTML =
-      '<div class="empty">회차 정보를 불러오지 못했습니다.</div>';
-    return;
+
+  /* 제목·설명 — 문제집 이름에서 만든다. 이름을 못 받았으면 일반 문구로 둔다. */
+  if(name){
+    document.title = name + " 문제집";
+    document.getElementById("dtTitle").textContent = name + " 문제집";
+    document.getElementById("dtEyebrow").textContent = name;
   }
-  document.getElementById("rdGrid").innerHTML = rounds.map(card).join("");
+
   const tot = rounds.reduce((s,r)=>s+(r.count||0),0);
-  document.getElementById("dtFacts").children[0].querySelector("b").textContent = tot;
-  document.getElementById("dtFacts").children[1].querySelector("b").textContent = rounds.length;
+  if(tot){
+    document.getElementById("dtDesc").textContent =
+      `모의고사 ${rounds.length}회차 ${tot}문제. 정답과 해설 전문이 공개되어 있고, `
+      + "채점하면 과목별 취약점을 정리해 드립니다. 막히는 문제는 그 자리에서 질문하세요.";
+  }
+
+  /* 숫자 칸 — 있는 것만 그린다. '30 해설 영상' 처럼 없는 숫자를 박아두지 않는다. */
+  document.getElementById("dtFacts").innerHTML =
+      (tot ? fact(tot, "문제") : "")
+    + (rounds.length ? fact(rounds.length, "회차") : "")
+    + (subjects.length ? fact(subjects.length, "과목") : "");
+
+  document.getElementById("rdGrid").innerHTML = rounds.length
+    ? rounds.map(card).join("")
+    : '<div class="empty">아직 등록된 회차가 없습니다. 준비 중입니다.</div>';
+
+  /* 과목별 이론 링크 */
+  const th = document.getElementById("thRow");
+  th.innerHTML = subjects.length
+    ? subjects.map(s =>
+        `<a href="/exam/check.php?pd=${encodeURIComponent(PD)}&m=theory">`
+        + `<svg class="ic"><use href="#i-book"></use></svg>`
+        + `${s.sj_no ? s.sj_no+'과목 · ' : ''}${esc(s.sj_name)}</a>`).join("")
+    : '<div class="empty">과목 정보가 아직 없습니다.</div>';
 }
 load();
 </script>

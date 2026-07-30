@@ -1,0 +1,548 @@
+/* check.js — 문제풀이 화면 로직.  check.php 가 싣는다.
+ *
+ * 예전에는 check_template.html 안의 인라인 <script> 였다. PHP 로 전환하면서 파일로 뺐다.
+ * 렌더·채점·필터·답안복원 로직은 그대로다 — 옮기면서 고친 것만 아래에 적는다.
+ *
+ * ── 옮기면서 고친 것 ──────────────────────────────────────────────────────
+ *  ① PD 를 서버(EXAM_CFG)에서 받는다. 예전에는 `window.EXAM_PD || "sqld"` 였고
+ *     **?pd= 를 아예 읽지 않았다** — check.html?pd=bdae-w 가 SQLD 를 보여줬다.
+ *     이제 check.php 가 DB 로 검증한 pd 를 주입하므로 폴백이 필요 없다.
+ *  ② P 를 const → let 으로 바꾸고 **DS.problems() 를 실제로 쓴다.**
+ *     예전에는 ApiDS.problems 가 정의만 되어 있고 호출되지 않아, 서버에서도 항상
+ *     구워진 problems.js 를 읽었다. 그래서 관리자에서 문제를 고쳐도 화면에 반영되지 않았다.
+ *  ③ ?m= · ?rd= 를 읽는다. 헤더의 '이론' 메뉴가 &m=theory 를 넘기는데 무시되고 있었다.
+ *  ④ 탭이 4개다 — 홈 · 이론 · 문제집 · 과목게시판. (예전: 홈 · 이론 · 회차별)
+ *  ⑤ breadcrumb 을 서버 문구가 아니라 브랜드·문제집명에서 만든다.
+ */
+const CIRC="①②③④⑤⑥⑦⑧⑨⑩";
+const $=s=>document.querySelector(s);
+const CFG=(window.EXAM_CFG||{});
+const BRAND=(CFG.brand&&CFG.brand.brand)||"XAMpass";
+
+/* ★ let 이다. 서버 모드에서 DS.problems() 가 갈아끼운다.
+   window.PROBLEMS 는 정적 폴백(file:// 로컬 검수) 전용이다. */
+let P=(window.PROBLEMS||[]);
+let SUBJECTS=[];                       // [{sj_no, sj_name}] — API 가 주면 그것을 쓴다
+let ROUNDS=[];                         // [{no, label, count, free}]
+let PD_NAME=(CFG.product&&CFG.product.pd_name)||"";
+
+const VIDEOS=(window.VIDEOS||{});
+const THEORY=(window.THEORY||[]);
+let mode="quiz", curRound=null, curTheory=null, answers={}, graded=false;
+
+/* ── 풀던 답안 보존 ────────────────────────────────────────────────────
+   answers 가 메모리 변수라 새로고침·탭닫기에 날아갔다.
+   서버에 저장할 수도 있지만 localStorage 로 충분하다 —
+   비로그인도 되고, 왕복이 없고, 스키마 변경도 없다.
+   (기기를 옮기면 안 따라온다. 그게 문제가 되면 그때 서버 동기화를 붙인다.) */
+const ansKey = r => "exam:ans:" + PD + ":" + (r || "");
+function loadAns(){
+  try{
+    const s = localStorage.getItem(ansKey(curRound));
+    const o = s ? JSON.parse(s) : null;
+    return (o && typeof o === "object" && !Array.isArray(o)) ? o : {};
+  }catch(e){ return {}; }          // 시크릿 모드·차단 환경
+}
+function saveAns(){
+  try{
+    if(Object.keys(answers).length) localStorage.setItem(ansKey(curRound), JSON.stringify(answers));
+    else                            localStorage.removeItem(ansKey(curRound));
+  }catch(e){}                      // 용량 초과 등은 조용히 넘어간다 — 풀이를 막을 이유가 없다
+}
+let restoreNoticed = false;        // 복원 안내는 최초 1회만 (회차를 오갈 때마다 뜨면 시끄럽다)
+
+/* ── 데이터 소스 추상화 ────────────────────────────────────────────────
+   window.EXAM_API 가 있으면(build_check.py --api-base 가 주입) 서버에서 읽고,
+   없으면 구워넣은 window.PROBLEMS 로 동작한다.
+
+   이게 있어야 정적 폴백(file:// 더블클릭 = 로컬 문제 검수)이 공짜로 유지된다.
+   마크업 1개, JS 1개, 소스만 스왑 — 템플릿을 두 벌로 관리하지 않는다.
+   서버에서는 웹(adm/exam_problem_form.php)에서 고친 문제가 화면에 바로 반영되어야
+   하므로 problems.js 를 그대로 쓸 수 없다. */
+const API = CFG.api || window.EXAM_API || "";
+
+/* ★ PD 는 서버가 정한다.
+   check.php 가 ?pd= 를 ex_product 로 검증해 EXAM_CFG.pd 로 내려준다 —
+   형식만 맞는 오타('sqldd')나 없는 품목이 여기까지 오지 않는다.
+   'sqld' 폴백을 두지 않는 이유: 문제집이 여러 개인 지금은 폴백이
+   "다른 문제집을 열었는데 SQLD 가 뜨는" 경로가 된다. */
+const PD  = CFG.pd || window.EXAM_PD || "";
+
+const StaticDS = {
+  async problems(){
+    return {problems:P,
+            product:{pd_id:PD, pd_name:PD_NAME},
+            rounds:uniq(P.map(p=>p.round)).map(r=>({no:parseInt(r)||0, label:r})),
+            subjects:uniq(P.map(p=>p.subject)).map((s,i)=>({sj_no:i+1, sj_name:s}))};
+  },
+  /* 클라이언트 채점 — 정답이 problems.js 안에 있으니 그대로 판정한다. */
+  async grade(round, ans){
+    const rows=cur(), results=[]; let ok=0;
+    rows.forEach(p=>{ const k=keyOf(p), chosen=(k in ans)?ans[k]:-1;
+      const good = chosen===p.answer_index; if(good) ok++;
+      results.push({key:k, ok:good, chosen:chosen,
+                    answer_index:p.answer_index, explanation:p.explanation}); });
+    const tot=rows.length;
+    return {score:{correct:ok, total:tot, pct:tot?Math.round(ok/tot*100):0}, results};
+  },
+  async me(){ return {login:0}; },
+};
+
+const ApiDS = {
+  async problems(round){
+    const r=await fetch(API+"problems.php?pd="+encodeURIComponent(PD)
+                          +"&round="+encodeURIComponent(round||""),
+                        {credentials:"same-origin"});
+    return await r.json();
+  },
+  /* 서버는 '화면에 보이던 문제 집합'을 알아야 미응답을 셀 수 있다.
+     과목·난이도 필터가 걸려 있으면 회차 전체가 아니라 그 부분집합이 채점 대상이다.
+     그래서 keys 를 함께 보낸다 — 서버는 이걸 DB 행과 교집합으로만 쓴다. */
+  async grade(round, ans){
+    const rows=cur();
+    const r=await fetch(API+"grade.php", {method:"POST", credentials:"same-origin",
+      headers:{"Content-Type":"application/json","X-Exam-Csrf":(window.ME&&ME.csrf)||""},
+      body:JSON.stringify({
+        pd:PD, round:round, keys:rows.map(keyOf), answers:ans,
+        filter:[$("#fSubject").value,$("#fDiff").value].filter(Boolean).join("/")
+      })});
+    return await r.json();
+  },
+  async me(){
+    try{ return await (await fetch(API+"me.php",{credentials:"same-origin"})).json(); }
+    catch(e){ return {login:0}; }
+  },
+};
+
+const DS = API ? ApiDS : StaticDS;
+
+/* 정적 데이터 기준 경로. 문제집별로 pd/<pd_id>/ 아래에 있다.
+   예전에는 06/ 이 /www/exam/ 에 납작하게 복사돼 두 번째 문제집이 첫 번째 도식을 덮어썼다.
+   CFG.data 가 없으면(옛 빌드) 예전처럼 같은 폴더에서 찾는다 — 하위호환. */
+const DATA = CFG.data || "";
+const FIGS = DATA + "figs/";
+
+function esc(s){return (s||"").replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function md(s){ s=esc(s);
+  s=s.replace(/!\[[^\]]*\]\(([^)\s]+)[^)]*\)/g,(m,u)=>'<img class="fig" src="'+FIGS+u.split(/[\\\/]/).pop()+'" onerror="this.style.display=\'none\'">');
+  s=s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>'); s=s.replace(/`([^`]+)`/g,'<code>$1</code>'); return s; }
+// 블록 마크다운 — #2 bundle.py 의 md_blocks 와 같은 규칙(표·불릿·맨텍스트 SQL).
+// lesson 의 표/SQL 은 `table`/`sql` 필드가 아니라 지문 안에 텍스트로 들어오는 경우가 많아,
+// 이걸 렌더하지 않으면 "| 상품명 | 분류코드 |" 가 그대로 노출된다(영상 덱과도 어긋난다).
+const SQL_START=/^\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|WITH|MERGE|TRUNCATE)\b/i;
+const SQL_CONT=/^\s*(FROM|WHERE|GROUP\s+BY|ORDER\s+BY|HAVING|UNION|MINUS|INTERSECT|JOIN|LEFT|RIGHT|INNER|FULL|CROSS|OUTER|ON|AND|OR|SET|VALUES|START\s+WITH|CONNECT\s+BY|[(),])/i;
+const SQL_OK=/\b(FROM|VALUES|SET)\b|;/i;
+const BULLET=/^([-*•]|\d+[.)])\s+/;
+function sqlRun(L,i){ if(!SQL_START.test(L[i])) return null;
+  const buf=[]; let j=i;
+  while(j<L.length && L[j].trim() && (j===i||SQL_START.test(L[j])||SQL_CONT.test(L[j])||/^[ \t]/.test(L[j]))){ buf.push(L[j].replace(/\s+$/,"")); j++; }
+  const code=buf.join("\n").trim(); return SQL_OK.test(code)?[j,code]:null; }
+function mdTable(rows){
+  const cells=rows.map(r=>r.trim().replace(/^\||\|$/g,"").split("|").map(c=>c.trim()));
+  let head=[]; if(cells.length>1 && cells[1].every(c=>/^:?-{2,}:?$/.test(c||"-"))){ head=cells[0]; cells.splice(0,2); }
+  return "<table class='qtable'>"+(head.length?"<thead><tr>"+head.map(c=>"<th>"+md(c)+"</th>").join("")+"</tr></thead>":"")
+    +"<tbody>"+cells.map(r=>"<tr>"+r.map(c=>"<td>"+md(c)+"</td>").join("")+"</tr>").join("")+"</tbody></table>"; }
+function mdb(s){
+  const L=String(s||"").replace(/\r\n/g,"\n").split("\n"); let out="", i=0;
+  while(i<L.length){ const st=L[i].trim();
+    if(!st){ i++; continue; }
+    if(st.startsWith("```")){ const lang=st.slice(3).trim().toLowerCase(); i++; const buf=[];
+      while(i<L.length && !L[i].trim().startsWith("```")){ buf.push(L[i]); i++; } i++;
+      const code=buf.join("\n").trim();
+      out+="<pre class='sql'><code>"+esc(code)+"</code></pre>"; continue; }
+    if(st.startsWith("|")){ const buf=[]; while(i<L.length && L[i].trim().startsWith("|")){ buf.push(L[i]); i++; }
+      out+=mdTable(buf); continue; }
+    const run=sqlRun(L,i);
+    if(run){ i=run[0]; out+="<pre class='sql'><code>"+esc(run[1])+"</code></pre>"; continue; }
+    if(BULLET.test(st)){ const buf=[]; while(i<L.length && BULLET.test(L[i].trim())){ buf.push(L[i].trim().replace(BULLET,"")); i++; }
+      out+="<ul>"+buf.map(x=>"<li>"+md(x)+"</li>").join("")+"</ul>"; continue; }
+    const buf=[];
+    while(i<L.length){ const c=L[i].trim();
+      if(!c||c.startsWith("|")||c.startsWith("```")||BULLET.test(c)) break;
+      if(buf.length&&sqlRun(L,i)) break;
+      buf.push(c); i++; }
+    out+="<p>"+md(buf.join(" "))+"</p>"; }
+  return out; }
+function keyOf(p){ return (p.bundle||"")+"#"+(p.number); }
+function uniq(a){ return [...new Set(a.filter(v=>v!=null&&v!==""))]; }
+/* 회차 라벨. 문제에서 뽑는다 — ROUNDS(ex_round)에는 문제가 0건인 회차도 들어 있어서
+   그걸 탭으로 만들면 눌러도 빈 화면이 뜬다. */
+function rounds(){ return uniq(P.map(p=>p.round)).sort((a,b)=>(parseInt(a)||0)-(parseInt(b)||0)); }
+/* 과목 이름 목록. API 가 주면 그것을(sj_no 순서가 정확하다), 없으면 문제에서 뽑는다. */
+function subjectNames(){
+  return SUBJECTS.length ? SUBJECTS.map(s=>s.sj_name) : uniq(P.map(p=>p.subject));
+}
+function cur(){ return P.filter(p=>p.round===curRound
+  && (!$("#fSubject").value||(p.subject||"")===$("#fSubject").value)
+  && (!$("#fDiff").value||(p.difficulty||"")===$("#fDiff").value)); }
+function tableHtml(t){ if(!t||!t.columns) return "";
+  let h="<table class='qtable'><thead><tr>"+t.columns.map(c=>"<th>"+esc(String(c))+"</th>").join("")+"</tr></thead><tbody>";
+  (t.rows||[]).forEach(r=>{ h+="<tr>"+r.map(c=>"<td>"+esc(String(c))+"</td>").join("")+"</tr>"; }); return h+"</tbody></table>"; }
+
+/* 탭 한 세트 — 홈 · 이론 · 문제집 · 과목게시판.
+   quiz 는 내부 이름이고 화면 라벨은 '문제집' 이다(회차별 모의고사가 문제집의 내용이다). */
+const MODES=["home","theory","quiz","board"];
+
+function setMode(m){
+  if(MODES.indexOf(m)<0) m="home";
+  mode=m; graded=false;
+  if(m!=="quiz") answers={};       // 이론·홈·게시판에서는 답안 상태를 들고 있을 이유가 없다
+  document.querySelectorAll("#modes button").forEach(b=>b.classList.toggle("on",b.dataset.m===m));
+  $("#layout").classList.toggle("tmode", m!=="quiz");      // quiz 만 사이드바를 쓴다
+  $("#filters").style.display = (m==="quiz") ? "flex" : "none";
+  // 홈·게시판에는 하위 탭이 없다(게시판은 과목 칩을 자기 영역 안에 그린다)
+  $("#subtabs").style.display = (m==="home"||m==="board") ? "none" : "flex";
+
+  if(m==="quiz"){ const rs=rounds(); curRound=curRound&&rs.includes(curRound)?curRound:(rs[0]||null);
+    answers=loadAns();                      // 풀던 답안 복원
+    const n=Object.keys(answers).length;
+    if(n && !restoreNoticed){ restoreNoticed=true;
+      setTimeout(()=>toast("이전에 선택한 답안 "+n+"개를 불러왔습니다"), 400); }
+    $("#pgTitle").textContent="회차별 모의고사 · 정답 체크"; $("#pgSub").textContent="보기를 고르고 채점하기를 누르면 정답·해설이 표시됩니다."; }
+  else if(m==="theory"){ curTheory=curTheory||(THEORY[0]&&THEORY[0].href)||null;
+    $("#pgTitle").textContent="이론 요약노트"; $("#pgSub").textContent="과목별 핵심 개념 요약입니다."; }
+  else if(m==="board"){
+    $("#pgTitle").textContent="과목게시판"; $("#pgSub").textContent="과목별 질문과 답변입니다. 문제를 풀다 막히면 여기에 물어보세요."; }
+  else{ /* home — 제목은 문제집 이름이다. 하드코딩하지 않는다. */
+    $("#pgTitle").textContent=(PD_NAME||"문제집");
+    $("#pgSub").textContent="이론 요약과 회차별 모의고사 — 해설 영상 · 정답 체크"; }
+
+  // 주소를 상태와 맞춘다. 새로고침·공유·뒤로가기가 같은 화면으로 돌아와야 한다.
+  syncUrl();
+  buildSub(); render();
+}
+
+/* ?m= · ?rd= 를 주소에 반영한다. history.replaceState 라 방문 기록을 더럽히지 않는다
+   (탭을 여러 번 누른 뒤 뒤로가기를 눌렀을 때 사이트를 못 벗어나는 것을 막는다). */
+function syncUrl(){
+  try{
+    const u=new URL(location.href);
+    if(PD) u.searchParams.set("pd",PD);
+    if(mode==="home") u.searchParams.delete("m"); else u.searchParams.set("m",mode);
+    if(mode==="quiz"&&curRound) u.searchParams.set("rd",curRound); else u.searchParams.delete("rd");
+    history.replaceState(null,"",u.pathname+"?"+u.searchParams.toString());
+  }catch(e){ /* file:// 에서는 URL API 가 제한될 수 있다. 무시한다. */ }
+}
+function goTheory(href){ curTheory=href; setMode("theory"); }
+function goQuiz(r){ curRound=r; setMode("quiz"); }
+function buildSub(){
+  const box=$("#subtabs");
+  if(mode==="home"){ box.innerHTML=""; return; }
+  if(mode==="quiz"){ box.innerHTML=rounds().map(r=>'<button data-v="'+r+'"'+(r===curRound?' class="on"':'')+'>'+r+'</button>').join("");
+    box.querySelectorAll("button").forEach(b=>b.onclick=()=>{ curRound=b.dataset.v; answers=loadAns(); graded=false; buildSub(); renderVideos(); render(); updateCrumb(); }); }
+  else{ box.innerHTML=THEORY.map(t=>'<button data-v="'+t.href+'"'+(t.href===curTheory?' class="on"':'')+'>'+esc(t.label)+'</button>').join("");
+    box.querySelectorAll("button").forEach(b=>b.onclick=()=>{ curTheory=b.dataset.v; buildSub(); render(); updateCrumb(); }); }
+}
+/* breadcrumb — 기획서의 `XAMPASS > SQLD 문제집 > 이론 / 문제풀이`.
+   브랜드도 문제집명도 하드코딩하지 않는다: 브랜드는 EXAM_CFG.brand, 이름은 API/DB 다. */
+function updateCrumb(){
+  const box=$("#crumb");
+  if(!box) return;
+  const items=[{t:BRAND, href:"/exam/"}];
+  if(PD_NAME) items.push({t:PD_NAME+" 문제집", href:"detail.php?pd="+encodeURIComponent(PD)});
+
+  /* 홈에서는 여기서 끝낸다 — 문제집명 자체가 홈이라 '… › 홈' 은 겹친다. */
+  if(mode==="quiz"){
+    items.push({t:"회차별 모의고사"});
+    if(curRound) items.push({t:curRound});
+  }else if(mode==="theory"){
+    items.push({t:"이론"});
+    const t=THEORY.find(x=>x.href===curTheory);
+    if(t) items.push({t:t.label});
+  }else if(mode==="board"){
+    items.push({t:"과목게시판"});
+    if(boardSj>0){ const s=SUBJECTS.find(x=>x.sj_no===boardSj); if(s) items.push({t:s.sj_name}); }
+  }
+
+  box.innerHTML='<svg class="ic"><use href="#i-list"></use></svg>'
+    + items.map((it,i)=>{
+        const t=esc(it.t);
+        const node = it.href ? '<a href="'+esc(it.href)+'">'+t+'</a>' : '<b>'+t+'</b>';
+        return (i?'<span class="sep">›</span>':'')+node;
+      }).join("");
+}
+
+function render(){
+  updateCrumb();
+  const list=$("#list");
+  if(mode==="home"){ renderHome(list); return; }
+  if(mode==="board"){ renderBoard(list); return; }
+  if(mode==="theory"){
+    if(!THEORY.length){ list.innerHTML='<div class="empty">이론 자료가 없습니다.</div>'; return; }
+    list.innerHTML='<div id="tbody" class="theorybox"></div>';
+    loadTheory(curTheory||THEORY[0].href); return;
+  }
+  const rows=cur();
+  if(!rows.length){ list.innerHTML='<div class="empty">표시할 문제가 없습니다.</div>'; updateGauge(); return; }
+  list.innerHTML=rows.map(p=>{
+    const k=keyOf(p);
+    let opts=(p.choices||[]).map((c,ci)=>'<div class="opt" data-k="'+k+'" data-ci="'+ci+'"><span class="cn">'+(CIRC[ci]||(ci+1))+'</span><span>'+md(c)+'</span></div>').join("");
+    let mid="";
+    if(p.passage) mid+='<div class="passage">'+mdb(p.passage)+'</div>';
+    if(p.sql) mid+='<pre class="sql"><code>'+esc(p.sql)+'</code></pre>';
+    if(p.table) mid+=tableHtml(p.table);
+    (p.figures||[]).forEach(f=>{ mid+='<img class="fig" src="'+FIGS+f+'" onerror="this.style.display=\'none\'">'; });
+    return '<div class="qcard" data-k="'+k+'"><div class="qhead"><span class="qnum">'+esc(p.round)+' · '+(p.number!=null?p.number+'번':'')+'</span>'
+      +(p.subject?'<span class="pill pill-teal"><span class="dot"></span>'+esc(p.subject)+'</span>':'')
+      +(p.difficulty?'<span class="pill pill-orange">난이도 '+esc(p.difficulty)+'</span>':'')+'</div>'
+      +'<div class="q">'+mdb(p.question)+'</div>'+mid+'<div class="opts">'+opts+'</div>'
+      /* 해설은 빈 껍데기로 둔다 — 채점 응답(DS.grade)이 채운다.
+         서버 채점(ApiDS)일 때 정답·해설이 렌더 시점에 DOM 에 없어야 하기 때문이다. */
+      +'<div class="expl"></div></div>';
+  }).join("");
+  document.querySelectorAll(".opt").forEach(el=>{ if(answers[el.dataset.k]===+el.dataset.ci) el.classList.add("sel"); });
+  updateGauge();
+}
+
+document.addEventListener("click",e=>{
+  const o=e.target.closest(".opt"); if(!o||graded||mode!=="quiz") return;
+  const k=o.dataset.k, ci=+o.dataset.ci; answers[k]=ci; saveAns();
+  o.parentElement.querySelectorAll(".opt").forEach(x=>x.classList.remove("sel")); o.classList.add("sel"); updateGauge();
+});
+function updateGauge(){
+  if(mode!=="quiz") return;
+  const rows=cur(), tot=rows.length;
+  if(!graded){ const ans=rows.filter(p=>answers[keyOf(p)]!=null).length;
+    $("#scoreNum").textContent=ans; $("#scoreTot").textContent=tot; $("#scoreK").textContent="입력한 문항";
+    const pct=tot?Math.round(ans/tot*100):0;
+    $("#gauge").innerHTML=WPUI.donut({pct,label:pct+"%",color:"var(--blue-600)",size:78,stroke:9,labelColor:"var(--blue-600)"}); }
+}
+/* 채점 결과를 화면에 반영한다. StaticDS·ApiDS 응답 형식이 같아서 한 벌로 쓴다.
+   results[] = [{key, ok, chosen, answer_index, explanation}] */
+function applyResults(results){
+  (results||[]).forEach(r=>{
+    const card=document.querySelector('.qcard[data-k="'+CSS.escape(r.key)+'"]'); if(!card) return;
+    card.querySelectorAll(".opt").forEach(el=>{ const ci=+el.dataset.ci; el.classList.remove("sel");
+      if(ci===r.answer_index) el.classList.add("correct");
+      else if(ci===r.chosen) el.classList.add("wrong"); });
+    const ex=card.querySelector(".expl"); if(!ex) return;
+    ex.innerHTML='<span class="lbl">해설 (정답 '+(CIRC[r.answer_index]||'')+')</span>'
+                 +mdb(r.explanation||"");
+    ex.classList.add("show");
+  });
+}
+function showScore(sc){
+  const tot=sc.total|0, ok=sc.correct|0, pct=sc.pct|0;
+  $("#scoreNum").textContent=ok; $("#scoreTot").textContent=tot; $("#scoreK").textContent="정답 · 점수 "+pct+"%";
+  $("#gauge").innerHTML=WPUI.donut({pct,label:pct+"%",color:pct>=60?"var(--success)":"var(--danger)",size:78,stroke:9,labelColor:pct>=60?"var(--success-text)":"var(--danger-text)"});
+}
+async function grade(){
+  if(mode!=="quiz") return;
+  let res; try{ res=await DS.grade(curRound, answers); }catch(e){ res=null; }
+  if(!res||!res.results){ toast("채점에 실패했습니다. 잠시 후 다시 시도해 주세요."); return; }
+  graded=true; applyResults(res.results);
+  const sc=res.score||{correct:0,total:0,pct:0}; showScore(sc);
+  toast(sc.total+"문항 중 "+sc.correct+"문항 정답 ("+sc.pct+"%)");
+}
+/* "정답 보기" = 전 문항 미응답 채점. 별도 경로를 두지 않는다. */
+async function reveal(){
+  if(mode!=="quiz") return;
+  let res; try{ res=await DS.grade(curRound, {}); }catch(e){ res=null; }
+  if(!res||!res.results){ toast("정답을 불러오지 못했습니다."); return; }
+  graded=true;
+  applyResults(res.results.map(r=>({...r, chosen:-1})));
+}
+function resetAll(){ answers={}; graded=false; saveAns(); render(); }   // saveAns 가 빈 값이면 지운다
+
+function renderHome(list){
+  let h='<div class="cat">';
+  if(THEORY.length){
+    h+='<div class="cat-card cat-theory"><h3><span class="icon-box sm soft"><svg class="ic ic-sm"><use href="#i-book"></use></svg></span> 이론 요약노트</h3><div class="cat-row">'
+      +THEORY.map(t=>'<button class="catbtn" onclick="goTheory(\''+t.href+'\')"><svg class="ic ic-sm"><use href="#i-doc"></use></svg>'+esc(t.label)+'</button>').join("")
+      +'</div></div>';
+  }
+  rounds().forEach(r=>{ const vids=VIDEOS[r]||[];
+    h+='<div class="cat-card"><h3><span class="icon-box sm soft"><svg class="ic ic-sm"><use href="#i-clipboard"></use></svg></span> '+esc(r)+' 모의고사</h3>';
+    h+='<div class="cat-videos">'+(vids.length ? vidButtons(r)
+        : '<div class="vid-empty">영상 준비 중</div>')+'</div>';
+    h+='<button class="btn btn-blue" onclick="goQuiz(\''+r+'\')">문제 풀기 <svg class="ic"><use href="#i-arrow-right"></use></svg></button></div>';
+  });
+  h+='</div>'; list.innerHTML=h;
+}
+
+/* iframe 대신 'include' 방식: 요약 HTML 을 fetch 해서 Shadow DOM 에 주입(스타일 격리).
+   상대경로(assets/svg 등)는 theory/ 기준으로 보정, 내부 요약 링크는 다시 fetch 로 로드. */
+/* fetch/iframe 없이: 구워넣은 window.THEORY_HTML 을 Shadow DOM 에 주입 → file://·서버 둘 다 동작. */
+function loadTheory(href){
+  const box=document.getElementById("tbody"); if(!box) return;
+  const html=(window.THEORY_HTML||{})[href];
+  const sh=box.shadowRoot||box.attachShadow({mode:"open"});
+  if(!html){ sh.innerHTML='<div style="padding:26px;color:#c22638;font-family:sans-serif">이론 내용을 찾을 수 없습니다. (theory_content.js 업로드 확인)</div>'; return; }
+  sh.innerHTML=html;
+  /* 이론 본문 안의 도식도 문제집별 경로로 옮긴다.
+     theory_content.js 는 빌드 시점에 `figs/...` 로 구워지는데, 정적 데이터가
+     pd/<pd_id>/ 로 내려가면 그 상대경로가 /exam/figs/ 를 가리켜 깨진다. */
+  if(DATA){
+    sh.querySelectorAll('img[src]').forEach(im=>{
+      const s=im.getAttribute("src")||"";
+      if(s.startsWith("figs/")) im.setAttribute("src", DATA+s);
+    });
+  }
+  sh.querySelectorAll('a[href]').forEach(a=>{ const h=a.getAttribute("href")||"";
+    const m=h.match(/summary_[^"'\/]*\.html/);
+    if(m){ a.addEventListener("click",ev=>{ ev.preventDefault(); curTheory="theory/"+m[0]; buildSub(); loadTheory(curTheory); window.scrollTo({top:0,behavior:"smooth"}); }); }
+  });
+}
+
+/* 영상 항목은 객체({provider,id,label,...})라 onclick 문자열에 담지 않고
+   (회차, 인덱스)로 참조한다. */
+function openVidAt(round, i){ openVid((VIDEOS[round]||[])[i]); }
+function vidButtons(round){
+  const vids=VIDEOS[round]||[];
+  return vids.map((v,i)=>'<button onclick="openVidAt(\''+esc(round)+'\','+i+')">'
+    +'<svg class="ic ic-sm"><use href="#i-play"></use></svg>'+esc(v.label)+'</button>').join("");
+}
+function renderVideos(){
+  const box=$("#vidList");
+  box.innerHTML = (VIDEOS[curRound]||[]).length ? vidButtons(curRound)
+    : '<div class="vid-empty">이 회차의 영상이 없습니다.</div>';
+}
+/* {provider,id} 추상화를 유지한다 — 유튜브 정책 문제가 생기면 provider 를
+   'vimeo'/'file' 로 바꾸고 여기 분기 한 줄만 늘리면 된다. 비용이 거의 0이라 지금 해둔다. */
+function embedUrl(v){
+  const id=encodeURIComponent(v.id||""), t=(v.sec|0)>0?("&start="+(v.sec|0)):"";
+  if(v.provider==="vimeo") return "https://player.vimeo.com/video/"+id;
+  if(v.provider==="file")  return v.id;
+  return "https://www.youtube-nocookie.com/embed/"+id+"?rel=0&autoplay=1"+t;
+}
+function openVid(v){
+  if(!v||!v.id){ toast("영상이 아직 준비되지 않았습니다."); return; }
+  const box=$("#vbox");
+  if(v.provider==="file"){
+    box.innerHTML='<video controls autoplay style="width:100%;display:block"'
+                 +' src="'+esc(v.id)+'"></video>';
+  }else{
+    box.innerHTML='<iframe src="'+esc(embedUrl(v))+'" style="width:100%;aspect-ratio:16/9;border:0;display:block"'
+                 +' allow="accelerometer;autoplay;encrypted-media;picture-in-picture"'
+                 +' allowfullscreen title="'+esc(v.label||"해설 영상")+'"></iframe>';
+  }
+  $("#vmodal").classList.add("show");
+}
+function closeVid(){ $("#vbox").innerHTML=""; $("#vmodal").classList.remove("show"); }
+$("#vmodal").addEventListener("click",e=>{ if(e.target.id==="vmodal") closeVid(); });
+let tt; function toast(m){ const t=$("#toast"); t.textContent=m; t.classList.add("show"); clearTimeout(tt); tt=setTimeout(()=>t.classList.remove("show"),1900); }
+
+/* 서버 모드에서 내 상태와 CSRF 를 받아둔다.
+   grade.php 는 로그인 회원에게 CSRF 를 요구하므로 채점 전에 이게 끝나 있어야 한다.
+   API 가 비면(file:// 정적 폴백) 아무것도 하지 않는다.
+   ⚠ 헤더 계정칸 UI 는 S7 에서 붙인다. 지금은 데이터만 확보한다. */
+async function loadMe(){
+  if(!API) return;
+  try{ window.ME = await DS.me(); }catch(e){ window.ME = {login:0}; }
+}
+
+/* ══ 과목게시판 ═══════════════════════════════════════════════════════════
+ *
+ * 그누보드 게시판(문제집당 1개, 말머리=과목)이 정본이고 여기는 **요약 뷰**다.
+ * 게시판의 페이징·글쓰기·검색은 자기 URL 로 이동하므로 이 탭 안에 다 넣지 않는다 —
+ * 최근 글을 보여주고 전체는 새 창으로 넘긴다.
+ *
+ * 데이터는 api/board.php 가 준다(로그인 없이도 목록은 보인다).
+ * 과목 칩을 먼저 보여주는 게 핵심이다: 이용자는 "무슨 과목 몇 번"을 다 적기보다
+ * 과목만 고르고 본문을 쓰는 쪽이 흔하다.
+ */
+let boardSj=0, boardCache={};
+
+function renderBoard(list){
+  const chips = '<div class="bd-chips">'
+    + '<button class="'+(boardSj===0?'on':'')+'" data-sj="0">전체</button>'
+    + SUBJECTS.map(s=>'<button class="'+(boardSj===s.sj_no?'on':'')+'" data-sj="'+s.sj_no+'">'
+        +esc(s.sj_name)+'</button>').join("")
+    + '</div>';
+
+  const d = boardCache[boardSj];
+  let body;
+  if(!d){
+    body = '<div class="empty">불러오는 중…</div>';
+  }else if(!d.ok){
+    body = '<div class="empty">게시판을 불러오지 못했습니다.'
+         + (d.err==="no_board" ? '<br><small>이 문제집의 게시판이 아직 만들어지지 않았습니다.</small>' : '')
+         + '</div>';
+  }else if(!d.items||!d.items.length){
+    body = '<div class="empty">아직 글이 없습니다. 첫 질문을 남겨보세요.</div>';
+  }else{
+    body = '<div class="bd-list">' + d.items.map(it=>
+      '<a class="bd-row" href="'+esc(it.href)+'" target="_blank" rel="noopener">'
+      + '<span class="bd-sj">'+esc(it.category||"기타")+'</span>'
+      + '<span class="bd-t">'+esc(it.subject)
+      +   (it.replies?' <em>['+it.replies+']</em>':'')
+      +   (it.answered?' <span class="bd-ok">답변완료</span>':'')
+      + '</span>'
+      + '<span class="bd-m">'+esc(it.name)+' · '+esc(it.date)+'</span></a>'
+    ).join("") + '</div>';
+  }
+
+  const more = d && d.ok && d.board_url
+    ? '<div class="bd-acts">'
+      + '<a class="btn btn-blue" href="'+esc(d.write_url)+'" target="_blank" rel="noopener">질문하기</a>'
+      + '<a class="btn btn-outline" href="'+esc(d.board_url)+'" target="_blank" rel="noopener">전체 보기</a>'
+      + '</div>'
+    : '';
+
+  list.innerHTML = chips + body + more;
+
+  list.querySelectorAll(".bd-chips button").forEach(b=>b.onclick=()=>{
+    boardSj=+b.dataset.sj; render(); loadBoard();
+  });
+
+  if(!d) loadBoard();
+}
+
+function loadBoard(){
+  if(boardCache[boardSj]) return;
+  if(!API){ boardCache[boardSj]={ok:0, err:"no_api"}; render(); return; }
+  const sj=boardSj;
+  fetch(API+"board.php?pd="+encodeURIComponent(PD)+"&sj="+sj,{credentials:"same-origin"})
+    .then(r=>r.json())
+    .then(d=>{ boardCache[sj]=d; if(sj===boardSj) render(); })
+    .catch(()=>{ boardCache[sj]={ok:0}; if(sj===boardSj) render(); });
+}
+
+/* ══ 부팅 ═════════════════════════════════════════════════════════════════ */
+
+function buildFilters(){
+  /* 과목·난이도 드롭다운을 다시 채운다. DS.problems() 로 P 가 갈리면 다시 불러야 한다. */
+  const sub=$("#fSubject"), dif=$("#fDiff");
+  sub.innerHTML='<option value="">전체 과목</option>';
+  dif.innerHTML='<option value="">전체 난이도</option>';
+  subjectNames().forEach(s=>{ const o=document.createElement("option"); o.value=s; o.textContent=s; sub.appendChild(o); });
+  uniq(P.map(p=>p.difficulty)).forEach(s=>{ const o=document.createElement("option"); o.value=s; o.textContent=s; dif.appendChild(o); });
+}
+
+(async function(){
+  /* me 를 먼저 기다린다. grade.php 가 로그인 회원에게 CSRF 를 요구하므로
+     채점 버튼이 눌리기 전에 ME 가 채워져 있어야 한다. */
+  await loadMe();
+
+  /* ★ 문제를 서버에서 받는다. 예전에는 ApiDS.problems 가 호출되지 않아
+     관리자에서 고친 문제가 화면에 반영되지 않았다(구워진 problems.js 만 읽었다). */
+  try{
+    const d=await DS.problems(0);          // 0 = 전 회차
+    if(d&&d.problems&&d.problems.length) P=d.problems;
+    if(d&&d.subjects) SUBJECTS=d.subjects;
+    if(d&&d.rounds)   ROUNDS=d.rounds;
+    if(d&&d.product&&d.product.pd_name) PD_NAME=d.product.pd_name;
+  }catch(e){ /* 정적 폴백 유지 — window.PROBLEMS 로 계속 돈다 */ }
+
+  buildFilters();
+  /* 필터를 바꿔도 답안은 지우지 않는다 — 과목만 좁혀 봤는데 풀던 게 날아가면 안 된다.
+     채점 상태(graded)만 초기화해 새 범위로 다시 채점하게 한다. */
+  ["#fSubject","#fDiff"].forEach(s=>$(s).onchange=()=>{ graded=false; render(); });
+  document.querySelectorAll("#modes button").forEach(b=>b.onclick=()=>setMode(b.dataset.m));
+
+  /* ?m= · ?rd= 를 읽는다. 헤더의 '이론' 메뉴가 &m=theory 를 넘기는데
+     예전에는 무시하고 항상 홈으로 떨어졌다. */
+  const qs=new URLSearchParams(location.search);
+  const rs=rounds();
+  const wantRd=qs.get("rd");
+  curRound = (wantRd && rs.includes(wantRd)) ? wantRd : (rs[0]||null);
+  curTheory=(THEORY[0]&&THEORY[0].href)||null;
+
+  let m=qs.get("m")||"home";
+  if(m==="round"||m==="rounds") m="quiz";       // 옛 링크 호환
+  if(MODES.indexOf(m)<0) m="home";
+  // 문제가 0건이면 문제집 탭으로 보내지 않는다 — 눌러도 빈 화면이다
+  if(m==="quiz" && !rs.length) m="home";
+
+  setMode(m); renderVideos();
+})();
