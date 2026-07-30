@@ -272,9 +272,53 @@ body{ background:var(--ex-soft); }
 #ft .notice:has(.empty_li){ display:none !important; }
 #ft .empty_li{ display:none !important; }
 
-/* 남은 링크 묶음을 가운데로 — 한 칸만 남으면 왼쪽에 치우쳐 보인다 */
-#ft_wr{ display:flex; justify-content:center; gap:40px; flex-wrap:wrap; }
 #ft_catch{ display:none !important; }   /* "소유하신 도메인" 문구 */
+
+/* ── 푸터 레이아웃 ──────────────────────────────────────────────────
+ *
+ * ⚠ 예전에는 `#ft_wr{ display:flex; gap:40px; flex-wrap:wrap }` 였다. 두 가지가 깨졌다:
+ *
+ *   ① 4번째 칸(고객지원)이 다음 줄로 떨어졌다.
+ *      theme/basic 의 default.css:199 가 `.ft_cnt{ width:25%; float:left }` 인데
+ *      flex 로 덮어도 **width:25% 는 그대로 남는다.** 25%×4 + gap 40px×3 이 넘쳐
+ *      flex-wrap 이 마지막 칸을 밀어냈다.
+ *
+ *   ② 링크가 한 줄에 붙어 "SQL 개발자(SQLD) 수강 신청" 이 한 항목처럼 읽혔다.
+ *      default.css:202 의 display:block 은 `#ft_link a` 에만 걸리는데
+ *      tail.php 의 링크는 .ft_cnt 직속이다.
+ *
+ * 그리드로 칸을 명시한다 — 문제집이 늘어 칸 내용이 길어져도 계산이 어긋나지 않는다.
+ */
+#ft_wr{
+  display:grid !important;
+  grid-template-columns:repeat(4, 1fr);
+  gap:26px 40px;
+  width:auto !important; max-width:1160px;
+  margin:0 auto !important; padding:38px 20px !important;
+  text-align:left;
+}
+#ft_wr .ft_cnt{ width:auto !important; float:none !important; padding:0 !important; }
+#ft .ft_cnt h2{ font-size:14px; font-weight:800; color:#cdd6ea !important; margin:0 0 12px !important; }
+#ft .ft_cnt a{ display:block; line-height:2; font-size:13px; }
+#ft .ft_info{ line-height:1.75; font-size:12.5px; }
+
+@media (max-width:900px){ #ft_wr{ grid-template-columns:repeat(2, 1fr); } }
+@media (max-width:520px){ #ft_wr{ grid-template-columns:1fr; } }
+
+/* ── 1200px 강제 폭 해제 ────────────────────────────────────────────
+ * default.css:48  `#hd, #wrapper, #ft { min-width:1200px }`
+ * default.css:56  `#ft_wr { width:1200px }`
+ * default.css:206 `#ft_copy { width:1200px }`
+ *
+ * theme/basic 은 반응형이 아니라 1200px 고정 레이아웃이다. 그래서 노트북(1366×768 에서
+ * 브라우저 여백을 빼면 1200px 미만)에서 **가로 스크롤이 생기고 오른쪽이 잘린다.**
+ * 우리 화면(axnav·mypage·check)은 반응형 한 벌로 만들었으므로 이 강제 폭을 푼다.
+ *
+ * ⚠ 게시판 표(#bo_list table)는 basic 스킨이라 좁은 폭에서 여전히 넘칠 수 있다.
+ *   그건 표 자체가 스크롤되게 두는 편이 페이지 전체가 밀리는 것보다 낫다. */
+#hd, #wrapper, #ft{ min-width:0 !important; }
+#ft_copy{ width:auto !important; max-width:1160px; margin:0 auto !important; padding:18px 20px !important; }
+#container_wr, #container{ max-width:1160px; margin-left:auto !important; margin-right:auto !important; }
 
 /* ── 버튼 공통 ─────────────────────────────────────────────────────── */
 .btn_b01, .btn_b02, .btn_b03, .btn_submit, .btn_cancel, .btn_close{
