@@ -8,12 +8,20 @@
   var root = document.querySelector('.mp');
   if (!root) return;
 
-  var PD   = root.dataset.pd || 'sqld';
+  /* ⚠ 'sqld' 폴백을 두지 않는다. 문제집이 여러 개인 지금은 폴백이
+   *   "다른 문제집을 보고 있는데 SQLD 데이터가 뜨는" 경로가 된다.
+   *   빈 값으로 두고 me.php 의 books[0] 으로 정한다. */
+  var PD   = root.dataset.pd || '';
   var API  = '/exam/api/';
   var tabs = document.getElementById('mpTabs');
   var panel= document.getElementById('mpPanel');
   var CIRC = '①②③④⑤⑥⑦⑧⑨⑩';
-  var cache = {};          // 탭별 응답 캐시 — 탭을 오갈 때마다 다시 부르지 않는다
+
+  /* 탭별 응답 캐시 — 탭을 오갈 때마다 다시 부르지 않는다.
+   * ★ 키에 PD 를 넣는다. 탭 이름만으로 캐시하면 문제집을 바꿨을 때
+   *   이전 문제집의 응시 이력·오답노트가 그대로 남는다. */
+  var cache = {};
+  function ck(t) { return PD + '|' + t; }
 
   function esc(s) {
     return String(s == null ? '' : s)
@@ -38,14 +46,58 @@
       (link ? '<br><br><a href="' + link[1] + '">' + link[0] + '</a>' : '') + '</div>';
   }
 
+  /* ── 문제집 선택 ──────────────────────────────────────────────────
+   * me.php 의 books[] 로 그린다. 수강·포인트가 문제집별이라 이용자가 어느 문제집을
+   * 보고 있는지 항상 알아야 한다.
+   *
+   * 선택은 ?pd= 로 이동한다(SPA 로 갈아끼우지 않는다) — 주소를 공유·북마크할 수 있어야
+   * 하고, 서버가 data-pd 로 초기값을 내려주는 지금 구조와 어긋나지 않는다.
+   */
+  function renderBooks(me) {
+    var box = document.getElementById('mpBooks');
+    if (!box) return;
+    var books = me.books || [];
+
+    if (!books.length) {
+      box.innerHTML = '<div class="ap-pdbar">' +
+        '<span class="ap-pdbar-l">수강 중인 문제집이 없습니다</span>' +
+        '<a class="ap-pdchip" href="/exam/">문제집 보러 가기</a></div>';
+      return;
+    }
+
+    var ST = { pending: '신청 접수', paid: '수강 중', canceled: '취소', refunded: '환불' };
+    box.innerHTML = '<div class="ap-pdbar">' +
+      '<span class="ap-pdbar-l">내 문제집</span>' +
+      books.map(function (b) {
+        var on  = (b.pd_id === PD);
+        var sub = b.entitled ? (b.count + '개') : (ST[b.status] || '');
+        return '<a class="ap-pdchip' + (on ? ' on' : '') + '"' +
+               ' href="?pd=' + encodeURIComponent(b.pd_id) + '">' +
+               esc(b.pd_name) + (sub ? ' <small>· ' + esc(sub) + '</small>' : '') + '</a>';
+      }).join('') +
+      '<a class="ap-pdchip" href="/exam/">+ 더 보기</a></div>';
+  }
+
   /* ── 요약 4칸 ────────────────────────────────────────────────────── */
   function renderStats(me, at, wr) {
+    /* 남은 질문 — 이제 실제 값이다. 문제집별로 다르다.
+     * 아래 note 는 세 경우를 구분한다. 뭉개면 "왜 0인가"를 이용자가 알 수 없다:
+     *   · 수강 중 + 차감 OFF → 무료 기간이라 안 줄어든다
+     *   · 수강 중 + 차감 ON  → 실제 잔여
+     *   · 미수강            → 신청부터 해야 한다 */
+    var sel = null, i;
+    for (i = 0; i < (me.books || []).length; i++) {
+      if (me.books[i].pd_id === PD) { sel = me.books[i]; break; }
+    }
+    var note;
+    if (!sel || !sel.entitled) note = (sel && sel.status === 'pending') ? '승인 대기 중' : '수강 신청이 필요합니다';
+    else                       note = '무료 기간 — 차감 없음';
+
     var cells = [
       { n: at.summary ? at.summary.count : 0, u: '회', l: '응시 횟수' },
       { n: at.summary ? at.summary.avg_pct : 0, u: '점', l: '평균 점수' },
       { n: wr.summary ? wr.summary.still_wrong : 0, u: '개', l: '아직 틀리는 문제' },
-      /* ⚠ 크레딧(S6) 미적용이라 항상 0 이다. 숨기지 않고 사실대로 적는다. */
-      { n: me.count || 0, u: '개', l: '남은 질문', note: '무료 기간 — 차감 없음' }
+      { n: me.count || 0, u: '개', l: '남은 질문', note: note }
     ];
     document.getElementById('mpStats').innerHTML = cells.map(function (c) {
       return '<div class="mp-stat"><div class="n">' + c.n +
@@ -136,15 +188,18 @@
   var LOAD = {
     attempt: { url: function () { return 'attempts.php?pd=' + encodeURIComponent(PD); }, view: viewAttempt },
     wrong:   { url: function () { return 'wrong.php?pd=' + encodeURIComponent(PD); },    view: viewWrong },
-    qna:     { url: function () { return 'qna.php?mine=1'; },                             view: viewQna }
+    /* ★ qna 에도 pd 를 붙인다. 없으면 두 문제집 질문이 한 목록에 섞여
+     *   "이 문제집에서 몇 개 물었나"를 알 수 없다. 서버도 pd 로 필터한다. */
+    qna:     { url: function () { return 'qna.php?mine=1&pd=' + encodeURIComponent(PD); }, view: viewQna }
   };
 
   function show(t) {
-    if (cache[t]) { panel.innerHTML = LOAD[t].view(cache[t]); return; }
+    var key = ck(t);
+    if (cache[key]) { panel.innerHTML = LOAD[t].view(cache[key]); return; }
     panel.innerHTML = '<div class="mp-empty">불러오는 중…</div>';
     get(LOAD[t].url()).then(function (d) {
       if (!d.ok) { panel.innerHTML = empty('불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'); return; }
-      cache[t] = d;
+      cache[key] = d;
       panel.innerHTML = LOAD[t].view(d);
     });
   }
@@ -168,15 +223,33 @@
     m.textContent = open ? '해설 보기' : '해설 접기';
   });
 
-  /* ── 부팅 ────────────────────────────────────────────────────────── */
-  Promise.all([
-    get('me.php'),
-    get('attempts.php?pd=' + encodeURIComponent(PD)),
-    get('wrong.php?pd=' + encodeURIComponent(PD))
-  ]).then(function (r) {
-    renderStats(r[0] || {}, r[1] || {}, r[2] || {});
-    cache.attempt = r[1];
-    cache.wrong   = r[2];
-    show('attempt');
+  /* ── 부팅 ──────────────────────────────────────────────────────────
+   * me.php 를 **먼저 단독으로** 부른다. PD 가 비어 있을 수 있고(주소에 ?pd= 가 없을 때)
+   * 그 값을 books[0] 에서 받아야 나머지 두 요청의 URL 이 정해진다.
+   * 세 개를 한꺼번에 던지면 PD='' 로 나가서 서버가 엉뚱한 기본값을 쓴다.
+   *
+   * 왕복이 한 번 늘지만 me.php 는 가볍고(잔액 쿼리 몇 개), 틀린 문제집 데이터를
+   * 그렸다가 다시 그리는 것보다 낫다.
+   */
+  get('me.php' + (PD ? '?pd=' + encodeURIComponent(PD) : '')).then(function (me) {
+    me = me || {};
+    if (!PD && me.pd) PD = me.pd;          // 서버가 고른 문제집을 따른다
+    renderBooks(me);
+
+    if (!PD) {                              // 수강 중인 문제집이 하나도 없다
+      document.getElementById('mpStats').innerHTML = '';
+      panel.innerHTML = empty('아직 신청한 문제집이 없습니다.', ['문제집 보러 가기', '/exam/']);
+      return;
+    }
+
+    return Promise.all([
+      get('attempts.php?pd=' + encodeURIComponent(PD)),
+      get('wrong.php?pd=' + encodeURIComponent(PD))
+    ]).then(function (r) {
+      renderStats(me, r[0] || {}, r[1] || {});
+      cache[ck('attempt')] = r[0];
+      cache[ck('wrong')]   = r[1];
+      show('attempt');
+    });
   });
 })();

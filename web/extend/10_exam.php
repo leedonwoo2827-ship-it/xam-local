@@ -39,18 +39,43 @@ define('G5_EXAM_PATH', G5_PATH . '/exam');
  *   두 번째 인자가 출력 순서이고, 큰 값이라야 theme/basic 뒤에 와서 이긴다.
  *
  * ⚠ 코어 파일을 하나도 고치지 않는다. 이 파일과 /exam/assets/ 만 우리 것이다.
+ *
+ * ★★ 관리자(/adm/)에는 프론트 스킨을 주입하지 않는다 ★★
+ *   gnuboard-skin.css 는 theme/basic 의 `#hd`·`#tnb`·`#gnb`·`#logo` 를 겨냥해 쓴 것인데,
+ *   **그누보드 관리자의 좌측 사이드바도 `#gnb` 를 쓴다**(adm/admin.lib.php 가 그리는
+ *   `#gnb > .gnb_1dli > .gnb_2dul`). 그래서 아래 두 줄이 관리자 2차 메뉴를 통째로 지웠다:
+ *
+ *       #gnb a{ color:#d3dcf0 !important; }     ← 흰 배경 위의 거의 흰 글자
+ *       #gnb a:hover{ color:#fff !important; }  ← 호버하면 완전히 사라짐
+ *
+ *   `#hd`·`#tnb` 를 네이비로 덮고 `#logo a::after{content:"AXEXAM"}` 를 넣은 것도 같이 새어
+ *   관리자 상단이 엉켰다. 관리자는 코어 화면 그대로 두는 것이 맞다 — 우리가 꾸밀 대상이 아니다.
+ *
+ *   G5_ADMIN_DIR 로 판별하는 이유: 보안상 adm 을 다른 이름으로 바꿔 쓰는 설치가 있고,
+ *   그누보드가 그 값을 상수로 갖고 있다. 하드코딩된 '/adm/' 은 그 경우 빗나간다.
+ *
+ *   ⚠ G5_IS_ADMIN 같은 상수로는 판별할 수 없다. adm/_common.php 가 ../common.php 를
+ *     **먼저** include 하므로, 이 파일이 실행되는 시점엔 아직 정의되지 않았다.
  */
 if (function_exists('add_stylesheet')) {
-    // Pretendard — /exam/ 화면과 같은 얼굴을 그누보드 화면에도 준다
+    $__admdir = defined('G5_ADMIN_DIR') ? G5_ADMIN_DIR : 'adm';
+    // SCRIPT_NAME 은 실행 중인 스크립트 경로다(REQUEST_URI 와 달리 쿼리스트링·리라이트에 흔들리지 않는다)
+    $__in_adm = (strpos((string)$_SERVER['SCRIPT_NAME'], '/' . $__admdir . '/') !== false);
+
+    // Pretendard — /exam/ 화면과 같은 얼굴을 그누보드 화면에도 준다.
+    // 폰트는 관리자에서도 무해하고 오히려 읽기 좋으므로 여기서는 제외하지 않는다.
     add_stylesheet('<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>', 98);
     add_stylesheet('<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/'
                  . 'pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">', 99);
 
     // 공용 네비 + 그누보드 스킨. 세 화면(랜딩·문제풀이·그누보드)이 axnav.css 를 공유한다.
-    foreach (array('axnav.css', 'gnuboard-skin.css') as $__f) {
-        $__v = @filemtime(G5_PATH . '/exam/assets/' . $__f);   // 캐시 무효화 — 없으면 0
-        add_stylesheet('<link rel="stylesheet" href="' . G5_EXAM_URL . '/assets/'
-                     . $__f . '?v=' . (int)$__v . '">', 100);
+    if (!$__in_adm) {
+        foreach (array('axnav.css', 'gnuboard-skin.css') as $__f) {
+            $__v = @filemtime(G5_PATH . '/exam/assets/' . $__f);   // 캐시 무효화 — 없으면 0
+            add_stylesheet('<link rel="stylesheet" href="' . G5_EXAM_URL . '/assets/'
+                         . $__f . '?v=' . (int)$__v . '">', 100);
+        }
+        unset($__f, $__v);
     }
-    unset($__f, $__v);
+    unset($__admdir, $__in_adm);
 }

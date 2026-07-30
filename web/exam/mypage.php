@@ -15,8 +15,20 @@ if (!$is_member) {
     goto_url(G5_BBS_URL . '/login.php?url=' . urlencode(G5_URL . '/exam/mypage.php'));
 }
 
-$pd = preg_match('/^[a-z0-9\-]{1,20}$/', isset($_GET['pd']) ? $_GET['pd'] : '')
-    ? $_GET['pd'] : 'sqld';
+/* ── 문제집 ─────────────────────────────────────────────────────────────────
+ * 형식이 맞고 **ex_product 에 실재하는** 것만 통과시킨다.
+ * 기본값을 'sqld' 로 두지 않는다 — 문제집이 여러 개인 지금은 그게
+ * "다른 문제집을 보려는데 SQLD 가 뜨는" 경로가 된다.
+ * 빈 값이면 mypage.js 가 me.php 의 books[0] 으로 정한다(수강 중인 첫 문제집).
+ */
+$pd_want = preg_match('/^[a-z0-9\-]{1,20}$/', isset($_GET['pd']) ? $_GET['pd'] : '')
+         ? $_GET['pd'] : '';
+$pd = '';
+if ($pd_want !== '') {
+    $r = sql_fetch("select pd_id from ex_product
+                     where pd_id = '" . sql_real_escape_string($pd_want) . "'");
+    if ($r) $pd = $r['pd_id'];
+}
 
 $g5['title'] = '마이페이지';
 include_once(G5_PATH . '/head.php');
@@ -32,10 +44,18 @@ include_once(G5_PATH . '/head.php');
       <p class="mp-sub">가입 <?php echo substr($member['mb_datetime'], 0, 10) ?></p>
     </div>
     <div class="mp-actions">
-      <a class="mp-btn" href="<?php echo G5_URL ?>/exam/check.html?pd=<?php echo urlencode($pd) ?>">문제 풀러 가기</a>
+      <?php /* pd 가 비어 있으면(주소에 ?pd= 없음) 문제집 목록으로 보낸다.
+               빈 pd 로 check.html 을 열면 어느 문제집인지 정해지지 않는다. */ ?>
+      <a class="mp-btn" href="<?php echo G5_URL ?>/exam/<?php
+         echo $pd !== '' ? 'check.html?pd=' . urlencode($pd) : '' ?>">문제 풀러 가기</a>
       <a class="mp-btn ghost" href="<?php echo G5_BBS_URL ?>/member_confirm.php?url=<?php echo urlencode(G5_BBS_URL.'/member_form.php') ?>">회원정보 수정</a>
     </div>
   </div>
+
+  <?php /* 문제집 선택 — me.php 의 books[] 로 mypage.js 가 채운다.
+           서버에서 그리지 않는 이유: 잔액·정산이 credit.php 를 거쳐야 하고
+           그 로직을 화면과 API 두 곳에 두지 않기 위해서다. */ ?>
+  <div id="mpBooks"></div>
 
   <!-- 요약 4칸 -->
   <div class="mp-stats" id="mpStats">

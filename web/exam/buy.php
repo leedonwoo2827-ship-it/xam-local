@@ -13,8 +13,25 @@
  */
 include_once('../common.php');
 
-$pd = preg_match('/^[a-z0-9\-]{1,20}$/', isset($_GET['pd']) ? $_GET['pd'] : '')
-    ? $_GET['pd'] : 'sqld';
+/* ── 문제집 확정 ────────────────────────────────────────────────────────────
+ * 형식 검증만으로는 부족하다 — 'zzz' 도 정규식을 통과해 살아 있는 품목처럼 행동한다.
+ * **ex_product 에 실재하는지** 확인하고, 없으면 첫 노출 품목으로 떨어뜨린다.
+ * (api/_boot.php 의 ex_pd() 도 형식만 본다. 그쪽은 API 라 404 를 주면 되지만
+ *  여기는 화면이라 빈 신청서를 보여주는 것보다 기본 문제집을 보여주는 게 낫다.)
+ */
+$pd_want = preg_match('/^[a-z0-9\-]{1,20}$/', isset($_GET['pd']) ? $_GET['pd'] : '')
+         ? $_GET['pd'] : '';
+
+$pd = '';
+if ($pd_want !== '') {
+    $r = sql_fetch("select pd_id from ex_product
+                     where pd_id = '" . sql_real_escape_string($pd_want) . "' and pd_open = 1");
+    if ($r) $pd = $r['pd_id'];
+}
+if ($pd === '') {
+    $r = sql_fetch("select pd_id from ex_product where pd_open = 1 order by pd_sort, pd_id limit 1");
+    $pd = $r ? $r['pd_id'] : '';
+}
 
 $msg = ''; $err = ''; $done = 0;
 
@@ -32,7 +49,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $memo   = trim(isset($_POST['ax_memo']) ? $_POST['ax_memo'] : '');
         $agree  = !empty($_POST['ax_agree']);
 
-        $plan = $pl_id ? sql_fetch("select * from ex_plan where pl_id = " . $pl_id . " and pl_open = 1") : null;
+        /* ★ pd_id 를 조건에 넣는다. 없으면 ?pd=bdae-w 화면에서 pl_id=1(sqld) 을 제출해
+         *   "빅데이터 신청인데 SQLD 과정" 인 고아 주문이 만들어진다.
+         *   화면에 안 보이는 값이라도 POST 는 조작 가능하다 — 서버에서 교차 검증한다. */
+        $plan = ($pl_id && $pd !== '')
+              ? sql_fetch("select * from ex_plan
+                            where pl_id = " . $pl_id . "
+                              and pd_id = '" . sql_real_escape_string($pd) . "'
+                              and pl_open = 1")
+              : null;
 
         if (!$plan)                       $err = '수강 과정을 선택해 주십시오.';
         elseif (mb_strlen($name) < 2)     $err = '이름을 입력해 주십시오.';
@@ -42,17 +67,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $mb  = sql_real_escape_string($member['mb_id']);
             $now = G5_TIME_YMDHIS;
 
-            // 같은 품목에 처리 대기 중인 신청이 있으면 중복 접수하지 않는다
+            /* ★★ 중복 검사에 pd_id 를 넣는다 ★★
+             *
+             * 이 조건이 없던 것이 다품목 전환의 가장 큰 걸림돌이었다.
+             * mb_id + pending 만 보면 SQLD 를 신청해 승인 대기 중인 회원은
+             * **빅데이터를 아예 신청할 수 없다** — "이미 접수된 신청이 있습니다"로 막힌다.
+             * 문제집별로 따로 수강하는 구조에서는 문제집마다 1건씩 대기할 수 있어야 한다. */
+            $pdq = sql_real_escape_string($pd);
             $dup = sql_fetch("select od_id from ex_order
-                               where mb_id = '$mb' and od_status = 'pending'
+                               where mb_id = '$mb' and pd_id = '$pdq' and od_status = 'pending'
                                order by od_id desc limit 1");
             if ($dup) {
-                $err = '이미 접수된 신청이 있습니다(신청번호 ' . (int)$dup['od_id'] . '). 승인 후 다시 신청해 주십시오.';
+                $err = '이 문제집에 이미 접수된 신청이 있습니다(신청번호 ' . (int)$dup['od_id'] . '). 승인 후 다시 신청해 주십시오.';
             } else {
                 sql_query("insert into ex_order
-                              (mb_id, pl_id, od_price, od_months, od_quota, od_method,
+                              (mb_id, pd_id, pl_id, od_price, od_months, od_quota, od_method,
                                od_depositor, od_status, admin_memo, created_at)
-                           values ('$mb', " . (int)$plan['pl_id'] . ", " . (int)$plan['pl_price'] . ",
+                           values ('$mb', '$pdq', " . (int)$plan['pl_id'] . ", " . (int)$plan['pl_price'] . ",
                                    " . (int)$plan['pl_months'] . ", " . (int)$plan['pl_quota'] . ",
                                    'manual', '" . sql_real_escape_string($name) . "', 'pending',
                                    '" . sql_real_escape_string(mb_substr($tel . ' / ' . $memo, 0, 250)) . "',
@@ -79,11 +110,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 /* ── 데이터 ────────────────────────────────────────────────────────── */
 $prod  = sql_fetch("select * from ex_product where pd_id = '" . sql_real_escape_string($pd) . "'");
+
+/* ★ 이 문제집의 과정만. pd_id 조건이 없으면 두 문제집의 과정 6개가 한 화면에 뜨고,
+ *   첫 항목이 자동 선택되므로 ?pd=bdae-w 인데 SQLD 과정이 기본값이 된다. */
 $plans = array();
-$res = sql_query("select * from ex_plan where pl_open = 1 order by pl_sort, pl_id", false);
+$res = sql_query("select * from ex_plan
+                   where pd_id = '" . sql_real_escape_string($pd) . "' and pl_open = 1
+                   order by pl_sort, pl_id", false);
 while ($r = sql_fetch_array($res)) $plans[] = $r;
 
-$unit = $prod ? (int)$prod['cost_units'] : 10;
+/* 다른 문제집으로 갈아타는 링크용. 노출 중인 것만. */
+$others = array();
+$res = sql_query("select pd_id, pd_name from ex_product
+                   where pd_open = 1 and pd_id <> '" . sql_real_escape_string($pd) . "'
+                   order by pd_sort, pd_id", false);
+while ($r = sql_fetch_array($res)) $others[] = $r;
+
+// 0 이면 아래 floor($quota / $unit) 이 0으로 나누기가 된다
+$unit = ($prod && (int)$prod['cost_units'] > 0) ? (int)$prod['cost_units'] : 10;
 
 $g5['title'] = '수강 신청';
 include_once(G5_PATH . '/head.php');
@@ -115,6 +159,17 @@ include_once(G5_PATH . '/head.php');
       <p class="mp-sub">신청 후 담당자 승인으로 질문권이 지급됩니다.</p>
     </div>
   </div>
+
+  <?php if ($others) { ?>
+  <?php /* 문제집별로 따로 수강하는 구조라, 지금 보고 있는 것이 무엇이고 다른 무엇이 있는지
+           같은 자리에서 보여준다. 없으면 이용자가 URL 을 고쳐야 다른 문제집을 신청할 수 있다. */ ?>
+  <div class="ap-pdbar">
+    <span class="ap-pdbar-l">다른 문제집</span>
+    <?php foreach ($others as $o) { ?>
+      <a class="ap-pdchip" href="?pd=<?php echo urlencode($o['pd_id']) ?>"><?php echo htmlspecialchars($o['pd_name']) ?></a>
+    <?php } ?>
+  </div>
+  <?php } ?>
 
   <?php if ($err) { ?><div class="ap-err"><?php echo htmlspecialchars($err) ?></div><?php } ?>
 

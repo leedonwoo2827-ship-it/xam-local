@@ -97,6 +97,20 @@
   .mp-btn{ flex:1; justify-content:center; }
 }
 
+/* ══ 문제집 전환 띠 (buy.php · mypage.php 공용) ════════════════════
+   문제집별로 따로 수강하는 구조라 "지금 보는 것"과 "다른 것"이 같은 자리에 보여야 한다.
+   없으면 이용자가 URL 의 ?pd= 를 손으로 고쳐야 다른 문제집에 접근한다. */
+.ap-pdbar{ display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  padding:10px 14px; margin:0 0 18px;
+  background:var(--c-soft); border:1px solid var(--c-hair); border-radius:var(--r); }
+.ap-pdbar-l{ font-size:12px; font-weight:700; color:var(--c-faint); letter-spacing:-.01em; }
+.ap-pdchip{ display:inline-flex; align-items:center; height:28px; padding:0 12px;
+  background:#fff; border:1px solid var(--c-hair); border-radius:999px;
+  font-size:13px; font-weight:600; color:var(--c-body); text-decoration:none;
+  transition:border-color .12s, color .12s; }
+.ap-pdchip:hover{ border-color:var(--c-blue); color:var(--c-blue); }
+.ap-pdchip.on{ background:var(--c-ink); border-color:var(--c-ink); color:#fff; }
+
 /* ══ 수강 신청 (buy.php) ═══════════════════════════════════════════ */
 .ap-err{ background:var(--c-bad-s); border:1px solid var(--c-bad); color:var(--c-bad-t);
   padding:12px 16px; border-radius:var(--r); margin-bottom:18px; font-size:14px; font-weight:600; }

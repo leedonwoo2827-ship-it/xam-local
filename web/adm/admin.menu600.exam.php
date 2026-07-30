@@ -18,14 +18,18 @@ if (!defined('_GNUBOARD_')) exit;
  */
 
 $menu['menu600'] = array(
-    array('600000', '문제은행',    G5_ADMIN_URL.'/exam_import.php',       'exam'),
-    array('600400', '문제 임포트', G5_ADMIN_URL.'/exam_import.php',       'exam_import'),
+    array('600000', '문제은행',      G5_ADMIN_URL.'/exam_import.php',       'exam'),
+    array('600200', '질문 검수',     G5_ADMIN_URL.'/exam_qna_list.php',     'exam_qna'),
+    array('600400', '문제 임포트',   G5_ADMIN_URL.'/exam_import.php',       'exam_import'),
+    array('600500', '포인트 지급',   G5_ADMIN_URL.'/exam_credit_grant.php', 'exam_credit'),
+    array('600600', '수강 신청',     G5_ADMIN_URL.'/exam_orders.php',       'exam_orders'),
+
+    /* exam_qna_form.php 는 등록하지 않는다 — 목록에서만 들어가는 상세 화면이고,
+     * 메뉴에 올리면 qa_id 없이 열려 "질문을 찾을 수 없습니다"만 보인다.
+     * $sub_menu = '600200' 을 공유하므로 권한은 '질문 검수'와 같이 움직인다. */
 
     // ↓ 아직 만들지 않았다. 해당 단계에서 주석을 푼다.
     //   메뉴에 먼저 올리면 404 링크가 되어 혼란스럽다.
     // array('600100', '대시보드',    G5_ADMIN_URL.'/exam_index.php',        'exam_index'),
-    // array('600200', '질문 검수',   G5_ADMIN_URL.'/exam_qna_list.php',     'exam_qna'),
     // array('600300', '문제 목록',   G5_ADMIN_URL.'/exam_problem_list.php', 'exam_problem'),
-    // array('600500', '질문권 지급', G5_ADMIN_URL.'/exam_credit_grant.php', 'exam_credit'),
-    // array('600600', '주문 관리',   G5_ADMIN_URL.'/exam_orders.php',       'exam_orders'),
 );
