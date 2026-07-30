@@ -135,3 +135,17 @@
   .rp-card, .rp-hero{ border-color:#bbb; break-inside:avoid; }
   .rp-track > i{ background:#555 !important; }
 }
+
+/* ── 잠긴 회차 ──────────────────────────────────────────────────
+   분석은 서버가 아예 보내지 않는다. 여기는 '무엇이 잠겼는지' 를 알려주는 화면이다. */
+.rp-lock{ text-align:center; }
+.rp-lock-ic{ font-size:34px; line-height:1; margin:6px 0 12px; }
+.rp-lock > h3{ font-size:18px; }
+.rp-lock-list{ list-style:none; margin:16px auto; padding:0; max-width:460px; text-align:left; }
+.rp-lock-list li{ position:relative; padding:9px 0 9px 26px; font-size:14px; color:var(--c-body);
+  border-bottom:1px solid var(--c-hair); line-height:1.6; }
+.rp-lock-list li:last-child{ border-bottom:0; }
+.rp-lock-list li:before{ content:"🔒"; position:absolute; left:0; top:9px; font-size:12px; opacity:.5; }
+.rp-lock-list b{ color:var(--c-ink); }
+.rp-lock .rp-note{ max-width:460px; margin:0 auto; text-align:left; }
+.rp-lock-cta{ display:flex; gap:9px; justify-content:center; flex-wrap:wrap; margin-top:18px; }

@@ -76,7 +76,9 @@
       + '<div class="rp-meta">'
       +   '<div class="line">'
       +     '<b>' + esc(d.pd_name) + '</b>'
-      +     '<span>' + a.rd_no + '회 모의고사</span>'
+      +     '<span>' + esc(a.rd_label || (a.rd_no + "회")) + '</span>'
+      +     (d.access && d.access.free_round
+              ? '<span class="rp-tag good">무료 회차</span>' : '')
       +     (a.filter ? '<span>· ' + esc(a.filter) + '</span>' : '')
       +     (a.sec ? '<span>· ' + mmss(a.sec) + '</span>' : '')
       +     '<span>· ' + esc(String(a.at).slice(0, 16)) + '</span>'
@@ -254,6 +256,46 @@
       + '<div class="rp-next">' + cards.join('') + '</div></div>';
   }
 
+  /* ── 잠긴 회차 ──────────────────────────────────────────────────
+   * 분석은 서버가 아예 보내지 않는다(화면에서 가리는 것만으로는 개발자도구로 다 보인다).
+   * 여기서는 **몇 개가 있는지만** 보여준다 — 그게 무엇을 사는지 알려준다.
+   */
+  function lockCard(d) {
+    var t = d.teaser || {};
+    var free = (t.free_rounds || []);
+
+    var counts = [];
+    if (t.weak_subjects) counts.push('<li><b>' + t.weak_subjects + '개 과목</b>이 보완 필요 이하입니다</li>');
+    if (t.weak_tags)     counts.push('<li>반복해서 틀린 <b>취약 개념 ' + t.weak_tags + '개</b>가 잡혔습니다</li>');
+    if (t.wrong)         counts.push('<li>틀린 <b>' + t.wrong + '문항</b>의 내 답과 정답</li>');
+    if (t.repeat)        counts.push('<li>누적해서 <b>계속 틀리는 문제 ' + t.repeat + '개</b></li>');
+    if (!counts.length)  counts.push('<li>과목별 취약도 · 취약 개념 · 문항별 결과</li>');
+
+    var freeMsg = free.length
+      ? '<div class="rp-note">'
+        + free.map(function (f) { return '<b>' + esc(f.label) + '</b>'; }).join(' · ')
+        + ' 성적표는 <b>무료</b>로 보실 수 있습니다.</div>'
+      : '';
+
+    return '<div class="rp-card rp-lock">'
+      + '<div class="rp-lock-ic">🔒</div>'
+      + '<h3>이 회차의 분석은 수강 신청 후 보실 수 있습니다</h3>'
+      + '<p class="cap">점수는 위에 그대로 있습니다. 잠긴 것은 <b>왜 틀렸는지</b>입니다.</p>'
+      + '<ul class="rp-lock-list">' + counts.join('') + '</ul>'
+      + freeMsg
+      + '<div class="rp-lock-cta">'
+      +   '<a class="mp-btn" href="/exam/buy.php?pd=' + encodeURIComponent(PD) + '">수강 신청</a>'
+      +   (free.length
+            ? '<a class="mp-btn ghost" href="/exam/check.php?pd=' + encodeURIComponent(PD)
+              + '&m=quiz&rd=' + free[0].rd_no + '">' + esc(free[0].label) + ' 무료로 풀어보기</a>'
+            : '')
+      + '</div>'
+      + '<p class="cap" style="margin:14px 0 0">'
+      + '수강 신청하면 <b>전 회차 성적표</b>와 <b>1:1 질문</b>이 열립니다. '
+      + '문제·정답·해설은 지금도 전부 무료입니다.</p>'
+      + '</div>';
+  }
+
   /* ── 조립 ───────────────────────────────────────────────────── */
   function render(d) {
     document.getElementById('rpSub').textContent =
@@ -269,6 +311,14 @@
       c.innerHTML = '<a href="/exam/">' + esc(BRAND) + '</a><span class="sep">›</span>'
         + '<a href="/exam/check.php?pd=' + encodeURIComponent(PD) + '">' + esc(d.pd_name) + ' 문제집</a>'
         + '<span class="sep">›</span><b>성적표</b>';
+    }
+
+    /* 잠긴 회차는 점수(hero)만 그리고 나머지를 잠금 카드로 대체한다.
+       서버가 분석을 안 보냈으므로 subjects(d) 등을 불러도 빈 문자열이 나오지만,
+       의도를 코드에 드러내려고 분기한다. */
+    if (d.access && d.access.locked) {
+      body.innerHTML = hero(d) + lockCard(d);
+      return;
     }
 
     body.innerHTML = hero(d) + subjects(d) + weak(d) + difficulty(d)
