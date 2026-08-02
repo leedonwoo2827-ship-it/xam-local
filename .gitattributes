@@ -1,0 +1,18 @@
+# ★ 소스는 LF 로 고정한다.
+#
+# 이 앱의 렌더러는 바이트 단위로 원본을 재현하는 것이 게이트다
+# (services/book/verify.py — 02/*.md 240개, 05/lesson 24개). core/atomic_io.py 가
+# newline="" 로 쓰는 이유도 같다. Git 이 체크아웃에서 CRLF 를 끼워 넣으면 다른 PC 에서
+# 클론했을 때 렌더러 자체가 CRLF 를 뱉어 240개가 전부 불일치로 뒤집힌다.
+* text=auto eol=lf
+
+# .bat 은 Windows 콘솔이 읽는다 — CRLF 여야 안전하다.
+*.bat text eol=crlf
+
+# 바이너리는 손대지 않는다.
+*.woff2 binary
+*.png   binary
+*.jpg   binary
+*.svg   text eol=lf
+*.mp4   binary
+*.wav   binary

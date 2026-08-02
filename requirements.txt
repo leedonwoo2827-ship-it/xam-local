@@ -1,0 +1,10 @@
+# XAM LOCAL — 로컬 실행 의존성. LLM 없음 · 인증 없음 · DB 없음.
+#
+# 선택 의존성을 0 으로 유지하는 것이 setup.bat 의 실패 지점을 없애는 실질적 이득이다.
+# sha256=hashlib · ZIP=zipfile · SVG 검사=xml.etree · 원자적 쓰기=tempfile+os.replace
+# 잡=threading+subprocess · 한글 파일명 헤더=urllib.parse.quote — 전부 표준 라이브러리.
+
+fastapi>=0.115     # starlette>=0.40 필요 — FileResponse 의 Range 지원(mp4 드래그 탐색)
+uvicorn
+python-dotenv
+PyYAML             # 02/*.md front matter 읽기 전용. 쓰기는 손으로 조립한다(바이트 충실도)

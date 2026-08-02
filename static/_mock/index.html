@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UI/UX 목업 — XAM LOCAL</title>
+<link rel="stylesheet" href="/static/css/app.css">
+<style>
+  body{padding:0}
+  .mock-wrap{max-width:1000px;margin:0 auto;padding:34px 36px}
+  .mk{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:16px;align-items:center;
+      padding:16px 18px;background:var(--bone);border-radius:var(--r-lg);margin-bottom:10px;
+      box-shadow:inset 0 0 0 1px transparent;transition:box-shadow .14s,background .14s}
+  .mk:hover{background:var(--verm-wash);box-shadow:inset 0 0 0 1px rgb(var(--brand-rgb)/.24)}
+  .mk-n{display:grid;place-items:center;width:44px;height:44px;border-radius:var(--r);
+      background:var(--brand);color:var(--bone);font-weight:700;font-size:var(--t-lg)}
+  .mk-t{font-weight:650;font-size:var(--t-md)}
+  .mk-s{font-size:var(--t-xs);color:var(--text-2);margin-top:3px;line-height:1.6}
+  .flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0 2px}
+  .flow .st{padding:5px 12px;border-radius:var(--r-pill);background:var(--linen-deep);
+      font-size:var(--t-xs);color:var(--text-2)}
+  .flow .st.new{background:var(--brand-wash);color:var(--brand);font-weight:650}
+  .flow .ar{color:var(--text-3);font-size:var(--t-xs)}
+  .note{font-size:var(--t-xs);color:var(--text-3);line-height:1.8}
+</style></head><body>
+<div class="mock-wrap">
+  <div class="page-head">
+    <div><h1>UI/UX 목업</h1>
+    <p>구현 전 확정용입니다. 세 화면 모두 실제 디자인 시스템(app.css)으로 그렸습니다.</p></div>
+    <div class="head-actions"><a class="btn sm" href="/">실제 앱으로</a></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">공통 UX 규칙 — 리스트 → 클릭 → 수정·보기</div>
+    <div class="note">
+      모든 화면이 <b>위 = 고르기</b> / <b>아래 = 확정·수정</b> 2단입니다.
+      위에서 리스트를 클릭하면 아래가 그 대상의 수정·보기 화면으로 열립니다.
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">레일 순서 — 파이프라인 그대로</div>
+    <div class="flow">
+      <span class="st new">작업 폴더</span><span class="ar">→</span>
+      <span class="st new">스캔 확정</span><span class="ar">→</span>
+      <span class="st">문항 교정</span><span class="ar">→</span>
+      <span class="st new">음성·자막</span><span class="ar">→</span>
+      <span class="st">영상</span><span class="ar">→</span>
+      <span class="st">발행</span>
+    </div>
+    <div class="note" style="margin-top:8px">진한 것이 이번에 새로 만들 화면입니다.</div>
+  </div>
+
+  <a class="mk" href="/static/_mock/books.html">
+    <span class="mk-n">1</span>
+    <div><div class="mk-t">작업 폴더 — 폴더 권한 로그인</div>
+    <div class="mk-s">Claude Code 데스크탑처럼 폴더를 지정해 품목을 전환합니다.
+      회차 수는 <code>_rounds/*.json</code> 스캔으로 자동 인식 — 3·9·21회차 다 됩니다.</div></div>
+    <span class="btn sm primary">열기</span>
+  </a>
+
+  <a class="mk" href="/static/_mock/scan.html">
+    <span class="mk-n">2</span>
+    <div><div class="mk-t">스캔 확정 (#1) — md 자산화</div>
+    <div class="mk-s">위: 파일 위치 + 원문 PDF + 스캔 결과 파일 고르기 /
+      아래: 80문항을 <code>01/*.md</code> 로 자산화하고 원문 PDF 와 대조해 확정.</div></div>
+    <span class="btn sm primary">열기</span>
+  </a>
+
+  <a class="mk" href="/static/_mock/audio.html">
+    <span class="mk-n">3</span>
+    <div><div class="mk-t">음성 · 자막 확정 (#3)</div>
+    <div class="mk-s">위: 번들 리스트 / 아래: 씬 42개 — 파형·낭독문·자막 큐.
+      자막만 고치면 mp4 유지, 낭독을 고치면 재렌더 신호.</div></div>
+    <span class="btn sm primary">열기</span>
+  </a>
+
+  <div class="card">
+    <div class="card-title">확인 부탁드릴 것</div>
+    <div class="note">
+      · 목업 2의 <b>“스캔 결과 파일”</b> — #1 이 실제로 무엇을 내놓는지(파일 형식·위치)에 맞춰야 합니다.<br>
+      · 낭독문과 자막을 분리해 뒀습니다 — 슬라이드 해설보다 해설대본을 길게 쓰는 구조입니다.<br>
+      · <code>review.json</code> 시각이 실제 mp4 보다 24.2초 앞선 기존 버그는 생산지에서 고치고 전체 재렌더로 정합시킵니다.
+    </div>
+  </div>
+</div>
+</body></html>

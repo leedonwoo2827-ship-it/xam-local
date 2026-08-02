@@ -1,0 +1,407 @@
+# XAM LOCAL — 문제은행 로컬 운영 콘솔
+
+## ★ UX 원칙 — 목록은 패널(위층), 작업은 바탕(아래층)
+
+**이것이 이 앱 UX의 핵심이다. 어떤 화면을 새로 만들어도 반드시 이 규칙을 따른다.**
+
+```
+Layer 1  부유 패널   ← 목록. 고르는 곳.        #/scan  #/questions  #/video
+   ↓ 항목을 누르면 패널이 닫히고
+Layer 0  바탕        ← 작업. 일하는 곳.        #/scan/:id  #/questions/:id  #/video/:code
+```
+
+| 라우트 | 레이어 | 내용 |
+|---|---|---|
+| `#/home` | 바탕 | 파이프라인 4단계. 패널을 닫으면 여기로 돌아온다 |
+| `#/books` | **패널** | 작업 폴더 목록 (좌하단 칩 클릭). 품목 전환 |
+| `#/scan` | **패널** | OCR 본문 목록 (01/ 80문항) |
+| `#/scan/:id` | 바탕 | 그 문항 정리 — 문제·지문·보기·해설 + 원문 PDF + 확정 |
+| `#/questions` | **패널** | 문항 목록 (회차 필터) |
+| `#/questions/:id` | 바탕 | 그 문항 교정 — 5파일 트랜잭션 |
+| `#/video` | **패널** | 번들 목록 |
+| `#/video/:code` | 바탕 | 그 번들 작업 — 씬·슬라이드·음성·자막 |
+| `#/precheck/:code` `#/job/:id` `#/preview/:key` | 패널 | 보고 닫는 표면 |
+| `#/publish` `#/summary` | 바탕 | 절차 화면 |
+
+**왜 이 구조인가**
+- 목록은 "고르는 곳" 이라서 뜨고 사라져야 한다. 바탕을 차지하면 작업 공간이 줄어든다.
+- 패널을 열고 닫아도 **바탕은 언마운트되지 않는다**. 그래서 24번들 렌더(최대 두 시간)의
+  2초 폴링과 에디터의 미저장 텍스트가 살아 있다. 이게 2층으로 나눈 실질적 이유다.
+- 미저장 텍스트를 든 화면은 절대 패널에 두지 않는다 — 패널은 Esc·스크림 클릭으로 닫힌다.
+
+**구현 지점**: `static/js/shell.js` 의 `routes` 테이블(`layer: "panel"` / `"base"`),
+`static/js/panel.js` 의 `GROUPS`. 각 화면 모듈은 `mount(root, ctx)` 에서 `ctx.panel`
+유무로 `mountList()` / `mountWork()` 를 갈라 쓴다.
+
+
+`https://axexam.mycafe24.com/exam/` (그누보드5 · PHP 8.4 · MariaDB) 에 두 번째 품목
+**빅데이터분석기사 필기**(240문항 = 3회차 × 80, 4과목, 영상 24편)를 올리기 위한
+로컬 단일 사용자 앱. 도구 #1·#3 의 산물을 검수하고 axexam 파이프라인을 안전하게 호출한다.
+
+```
+setup.bat        (1회)
+run.bat          → http://127.0.0.1:8870/
+```
+
+## 도구 4개의 관계
+
+```
+#1 exam-ocr-tool      원격 Claude 세션에서 돌았다. 산물만 동기화됨 → BOOK
+#2 exambook-forge     Claude Code 스킬. deck.html · lesson JSON 집필
+#3 chodangi-mp4-forge 로컬. deck.html → mp4          D:\00work\chodangi-mp4-forge-main
+#4 XAM LOCAL          ← 이 앱. 검수 · 구동 · 발행
+   axexam            웹(그누보드5). 로컬이 원본, 서버는 사본   _ref\axexam
+```
+
+## 데이터 흐름 — 이것만은 외워야 한다
+
+```
+_rounds/mNN.json  ──[문항 교정]──┬─► 02/mNN-KK.md + _index.json + difficulty_stats.json + 02/assets/*.svg
+                                 └─► 05/mNN-K/source/lesson_mNN-K.json   ★ 본문이 웹에 가는 경로
+
+02/ (과목·난이도·태그·검수상태) ─┐
+05/*/source/lesson_*.json (본문)─┼─► axexam/scripts/build_check.py ─┬─► 06/ ──FTP──► /www/exam/
+data/youtube_map.bigdata.json   ─┘                                  └─► 06/problems.json
+                                                                          └─브라우저 업로드─► /adm/exam_import.php ─► ex_problem
+
+05/*/source/deck.html ──[#3]──► 05/*/draft/*.static.mp4 ──[유튜브 수동 업로드]──► youtube_map 의 id
+```
+
+**★ `build_check.py` 는 문제 본문(문제문·보기·해설·정답)을 `05/*/source/lesson_*.json`
+에서만 읽는다.** `02/*.md` 는 과목·난이도·태그·`verified`/`reviewed`/`needs_review` 만
+공급한다. `02/` 만 고치면 다음 빌드가 낡은 `05/` 본문을 다시 내보내고 `pr_hash` 가
+그대로여서 임포트가 `변경없음` 을 찍는다 — **수정이 웹에 전혀 반영되지 않는다.**
+그래서 이 앱의 저장은 항상 다섯 곳을 함께 쓴다.
+
+## 화면 4개
+
+| 화면 | 라우트 | 하는 일 |
+|---|---|---|
+| 문항 교정 | `#/questions[/:id]` | 240문항 검수 큐 + 에디터. 저장 = 5파일 트랜잭션 |
+| 영상 제작·검수 | `#/video` | 번들 24개 상태 · 1:1 사전점검 · 렌더 실행 · mp4 미리보기 |
+| 발행 to XAMpass | `#/publish` | 사전점검 → 빌드 → 드라이런 → FTP 목록 → 서버 체크리스트 |
+| 요약노트 검수 | `#/summary[/:key]` | `03/summary_*.md` 편집 (발행되는 건 `.html` — 배너로 경고) |
+
+패널(부유 창): `#/precheck/:code` 사전점검 · `#/job/:id` 렌더 로그 · `#/preview/:key` 발행될 HTML.
+
+### 문항 교정 단축키 — 240개를 도는 속도가 전부다
+
+| 키 | 동작 |
+|---|---|
+| `Ctrl+Enter` | 저장 + 검수완료 + **다음 미검수로 이동** ← 핵심 루프 |
+| `Ctrl+S` | 저장 |
+| `Alt+1~4` | 정답을 그 보기로 |
+| `Alt+Q/W/E` | 난이도 상/중/하 |
+| `Alt+↓/↑` | 목록에서 다음/이전 문항 |
+| `Ctrl+K` | 검색 · `Ctrl+B` 메뉴 접기 · `?` 도움말 |
+
+## 저장하면 실제로 쓰는 파일
+
+| # | 파일 | 내용 |
+|---|---|---|
+| 1 | `_rounds/mNN.json` | 집필 원천 |
+| 2 | `02/mNN-KK.md` | front matter 18키 + 문제/보기/해설 |
+| 3 | `02/assets/{name}.svg` | 인라인 SVG → 파일 |
+| 4 | `02/_index.json`, `02/difficulty_stats.json` | 재계산 (md 는 다시 쓰지 않는다) |
+| 5 | **`05/mNN-K/source/lesson_mNN-K.json`** | 본문이 웹에 가는 경로 |
+
+`04/lesson_mNN.json` 과 `05/*/source/deck.html` 은 **쓰지 않는다**. deck 과 mp4 는
+낡았다고 표시만 한다 — 다시 만드는 것은 #2/#3 의 일이다.
+
+내용이 실제로 바뀐 파일만 쓰고, 모든 쓰기는 원자적(temp+fsync+`os.replace`) + `.bak` 형제다.
+
+### 충돌 처리
+`_rounds` · `02/md` · `05/lesson` 세 파일의 복합 etag 를 저장 시점에 다시 대조한다.
+- **409** 화면을 연 뒤 디스크가 바뀌었다 → 다시 읽으라고 안내
+- **423** 파일이 잠겨 있다(편집기에서 열어 둠) → 닫고 재시도
+- **400** 검증 실패 (보기 개수 · 정답 범위 · `subject_no` 타입 …)
+
+## 바이트 충실도 검증 — 저장 기능의 게이트
+
+`02/*.md` 240개와 두 색인, `05/lesson` 24개는 원격 세션에서 만들어졌고 로컬에 생성
+스크립트가 없다. 렌더러가 한 글자라도 어긋나면 한 문항 저장이 나머지를 손상시킨다.
+
+```
+venv\Scripts\python -m services.book.verify
+```
+
+```
+  02/*.md                        240/240
+  02/_index.json + stats         2/2
+  05/*/source/lesson_*.json      24/24
+  02/assets/*.svg                76/76  (참고용, 게이트 아님)
+```
+
+**전부 통과하지 않으면 `PUT /api/questions/{id}` 가 409 로 막힌다.** 화면에서도 같은
+검사를 `GET /api/verify/roundtrip` 으로 볼 수 있다.
+
+재현해야 했던 실측 세부 (이 중 하나만 틀려도 240개가 달라진다):
+- MD 는 LF 전용 · BOM 없음 · EOF 개행 하나. front matter 18키 순서 고정, `tags` 만 인라인 flow
+- 그림 줄은 `assets[]` 가 아니라 **`_rounds` 의 `explanation` 안에** 이미 들어 있다
+- 반대로 `05/lesson` 의 `explanation` 은 그 그림 줄을 **뺀** 형태다
+- 두 색인 JSON 은 `indent=2, ensure_ascii=False`, **끝 개행 없음**
+- `difficulty_stats.json` 의 키 순서는 **첫 등장 순서** — `overall` 은 전체, `by_round` 는 **회차별**
+  (m01 하·상·중 / m02 중·하·상 / m03 하·중·상)
+- `_index.json.round` 와 `subject_no` 는 **int** 여야 한다. 문자열이면 `problems.json` 의
+  `subjects` 가 빈 배열이 되고 전 행 `sj_no=0` 이 되는데, `과목 N종` 리포트 줄은 이걸 못 잡는다
+- `has_sql`/`has_table` 은 `_rounds` 에 없다(실측 240문항 전부 false) → 기존 md 에서 **보존**한다
+
+### 알려진 드리프트 2건 (정상)
+`m01-47` · `m02-47` 의 `05/lesson` 낭독문이 `_rounds` 와 다르다. `"알(R)이며"` 를
+`"알이며"` 로 손질해 둔 것 — TTS 가 `(R)` 을 "괄호 알 괄호" 로 읽기 때문이다.
+낭독문을 직접 편집하지 않는 한 lesson 쪽 손질을 유지한다.
+
+## 자막 시각 — 두 시간축 (2026-08-02 해결)
+
+한동안 자막이 영상보다 씬마다 0.6초씩 앞섰고, 42씬이면 **24.6초** 벌어졌다.
+원인은 chodangi 안에서 같은 저장소의 두 코드가 서로 다른 시간축을 쓴 것이다.
+
+```
+voicewright/srt.py::merge_scene_cues    cursor += dur              오디오 길이 합
+mp4maker/timeline.py::build_timeline    sum(dur) - N * crossfade   실제 영상 (xfade 로 겹침)
+```
+
+**고친 방식** — `make_bundle_video.CROSSFADE_SEC` 하나에서 세 곳으로 내려보낸다.
+값이 두 군데로 갈리면 조용히 다시 어긋나므로, 상수는 반드시 한 개여야 한다.
+
+| 받는 곳 | 무엇이 맞춰지나 |
+|---|---|
+| `app.synth.synthesize(crossfade=)` → `rebuild_chapter_srt` → `merge_scene_cues` | 통합 SRT · `.ko.vtt` |
+| `python -m mp4maker --crossfade` | 실제 합성 (기본값도 0.6 이지만 명시한다) |
+| `_finalize_bundle()` | `review.json` 의 `startSec` · `totalSeconds` |
+
+**번들마다 시간축이 다르다.** `review.json` 에 표식을 남긴다.
+
+- `"timebase": "video"` + `"crossfadeSec": 0.6` — 보정 완료. `startSec` 을 **그대로** 쓴다
+- 키 없음 — 옛 번들. 읽는 쪽이 `startSec - 씬순서 × crossfade` 로 보정한다
+
+`services/render/bundles.py::scenes()` 가 번들 단위로 이걸 보고 `mp4_start_sec` 를 정한다.
+★ 표식을 안 보고 무조건 빼면 **보정한 번들을 또 보정해서 반대로 틀어진다.**
+옛 번들과 새 번들이 한 폴더에 섞일 수 있으므로 폴더 단위로 판단하면 안 된다.
+
+## 발행 절차
+
+`#/publish` 가 이 순서를 강제한다.
+
+1. **사전점검** — 규칙 48개. `error` 는 우회 불가, `warn` 만 확인 후 통과
+2. **빌드** — 아래 명령. 화면에 그대로 보여주고 확인 모달을 띄운다
+3. **problems.json 검증** — 서버에 없는 임포트 드라이런을 로컬에서 재현
+4. **FTP 목록** — 올릴 것 / 올리지 않을 것 + `06/` 폴더 열기
+5. **서버 체크리스트** — 사람이 하는 단계. 진행상태를 로컬에 기록
+
+```
+_ref\axexam\.venv\Scripts\python.exe scripts\build_check.py
+    --book        D:\00work\ocr-output-260730          ★ 생략 금지
+    --pd          bigdata                              ★ 생략 금지
+    --youtube-map data\youtube_map.bigdata.json        ★ 패치 1번 필요
+    --api-base    ./api/
+    --emit-json
+    --prune
+```
+
+> ★ **`--book` 과 `--pd` 는 절대 생략하지 않는다.** 둘 다 기본값이 SQLD 다
+> (`--book D:/00work/ocr-output-260723`, `--pd sqld`). 하나라도 빠지면 라이브 SQLD
+> 문제은행을 덮어쓴다 — `pr_key` 가 `m01-1#1`…`m03-5#50` 구간에서 겹치고 `pr_id` 는
+> 보존되므로 회원 오답노트 밑에 엉뚱한 문제가 들어앉는다. **되돌릴 수 없다.**
+> 이 앱은 인자 없는 호출 경로를 코드에 두지 않는다.
+
+빌드 리포트에서 확인할 것: `240문제 · 3회` · **`과목 4종`** · `EXAM_API = ./api/` ·
+`SVG 못 찾음` 없음 · `STALE` 없음.
+`과목 1종` 이면 subject 폴백 버그가 되살아난 것이다.
+
+### FTP 로 올리는 것 / 안 올리는 것
+올린다: `06/` 의 `check.html` `index.html` `bigdata.html` `problems.js` `videos.js`
+`theory.js` `theory_content.js` `assets/` `figs/` `theory/` → `/www/exam/`
+(바이너리 전송 · 동시 2개 이하 · 파일명 UTF-8 강제 — 요약노트 파일명이 한글이다)
+
+올리지 않는다:
+- `problems.json` — `/adm/exam_import.php` **화면 업로드**다. 게다가 `/exam/.htaccess` 가
+  `.json` 을 403 으로 막아서 올려도 읽히지 않는다
+- `*.mp4` — 영상은 유튜브 embed 다. 카페24 뉴아우토반 일반형은 하드 1,400MB ·
+  트래픽 4,000MB 라서 411MB 를 올리면 사이트가 정지한다
+
+### 서버 단계 (사람이 한다)
+1. `ex_product` 에 `pd_id='bigdata'` 행 추가 — **임포트보다 먼저.** 없으면 중단된다
+2. 영상 24편 유튜브 업로드 (미등록 → 확인 → 공개. 지웠다 다시 올리면 ID 가 바뀐다)
+3. `youtube_map.bigdata.json` 에 ID 24개 입력 → 다시 빌드
+4. `06/` 를 FTP 업로드
+5. `/adm/exam_import.php` 에서 `problems.json` 업로드
+   (필드명 `jsonfile`. 1회용 관리자 토큰 때문에 스크립트로 못 부른다 — 브라우저 단계)
+6. 리포트 확인 — **신규 240 · 갱신 0 · 변경없음 0 · 건너뜀 0 · 실패 0 · 회차 3행**
+7. `api/products.php` 에 `bigdata` 가 `open:1 · problems:240 · rounds:3` 으로 보이는지
+
+서버에서는 이력을 되읽을 수 없으므로(`.htaccess` 403) `data/publish/checklist.json` 이
+유일한 발행 이력이다.
+
+## chodangi 패치 4건 — 자막 시간축
+
+```
+venv\Scripts\python -m tools.patch_chodangi --check    상태 확인
+venv\Scripts\python -m tools.patch_chodangi            적용 (원본은 *.xam.bak)
+venv\Scripts\python -m tools.patch_chodangi --revert   되돌리기
+```
+
+★ **`chodangi-mp4-forge` 저장소는 없어지고 렌더 엔진이 이 앱으로 들어온다.** 그래서
+거기에 직접 커밋하지 않고 **재현 가능한 패치**로 이쪽에 남겼다. 새로 클론해도 그대로
+적용된다(상류 최신 기준으로 검증 — 적용 · 멱등 · revert 시 바이트 동일).
+
+자막이 영상보다 앞서는 버그 **두 개**였다. m01-1(46씬)에서 합쳐 83.6초 어긋났다.
+
+1. **crossfade 미보정 — 27.0초.** 같은 저장소 안에서 두 코드가 서로 다른 시간축을 썼다.
+   ```
+   voicewright/srt.py::merge_scene_cues   cursor += dur              오디오 길이 합
+   mp4maker/timeline.py::build_timeline   sum(dur) - N * crossfade   실제 영상(xfade 로 겹침)
+   ```
+2. **무음 씬 누락 — 56.6초 (더 크다).** `rebuild_chapter_srt` 가 씬을 `*_narration.srt`
+   **파일 목록**으로 훑었다. 카운트다운·여백은 TTS 를 안 타서 SRT 가 없으니 통째로
+   빠지고, 그 길이(5초×10 + 2초×10 = 70초)가 누적에서 사라지고 crossfade 를 뺄 씬
+   순번도 25(진짜 44)로 작아졌다. → **오디오 기준**으로 훑고 큐만 비운다.
+
+값이 두 군데로 갈리면 조용히 다시 어긋나므로 **상수는 하나**다.
+
+```
+make_bundle_video.CROSSFADE_SEC = 0.6
+   ├→ synthesize → rebuild_chapter_srt → merge_scene_cues    통합 SRT · .ko.vtt
+   ├→ python -m mp4maker --crossfade 0.6                     실제 합성
+   └→ _finalize_bundle()                                     review.json startSec
+```
+
+덤으로 3) TTS·deck 캡처 진행 로그(그 구간이 번들당 몇 분인데 한 줄도 안 뱉었다),
+4) 스크래치 비우고 시작(취소 뒤 남은 `munje/chNN` 을 다음 실행이 재사용했다).
+
+**실측** — `startSec` 공식 46/46 일치 · `totalSeconds` 897.354 vs mp4 실제 897.842
+(패치 전 924.354) · 씬44 자막 `-56.600초` → `+0.000초` · 마지막 큐 끝 895.954초 =
+마지막 낭독 씬 끝.
+
+## axexam 패치 3건
+
+```
+venv\Scripts\python -m tools.patch_axexam --check    상태 확인
+venv\Scripts\python -m tools.patch_axexam            적용 (원본은 *.xam.bak)
+venv\Scripts\python -m tools.patch_axexam --revert   되돌리기
+```
+
+1. **`--youtube-map` 플래그 신설** — 지금은 `data/youtube_map.json` 하나를 모든 책이
+   공유한다. 번들 키가 SQLD 의 `m01-1`…`m06-5` 와 우리 `m01-1`…`m03-8` 구간에서
+   **정면 충돌**한다. 진짜 사고 지점.
+2. **`emit(DETAIL, "sqld.html")` → `f"{args.pd}.html"`** — 패치 전엔 우리 책을 빌드하면
+   SQLD 마케팅 문구가 든 `06/sqld.html` 이 나오고, 올리면 기존 상세 페이지를 덮어쓴다.
+3. **`detail_template.html` 파라미터화** — 제목 · 문항수 · 회차수 · 과목 목록 · 모든
+   `?pd=` 를 치환 토큰으로. 새 품목은 `_PD_LABELS` 에 한 줄만 더한다.
+
+**2차(미구현, 문서로만 남김)** — 역반영. 웹에서 고친 문항(`edited_by` 가 채워진 행)은
+재임포트에서 건너뛰고 `02/` 와 어긋난 채 남는다. axexam 의 BACKLOG 도 "안 하면 언젠가
+원본 복원이 낡은 내용을 되살린다" 고 경고하는데 코드는 0개다. 붙일 자리는 준비돼 있다 —
+`adm/exam_export.php` 를 만들고, 이 앱의 5파일 저장 트랜잭션에 그 데이터를 흘려 넣으면
+된다(`02/*.md` 만 쓰면 조용한 무동작이다).
+
+## 구조
+
+```
+app.py            FastAPI · MIME shield · load_dotenv(utf-8-sig) · 라우터 · /static+/book 마운트
+core/             constants.py (모든 경로) · atomic_io.py
+routes/           ★ JSON/파일전송 전용. 페이지 HTML 은 app.py 만. Pydantic 없음
+services/book/    paths derive md lesson rounds index store verify   ← FastAPI import 금지
+services/render/  bundles precheck runner
+services/publish/ validate buildcheck ftplist
+services/jobs/    jobstore registry
+static/           index.html · css/app.css · js/{util icons charts panel shell store + 화면 4개}
+tools/            patch_axexam.py · patch_chodangi.py
+data/             런타임 (git 제외) — jobs/ publish/
+_ref/axexam/      웹 저장소 (별도 클론)
+```
+
+프론트는 `aim-local`(`d:\00work\260801-aim redesign`) 구조를 이식했다. 3층 레이어
+(베이스 / 부유 패널 / 모달), 2층 해시 라우터, `meta` + `mount(root, ctx)` 화면 모듈 계약,
+스레드 + JSON 파일 + 2초 폴링 잡 모델. 프레임워크·번들러 없음.
+
+퍼스널컬러만 **버밀리언 주홍**(`--brand #c41c0b`)으로 교체했고 리넨 3서피스는 유지했다.
+브랜드가 빨강이 되면서 `--err` 를 딥 플럼(`#6b1d4a`)으로 옮겼다 — 정답/오답을 다루는
+앱에서 브랜드색과 오류색이 같은 빨강이면 제품이 깨진다. 차트에는 `--c-ok` 를 따로 뒀다
+(정답률을 빨강 램프로 칠하면 안 된다).
+
+## 작업 폴더 — 품목 전환 = 폴더 권한
+
+좌하단 칩을 누르면 작업 폴더 패널이 뜬다. Claude Code 데스크탑처럼 **OS 네이티브 폴더
+선택창**으로 권한을 주고, 지정한 폴더만 읽고 쓴다.
+
+- 폴더를 추가하면 `_rounds/*.json` 을 스캔해 **회차 수를 자동 인식**한다. 3회차든 9회차든
+  21회차든, 초기에 1~2회차만 있어도 그대로 뜬다(하드코딩 없음).
+- `pd` 코드와 품목명은 폴더 안 `_book.json` 에 남긴다 — 폴더를 옮겨도 따라오고, 발행할 때
+  `--pd` 로 나간다.
+- 등록 목록은 `data/books.json` (`active` + `items`).
+
+**완성된 책만 쓸 수 있는 게 아니다.** 폴더는 단계로 구분한다 — `01/` 만 있는 폴더(#1 을
+돌리고 #2 를 돌리기 직전)가 정상적인 작업 상태다.
+
+| 단계 | 조건 | 되는 화면 |
+|---|---|---|
+| `01/ 기출까지` | `01/*.md` 존재 | 구조화 MD로 정리 |
+| `02/ 문항까지` | `_rounds/` + `02/*.md` | + 문항 교정 · 요약노트 |
+| `05/ 영상까지` | `05/` 번들 존재 | + 영상 제작·검수 · 발행 |
+
+### ★ `pd` 는 추측하지 않는다
+
+`pd` 는 발행 때 `--pd` 로 나가서 **어느 라이브 품목을 덮어쓸지** 정하는 값이다. 틀리면
+`pr_key` 가 겹치는 행을 UPDATE 하고 `pr_id` 는 보존되므로, 회원 오답노트 밑에 엉뚱한
+문제가 앉는다. 되돌릴 수 없다.
+
+한 번 사고가 났다 — 폴더 이름 `260723` 을 `sqld` 로 추측했는데 그 폴더에는 빅데이터 책
+**복사본**이 들어 있었고, 그 추측이 폴더의 `_book.json` 에까지 굳었다. 그대로 발행하면
+라이브 SQLD 300문제를 덮어썼다. 그래서:
+
+- **폴더 이름으로 pd 를 추측하는 코드를 지웠다.** `_book.json` 에 사람이 확정한 값만 읽는다.
+- pd 를 모르면 **비워 둔다.** 편집·렌더는 그대로 되고 **발행만** 막힌다
+  (`buildcheck.require_pd()` 가 잡을 만들기 전에 끊는다).
+- `active_pd()` 는 비었을 때 상수로 되돌아가지 않는다 — 그 "조용한 기본값" 이 품목을 못 정한
+  폴더를 그냥 `bigdata` 로 밀어 버린다.
+- 폴더가 어느 책인지는 **과목명**으로 판단한다(패널에 표시). 폴더 이름은 근거가 못 된다.
+- 표시 이름은 이 앱 안에서만 쓰는 값이라 `[이름·품목]` 에서 자유롭게 바꿔도 된다.
+
+**전환하면 같이 바뀌는 것** — 이걸 빼먹으면 조용히 엉뚱한 책을 건드린다.
+
+| 대상 | 어떻게 |
+|---|---|
+| 모든 경로 | `paths.book_dir()` 이 상수가 아니라 활성 폴더를 읽는다 |
+| `/book` 정적 마운트 | `app.rebind_book()` 이 `StaticFiles.directory` + `all_directories` 를 갈아 끼운다 |
+| 영상 렌더 | `runner._args()` 가 `--book paths.book_dir()` 을 넘긴다 |
+| 발행 빌드 | `buildcheck` 가 `--book paths.book_dir() --pd require_pd()` 를 넘긴다 |
+| 회차 목록 | `paths.round_codes()` 가 `_rounds/mNN.json` 을 센다 — 상수 아님 |
+| 기대 숫자 | `buildcheck.expected()` 가 회차·문항·과목 수를 폴더에서 읽는다 |
+| 단계별 개수 | `book_routes._count_files()` 가 활성 폴더에서 센다 |
+| 문항 색인 캐시 | `index.invalidate()` |
+| 셸 칩·진행률 | `xam:book-changed` 이벤트로 `store.js` 캐시까지 버린다 |
+
+> ★ `/book` 마운트는 부팅 시점 경로에 묶인다. 안 갈아 끼우면 폴더는 바뀌는데 mp4·이미지·PDF
+> 가 옛 폴더에서 나온다. 그리고 `--pd` 를 상수로 넘기면 **다른 품목의 문제은행을 덮어쓴다** —
+> `pr_key` 가 겹치고 `pr_id` 는 보존되므로 되돌릴 수 없다.
+
+## 설정 (`.env`)
+
+`.env` 의 `XAM_BOOK` 은 **첫 실행 기본값**이다. 그 뒤로는 작업 폴더 화면에서 고른 폴더를 쓴다.
+
+| 키 | 기본값 | 설명 |
+|---|---|---|
+| `XAM_BOOK` | `D:\00work\ocr-output-260730` | #1 산물 트리 (첫 실행 기본값) |
+| `XAM_CHODANGI` | `D:\00work\chodangi-mp4-forge-main` | #3 |
+| `XAM_AXEXAM` | `_ref\axexam` | 웹 저장소 |
+| `XAM_PD` | `bigdata` | `ex_product.pd_id` · URL 의 `?pd=` |
+| `XAM_PORT` | `8870` | |
+
+## 알아 둘 것
+
+- **렌더는 언제나 1개만.** chodangi 의 `munje/chNN` 스크래치가 `exist_ok=True` 라서 같은
+  cid 두 프로세스가 서로의 `images/`·`clips/` 를 덮어쓴다. 게다가 Chromium·TTS·ffmpeg 가
+  자원을 다 쓴다. 서버가 `threading.Lock` 비차단 획득 + 409 로 막는다.
+- **`render.bat` 은 쓰지 않는다.** `chcp`·`pause`·드래그드롭 분기가 방해되고 BOOK 경로가
+  하드코딩돼 있다. `make_bundle_video.py` 를 직접 부르며 `--book` 을 명시한다.
+- **자식 프로세스에 `PYTHONIOENCODING=utf-8` 필수.** chodangi 의 로그 전문이 한국어라
+  cp949 콘솔에서 죽는다.
+- **`01/*.md` 는 CRLF, `02/*.md` 는 LF.** 우리는 `02/` 만 쓰지만 `01/` 을 파싱할 때 걸린다.
+- **`pr_hash` 에 메타가 없다.** `sj_name`/`sj_no`/`verified`/`needs_review` 는 해시에서
+  빠져 있다. 과목 매핑만 고치고 재빌드하면 임포트가 `변경없음` 을 찍고 DB 에 도달하지
+  않는다. 강제 플래그가 없으므로 **첫 임포트 전에** 과목을 확실히 맞춰야 한다.
+- **`pr_key` 형식은 절대 바꾸지 않는다.** `bundle + '#' + number` = `m01-1#7`.
+  바뀌면 `pr_id` 가 갈려서 회원 오답노트·정답률 집계가 통째로 끊긴다.
+- **mp4 Range 는 직접 구현하지 않았다.** starlette 의 `FileResponse` 가 206/416/
+  `Accept-Ranges` 를 이미 낸다. `fastapi>=0.115` 를 못박아 뒀다.

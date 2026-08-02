@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8">
+<title>목업 — 음성/자막 확정</title>
+<link rel="stylesheet" href="/static/css/app.css">
+<style>
+  body{padding:0}
+  .mock-wrap{max-width:1400px;margin:0 auto;padding:26px 32px}
+  .mk-label{position:fixed;top:0;left:0;background:var(--brand);color:var(--bone);
+      font-size:11px;padding:3px 10px;border-radius:0 0 8px 0;z-index:99;font-weight:700}
+  .zone{font-size:var(--t-2xs);font-weight:700;letter-spacing:.06em;color:var(--brand);
+      background:var(--brand-wash);display:inline-block;padding:2px 9px;border-radius:var(--r-pill);margin-bottom:8px}
+  .arrow{text-align:center;color:var(--text-3);font-size:var(--t-2xs);margin:8px 0 4px}
+  .sn-split{display:grid;grid-template-columns:280px minmax(0,1fr);gap:16px;align-items:start}
+  @media(max-width:1100px){.sn-split{grid-template-columns:1fr}}
+  .sn-list{background:var(--bone);border-radius:var(--r-lg);padding:6px;max-height:560px;overflow-y:auto}
+  .sn{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:9px;align-items:center;
+      padding:7px 9px;border-radius:var(--r-sm);cursor:pointer;font-size:var(--t-xs);color:var(--text-2)}
+  .sn:hover{background:var(--verm-wash)}
+  .sn.on{background:var(--brand-wash);color:var(--brand);font-weight:600}
+  .sn-no{font-variant-numeric:tabular-nums;font-weight:600;color:var(--text-3)}
+  .sn.on .sn-no{color:var(--brand)}
+  .sn-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sn-d{font-variant-numeric:tabular-nums;color:var(--text-3);font-size:var(--t-2xs)}
+  .wave{height:52px;background:var(--white);border-radius:var(--r);position:relative;overflow:hidden;
+      box-shadow:inset 0 0 0 1px var(--hairline);display:flex;align-items:center;gap:1px;padding:0 8px}
+  .wave i{flex:1;background:var(--c-seq-2);border-radius:1px;display:block}
+  .wave .pos{position:absolute;top:0;bottom:0;width:2px;background:var(--brand)}
+  .cue{display:grid;grid-template-columns:104px minmax(0,1fr) auto;gap:10px;align-items:start;
+      padding:8px 10px;border-radius:var(--r);background:var(--white);
+      box-shadow:inset 0 0 0 1px var(--hairline);margin-bottom:6px}
+  .cue-t{font-variant-numeric:tabular-nums;font-size:var(--t-2xs);color:var(--text-3);
+      font-family:ui-monospace,Consolas,monospace;padding-top:5px}
+  .cue textarea{width:100%;border:0;background:transparent;font-size:var(--t-xs);
+      line-height:1.6;resize:none;padding:2px 0}
+  .cue.edited{box-shadow:inset 0 0 0 1.5px rgb(var(--warn-rgb)/.4);background:var(--warn-bg)}
+  .note{font-size:var(--t-xs);color:var(--text-3);line-height:1.75;margin-top:12px}
+  .sig{display:flex;align-items:flex-start;gap:9px;padding:11px 13px;border-radius:var(--r);
+      background:var(--warn-bg);color:var(--warn);font-size:var(--t-xs);margin:12px 0}
+  .sig .btn{margin-left:auto;flex:none}
+</style></head><body>
+<span class="mk-label">목업 3 — 음성/자막 확정 (#3) · 위=번들 리스트 / 클릭 → 아래=수정·보기</span>
+<div class="mock-wrap">
+  <div class="page-head">
+    <div><h1>음성 · 자막 확정</h1>
+    <p>씬별로 듣고, 자막과 낭독을 고칩니다. 자막만 고치면 mp4 는 그대로 두고, 낭독을 고치면 재렌더 신호를 띄웁니다.</p></div>
+    <div class="head-actions">
+      <button class="btn sm">일괄 렌더 (24편)</button>
+      <button class="btn sm">새로고침</button>
+    </div>
+  </div>
+
+  <!-- ══ 위: 번들 리스트 ══ -->
+  <span class="zone">위 — 번들 리스트 (클릭하면 아래가 열립니다)</span>
+  <div class="card">
+    <div class="table-wrap"><table class="data">
+      <thead><tr><th style="width:28px"></th><th>번들</th><th>문항</th><th>씬</th><th>길이</th>
+        <th>음성</th><th>자막</th><th>상태</th><th></th></tr></thead>
+      <tbody>
+        <tr class="on"><td><input type="checkbox"></td>
+          <td><b>m01-1</b><div class="muted">자사 모의고사 01회 (1/8)</div></td>
+          <td>1–10번</td><td>42</td><td>5분 11초</td><td>42</td><td>있음</td>
+          <td><span class="badge warn">낭독 수정 2</span></td>
+          <td class="vd-acts"><button class="btn sm">음성/자막</button><button class="btn sm">재렌더</button></td></tr>
+        <tr><td><input type="checkbox"></td>
+          <td><b>m01-2</b><div class="muted">자사 모의고사 01회 (2/8)</div></td>
+          <td>11–20번</td><td>43</td><td>4분 59초</td><td>43</td><td>있음</td>
+          <td><span class="badge ok">확정</span></td>
+          <td class="vd-acts"><button class="btn sm">음성/자막</button><button class="btn sm">재렌더</button></td></tr>
+        <tr><td><input type="checkbox"></td>
+          <td><b>m01-3</b><div class="muted">자사 모의고사 01회 (3/8)</div></td>
+          <td>21–30번</td><td>42</td><td>4분 41초</td><td>42</td><td>있음</td>
+          <td><span class="badge err">자막 시간 어긋남</span></td>
+          <td class="vd-acts"><button class="btn sm">음성/자막</button><button class="btn sm">재렌더</button></td></tr>
+        <tr><td><input type="checkbox"></td>
+          <td><b>m01-4</b><div class="muted">자사 모의고사 01회 (4/8)</div></td>
+          <td>31–40번</td><td>43</td><td>4분 46초</td><td>43</td><td>있음</td>
+          <td><span class="badge ok">확정</span></td>
+          <td class="vd-acts"><button class="btn sm">음성/자막</button><button class="btn sm">재렌더</button></td></tr>
+        <tr><td><input type="checkbox"></td>
+          <td><b>m01-5</b><div class="muted">자사 모의고사 01회 (5/8)</div></td>
+          <td>41–50번</td><td>42</td><td>4분 55초</td><td>42</td><td>있음</td>
+          <td><span class="badge warn">TTS 손질 1</span></td>
+          <td class="vd-acts"><button class="btn sm">음성/자막</button><button class="btn sm">재렌더</button></td></tr>
+      </tbody></table></div>
+  </div>
+
+  <div class="arrow">▼ m01-1 을 눌렀습니다</div>
+
+  <!-- ══ 아래: 수정·보기 ══ -->
+  <span class="zone">아래 — m01-1 씬 42개 수정 · 보기</span>
+
+  <div class="sig">
+    <svg class="i" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 4.4 21 19.6H3z"/><path d="M12 10v3.8"/><circle cx="12" cy="17" r=".9"/></svg>
+    <span><b>낭독을 2개 씬에서 고쳤습니다 (씬 4, 씬 12).</b> 음성 파일은 다시 만들었지만 mp4 에는 아직 반영되지 않았습니다 —
+      영상을 다시 렌더해야 합니다. 자막만 고친 씬은 재렌더 없이 웹에 바로 나갑니다.</span>
+    <button class="btn primary">이 번들 재렌더</button>
+  </div>
+
+  <div class="sn-split">
+    <aside class="sn-list">
+      <div class="sn"><span class="sn-no">00</span><span class="sn-t">표지</span><span class="sn-d">7.4초</span></div>
+      <div class="sn"><span class="sn-no">01</span><span class="sn-t">1과목 빅데이터 분석 기획</span><span class="sn-d">5.2초</span></div>
+      <div class="sn"><span class="sn-no">02</span><span class="sn-t">1번 문제</span><span class="sn-d">12.1초</span></div>
+      <div class="sn" style="color:var(--text-3)"><span class="sn-no">03</span><span class="sn-t">생각할 시간 (무음)</span><span class="sn-d">5.0초</span></div>
+      <div class="sn on"><span class="sn-no">04</span><span class="sn-t">1번 해설</span><span class="sn-d">14.8초</span></div>
+      <div class="sn" style="color:var(--text-3)"><span class="sn-no">05</span><span class="sn-t">여백 (무음)</span><span class="sn-d">2.0초</span></div>
+      <div class="sn"><span class="sn-no">06</span><span class="sn-t">2번 문제</span><span class="sn-d">10.6초</span></div>
+      <div class="sn" style="color:var(--text-3)"><span class="sn-no">07</span><span class="sn-t">생각할 시간 (무음)</span><span class="sn-d">5.0초</span></div>
+      <div class="sn"><span class="sn-no">08</span><span class="sn-t">2번 해설</span><span class="sn-d">13.2초</span></div>
+      <div class="sn"><span class="sn-no">09</span><span class="sn-t">3번 문제</span><span class="sn-d">11.9초</span></div>
+      <div class="sn"><span class="sn-no">10</span><span class="sn-t">생각할 시간 (무음)</span><span class="sn-d">5.0초</span></div>
+      <div class="sn" style="background:var(--warn-bg);color:var(--warn)"><span class="sn-no">12</span><span class="sn-t">3번 해설 · 낭독 수정</span><span class="sn-d">15.1초</span></div>
+    </aside>
+
+    <section>
+      <div class="card">
+        <div class="qz-ed-head">
+          <span class="badge brand">씬 04</span>
+          <span class="qz-ed-id">1번 해설</span>
+          <span class="badge">answer</span>
+          <span class="badge info">14.8초</span>
+          <span class="badge warn">낭독 수정됨</span>
+        </div>
+
+        <div class="qz-field"><label class="qz-label">음성 — scene_04.wav (F2 · 1.05배)</label>
+          <div class="wave">
+            <span class="pos" style="left:38%"></span>
+            <i style="height:20%"></i><i style="height:44%"></i><i style="height:70%"></i><i style="height:52%"></i>
+            <i style="height:82%"></i><i style="height:36%"></i><i style="height:60%"></i><i style="height:74%"></i>
+            <i style="height:28%"></i><i style="height:56%"></i><i style="height:88%"></i><i style="height:40%"></i>
+            <i style="height:66%"></i><i style="height:30%"></i><i style="height:50%"></i><i style="height:76%"></i>
+            <i style="height:22%"></i><i style="height:62%"></i><i style="height:46%"></i><i style="height:34%"></i>
+            <i style="height:70%"></i><i style="height:54%"></i><i style="height:26%"></i><i style="height:48%"></i>
+            <i style="height:80%"></i><i style="height:38%"></i><i style="height:58%"></i><i style="height:24%"></i>
+          </div>
+          <div class="vd-env" style="margin-top:8px">
+            <button class="btn sm">▶ 이 씬 듣기</button>
+            <button class="btn sm">이 씬만 다시 합성</button>
+            <span class="status-chip">0:05.6 / 0:14.8</span>
+            <span class="status-chip ok">자막 시간 = 음성 시간</span>
+          </div>
+        </div>
+
+        <div class="qz-field"><label class="qz-label">낭독문 — TTS 가 읽는 문장 (고치면 재합성 + 재렌더 필요)</label>
+          <textarea rows="3">정답은 일 번입니다. 데이터 거버넌스의 세 가지 구성요소는 원칙, 조직, 프로세스입니다. 인프라 투자수익률, 즉 아이알오아이는 거버넌스의 구성요소가 아니라 별도의 사업성 평가 지표에 해당합니다.</textarea>
+          <div class="qz-speech-check">
+            <span class="status-chip ok">낭독문 정답 일 번 — 일치</span>
+            <span class="status-chip warn">발음 사전 적용: ROI → 아이알오아이</span>
+          </div>
+        </div>
+
+        <div class="qz-field"><label class="qz-label">자막 — 화면에 뜨는 글자 (고쳐도 mp4 재렌더 불필요)</label>
+          <div class="cue">
+            <span class="cue-t">0:00.0 → 0:04.9</span>
+            <textarea rows="1">정답은 1번입니다.</textarea>
+            <button class="btn sm">▶</button>
+          </div>
+          <div class="cue edited">
+            <span class="cue-t">0:04.9 → 0:09.8</span>
+            <textarea rows="2">데이터 거버넌스의 세 가지 구성요소는 원칙·조직·프로세스입니다.</textarea>
+            <button class="btn sm">▶</button>
+          </div>
+          <div class="cue">
+            <span class="cue-t">0:09.8 → 0:14.8</span>
+            <textarea rows="2">ROI는 거버넌스 구성요소가 아니라 사업성 평가 지표입니다.</textarea>
+            <button class="btn sm">▶</button>
+          </div>
+          <div class="field-hint">낭독문과 자막을 따로 둡니다 — TTS 는 “아이알오아이”로 읽고 화면에는 “ROI”로 뜨게 하려면 이게 필요합니다.</div>
+        </div>
+
+        <div class="qz-foot">
+          <button class="btn primary">저장 + 다음 씬 (Ctrl+Enter)</button>
+          <button class="btn">저장</button>
+          <button class="btn">이 씬 재합성</button>
+          <button class="btn">되돌리기</button>
+          <span class="field-hint qz-foot-hint">audio/scene_04.wav · subtitles.srt · m01-1.ko.vtt · review.json</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">영상에서 확인</div>
+        <div style="background:#000;border-radius:var(--r);height:180px;display:grid;place-items:center;color:#888;font-size:12px">
+          m01-1.static.mp4 — 씬 04 지점(0:52)에서 재생 · 자막 track 표시
+        </div>
+        <div class="note">
+          목차를 누르면 그 씬으로 이동합니다. ★ 지금 <code>review.json</code> 의 시각이 실제 mp4 보다
+          <b>24.2초 앞서</b> 있어(씬 경계마다 crossfade 0.6초 미보정) 시크가 틀립니다 —
+          자막 시간을 음성 시간에 맞추고 다시 렌더하면 해결됩니다.
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+</body></html>

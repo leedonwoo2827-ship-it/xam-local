@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>XAM 엑스잼</title>
+<meta name="description" content="문제은행 로컬 운영 콘솔 — 문항 교정 · 영상 검수 · 발행" />
+<meta name="color-scheme" content="light" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23c41c0b'/%3E%3Ctext x='16' y='21' font-family='sans-serif' font-size='9.5' font-weight='700' fill='%23fffff3' text-anchor='middle'%3EXAM%3C/text%3E%3C/svg%3E" />
+<link rel="preload" href="/static/fonts/PretendardVariable.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body>
+<!-- ══ Layer 0 — 베이스 (좌측 레일 + 작업 본문) ══════════════════════════ -->
+<div class="app">
+  <nav class="rail" id="rail" aria-label="주 메뉴">
+    <div class="side-brand">
+      <button class="brand-mark" id="brand-mark" type="button" title="메뉴 펼치기">XAM</button>
+      <span class="brand-name">엑스잼</span>
+      <button class="rail-toggle" id="rail-toggle" type="button"
+              title="메뉴 접기 (Ctrl+B)" aria-label="메뉴 접기">
+        <span data-icon="panelLeft" data-icon-size="16"></span>
+      </button>
+    </div>
+
+    <!-- 240문항 검수가 이 앱의 존재 이유다. 전역 기본 액션을 그 큐에 붙인다. -->
+    <button class="btn-new" id="btn-next-unreviewed" type="button">
+      <span data-icon="check" data-icon-size="15"></span>
+      <span>다음 미검수 문항</span>
+    </button>
+
+    <ul class="side-nav" id="side-nav">
+      <li><a href="#/scan" data-nav="sc" title="구조화 MD로 정리">
+        <span data-icon="folder"></span><span>구조화 MD로 정리</span></a></li>
+      <li><a href="#/questions" data-nav="q" title="문항 교정">
+        <span data-icon="file"></span><span>문항 교정</span></a></li>
+      <li><a href="#/video" data-nav="v" title="영상 제작·검수">
+        <span data-icon="film"></span><span>영상 제작·검수</span></a></li>
+      <li><a href="#/publish" data-nav="p" title="발행 to XAMpass">
+        <span data-icon="package"></span><span>발행 <em class="nav-dest">to XAMpass</em></span></a></li>
+      <li><a href="#/summary" data-nav="s" title="요약노트 검수">
+        <span data-icon="bulb"></span><span>요약노트 검수</span></a></li>
+    </ul>
+
+    <div class="side-section">
+      <span class="side-section-title">최근 작업</span>
+      <a class="side-section-more" href="#/publish">발행 이력</a>
+    </div>
+    <div class="side-recent" id="side-recent">
+      <div class="side-empty">아직 작업이 없습니다.</div>
+    </div>
+
+    <div class="rail-wrap">
+      <button class="side-user" id="side-user" type="button"
+              aria-haspopup="dialog" aria-expanded="false" title="작업 폴더 · 품목 전환">
+        <span class="su-avatar" id="su-avatar">XAM</span>
+        <span class="su-text">
+          <span class="su-name" id="su-name">빅데이터분석기사</span>
+          <span class="su-team" id="su-team">—</span>
+        </span>
+        <span data-icon="chevronUp" data-icon-size="14"></span>
+      </button>
+    </div>
+  </nav>
+
+  <main class="content" id="view" tabindex="-1"></main>
+</div>
+
+<!-- ══ Layer 1 — 부유 패널 (사전점검 · 잡 · HTML 미리보기). panel.js 가 만든다. ══ -->
+<div class="panel-layer" id="panel-layer" hidden></div>
+
+<!-- ══ Layer 2 — 모달 · 토스트 ═══════════════════════════════════════════ -->
+<div class="overlay" id="app-overlay" hidden>
+  <div class="modal" id="app-modal"></div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script type="module" src="/static/js/shell.js"></script>
+</body>
+</html>

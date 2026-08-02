@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+.env
+setup_log.txt
+_server.log
+
+# 런타임 — 잡 로그와 발행 패키지. 다시 만들 수 있고 용량이 크다.
+data/
+
+# 참조용 외부 저장소. 각자 클론한다(별도 git 저장소이므로 중첩시키지 않는다).
+_ref/

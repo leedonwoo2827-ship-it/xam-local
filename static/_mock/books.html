@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8">
+<title>목업 — 작업 폴더</title>
+<link rel="stylesheet" href="/static/css/app.css">
+<style>
+  body{padding:0}
+  .mock-wrap{max-width:1120px;margin:0 auto;padding:28px 36px}
+  .bk-list{display:grid;gap:10px;margin-top:6px}
+  .bk{display:grid;grid-template-columns:40px minmax(0,1fr) auto auto;gap:14px;align-items:center;
+      padding:14px 16px;background:var(--bone);border-radius:var(--r-lg);cursor:pointer;
+      box-shadow:inset 0 0 0 1px transparent;transition:box-shadow .14s,background .14s}
+  .bk:hover{box-shadow:inset 0 0 0 1px rgb(var(--brand-rgb)/.22)}
+  .bk.on{background:var(--brand-wash);box-shadow:inset 0 0 0 1.5px var(--brand)}
+  .bk-name{font-weight:650;font-size:var(--t-md)}
+  .bk-path{font-size:var(--t-2xs);color:var(--text-3);font-family:ui-monospace,Consolas,monospace}
+  .bk-nums{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .bk-add{display:flex;align-items:center;gap:10px;padding:14px 16px;border-radius:var(--r-lg);
+      background:transparent;box-shadow:inset 0 0 0 1.5px var(--hairline);cursor:pointer;color:var(--text-2)}
+  .bk-add:hover{background:var(--verm-wash);color:var(--brand);box-shadow:inset 0 0 0 1.5px rgb(var(--brand-rgb)/.3)}
+  .note{font-size:var(--t-xs);color:var(--text-3);line-height:1.7;margin-top:14px}
+  .mk-label{position:fixed;top:0;left:0;background:var(--brand);color:var(--bone);
+      font-size:11px;padding:3px 10px;border-radius:0 0 8px 0;z-index:99;font-weight:700}
+</style></head><body>
+<span class="mk-label">목업 1 — 작업 폴더 (품목 전환)</span>
+<div class="mock-wrap">
+  <div class="page-head">
+    <div><h1>작업 폴더</h1>
+    <p>Claude Code 데스크탑처럼, 이 앱이 읽고 쓸 폴더를 직접 지정합니다. 지정한 폴더만 접근합니다.</p></div>
+    <div class="head-actions">
+      <button class="btn sm"><span class="i"></span>다시 스캔</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">지정된 폴더</div>
+    <div class="bk-list">
+
+      <div class="bk on">
+        <span class="icon-box"><svg class="i" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.8 7.4a2 2 0 0 1 2-2h3.3l1.9 2.3h7.2a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2H5.8a2 2 0 0 1-2-2z"/></svg></span>
+        <div>
+          <div class="bk-name">빅데이터분석기사 필기 <span class="badge brand">사용 중</span></div>
+          <div class="bk-path">D:\00work\ocr-output-260730</div>
+        </div>
+        <div class="bk-nums">
+          <span class="badge">pd=bigdata</span>
+          <span class="badge">3회차</span>
+          <span class="badge">240문항</span>
+          <span class="badge warn">검수 0</span>
+          <span class="badge ok">영상 24</span>
+        </div>
+        <button class="btn sm">폴더 열기</button>
+      </div>
+
+      <div class="bk">
+        <span class="icon-box idle"><svg class="i" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.8 7.4a2 2 0 0 1 2-2h3.3l1.9 2.3h7.2a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2H5.8a2 2 0 0 1-2-2z"/></svg></span>
+        <div>
+          <div class="bk-name">SQLD <span class="badge idle">준비 중</span></div>
+          <div class="bk-path">D:\00work\ocr-output-260723</div>
+        </div>
+        <div class="bk-nums">
+          <span class="badge">pd=sqld</span>
+          <span class="badge idle">0회차</span>
+          <span class="badge idle">비어 있음</span>
+        </div>
+        <button class="btn sm">폴더 열기</button>
+      </div>
+
+      <div class="bk-add">
+        <span class="icon-box"><svg class="i" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 5.5v13"/><path d="M5.5 12h13"/></svg></span>
+        <div><b>폴더 추가</b><div class="bk-path">탐색기로 골라서 권한을 줍니다</div></div>
+      </div>
+    </div>
+
+    <div class="note">
+      · 폴더를 지정하면 <code>_rounds/*.json</code> 을 스캔해 <b>회차 수를 자동으로 인식</b>합니다. 3회차든 9회차든 21회차든, 초기에 1~2회차만 있어도 그대로 뜹니다.<br>
+      · <code>pd</code> 코드와 품목명은 폴더 안 <code>_book.json</code>(없으면 만들어 줍니다)에 기억합니다 — 발행할 때 <code>--pd</code> 로 나갑니다.<br>
+      · 전환하면 좌하단 칩과 모든 화면이 그 품목으로 바뀝니다. 두 품목의 데이터는 절대 섞이지 않습니다.
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">전환하면 이렇게 보입니다 — 좌하단 칩</div>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:8px">
+      <div class="side-user" style="width:230px;background:var(--bone);border-radius:var(--r-lg)">
+        <span class="su-avatar">XL</span>
+        <span class="su-text"><span class="su-name">빅데이터분석기사 필기</span>
+        <span class="su-team">3회차 · 검수 0 / 240</span></span>
+        <svg class="i" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.4 14.6 12 9l5.6 5.6"/></svg>
+      </div>
+      <div class="side-user" style="width:230px;background:var(--bone);border-radius:var(--r-lg)">
+        <span class="su-avatar">XL</span>
+        <span class="su-text"><span class="su-name">SQLD</span>
+        <span class="su-team">21회차 · 검수 340 / 1,050</span></span>
+        <svg class="i" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.4 14.6 12 9l5.6 5.6"/></svg>
+      </div>
+    </div>
+    <div class="note">칩을 누르면 이 화면이 뜹니다. 21회차 1,050문항도 같은 구조로 동작합니다.</div>
+  </div>
+</div>
+</body></html>

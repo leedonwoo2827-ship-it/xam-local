@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8">
+<title>목업 — 스캔 확정</title>
+<link rel="stylesheet" href="/static/css/app.css">
+<style>
+  body{padding:0}
+  .mock-wrap{max-width:1400px;margin:0 auto;padding:26px 32px}
+  .mk-label{position:fixed;top:0;left:0;background:var(--brand);color:var(--bone);
+      font-size:11px;padding:3px 10px;border-radius:0 0 8px 0;z-index:99;font-weight:700}
+  .zone{font-size:var(--t-2xs);font-weight:700;letter-spacing:.06em;color:var(--brand);
+      background:var(--brand-wash);display:inline-block;padding:2px 9px;border-radius:var(--r-pill);margin-bottom:8px}
+  .src-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:1100px){.src-grid{grid-template-columns:1fr}}
+  .fl{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:10px;align-items:center;
+      padding:7px 10px;border-radius:var(--r-sm);font-size:var(--t-xs);cursor:pointer}
+  .fl:hover{background:var(--verm-wash)}
+  .fl.on{background:var(--brand-wash);color:var(--brand);font-weight:600}
+  .fl-meta{color:var(--text-3);font-size:var(--t-2xs);font-variant-numeric:tabular-nums}
+  .path-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .path-row input{flex:1;padding:8px 12px;border:0;border-radius:var(--r);background:var(--white);
+      box-shadow:inset 0 0 0 1px var(--hairline);font-family:ui-monospace,Consolas,monospace;font-size:var(--t-xs)}
+  .sc-split{display:grid;grid-template-columns:250px minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+  @media(max-width:1300px){.sc-split{grid-template-columns:220px minmax(0,1fr)}}
+  .sc-list{background:var(--bone);border-radius:var(--r-lg);padding:6px;max-height:520px;overflow-y:auto}
+  .pdfview{background:var(--white);border-radius:var(--r);min-height:300px;display:grid;
+      place-items:center;color:var(--text-3);font-size:var(--t-xs);text-align:center;padding:20px;
+      box-shadow:inset 0 0 0 1px var(--hairline)}
+  .note{font-size:var(--t-xs);color:var(--text-3);line-height:1.75;margin-top:12px}
+  .arrow{text-align:center;color:var(--text-3);font-size:var(--t-2xs);margin:6px 0 2px}
+</style></head><body>
+<span class="mk-label">목업 2 — 스캔 확정 (#1) · 위=고르기 / 아래=확정</span>
+<div class="mock-wrap">
+  <div class="page-head">
+    <div><h1>스캔 확정</h1>
+    <p>스캔한 결과를 01/*.md 로 자산화하고, 원문 PDF 와 대조해 확정합니다. 여기서 확정한 것이 문항 교정의 기준이 됩니다.</p></div>
+    <div class="head-actions">
+      <button class="btn sm">가져오기</button>
+      <button class="btn sm primary">80문항 자산화</button>
+    </div>
+  </div>
+
+  <!-- ══ 위: 고르기 ══ -->
+  <span class="zone">위 — 파일 위치 · 스캔 파일 고르기</span>
+  <div class="card">
+    <div class="path-row">
+      <span class="qz-label" style="margin:0">스캔 결과 폴더</span>
+      <input value="D:\00work\ocr-output-260730\_scan" readonly>
+      <button class="btn sm">폴더 고르기</button>
+      <button class="btn sm">열기</button>
+    </div>
+    <div class="src-grid">
+      <div>
+        <div class="qz-label">① 원문 PDF — 00/</div>
+        <div class="fl on"><span class="badge brand">기출</span>
+          <span>Big Data Analysis Engineer1.pdf</span><span class="fl-meta">625 KB · 18p</span></div>
+        <div class="fl"><span class="badge">해설</span>
+          <span>정답및해설.pdf</span><span class="fl-meta">625 KB · 18p</span></div>
+        <div class="fl" style="color:var(--text-3)"><span class="badge idle">추가</span>
+          <span>PDF 끌어다 놓기</span><span class="fl-meta">—</span></div>
+      </div>
+      <div>
+        <div class="qz-label">② 스캔 결과 파일 — 자산화할 원천</div>
+        <div class="fl on"><span class="badge ok">선택</span>
+          <span>scan_01_ocr.json</span><span class="fl-meta">80문항 · 312 KB</span></div>
+        <div class="fl"><span class="badge">md</span>
+          <span>scan_01_raw.md</span><span class="fl-meta">1 파일 · 96 KB</span></div>
+        <div class="fl"><span class="badge idle">이전</span>
+          <span>scan_01_ocr.20260728.json</span><span class="fl-meta">80문항</span></div>
+      </div>
+    </div>
+    <div class="note">
+      · OCR 자체는 지금처럼 <b>#1(원격 세션)</b>이 합니다. 이 화면은 그 결과를 받아 <code>01/01-01.md ~ 01-80.md</code> 로 자산화하고 확정합니다.<br>
+      · 자산화하면 각 md 에 <code>source_pdf</code>·<code>source_pages</code> 가 박혀서, 아래에서 원문 페이지와 바로 대조할 수 있습니다.
+    </div>
+  </div>
+
+  <div class="arrow">▼ 고른 것의 내용을 아래에서 확정</div>
+
+  <!-- ══ 아래: 확정 ══ -->
+  <span class="zone">아래 — 내용 확정 (80문항)</span>
+  <div class="card qz-head" style="margin-bottom:14px">
+    <div class="qz-head-stat">
+      <div class="chart-wrap"><svg class="chart" viewBox="0 0 76 76" width="76" height="76" role="img">
+        <circle cx="38" cy="38" r="34.5" fill="none" stroke="var(--c-track)" stroke-width="7"/>
+        <circle cx="38" cy="38" r="34.5" fill="none" stroke="var(--c-seq-4)" stroke-width="7"
+          stroke-linecap="round" stroke-dasharray="121.7 216.8" transform="rotate(-90 38 38)"/>
+        <text x="38" y="38" text-anchor="middle" dominant-baseline="central" fill="var(--text)"
+          font-family="var(--font)" font-size="20" font-weight="700">56%</text></svg></div>
+      <div><div class="stat-value">45 / 80</div><div class="muted">남은 35문항</div></div>
+    </div>
+    <div class="qz-head-bars">
+      <div class="chart-wrap"><svg class="chart" viewBox="0 0 1000 12" preserveAspectRatio="none" width="100%" height="12">
+        <rect x="0" y="0" width="560" height="12" rx="2" fill="var(--c-seq-4)"/>
+        <rect x="562" y="0" width="120" height="12" rx="2" fill="var(--c-seq-3)"/>
+        <rect x="684" y="0" width="316" height="12" rx="2" fill="var(--c-seq-1)"/></svg></div>
+      <div class="legend">
+        <span><i style="background:var(--c-seq-4)"></i>확정 45</span>
+        <span><i style="background:var(--c-seq-3)"></i>수정함 9</span>
+        <span><i style="background:var(--c-seq-1)"></i>미확정 35</span>
+      </div>
+      <div class="muted">제1회 실전모의고사 · 4과목 × 20문항</div>
+    </div>
+    <div class="qz-head-note muted">1회 기출</div>
+  </div>
+
+  <div class="sc-split">
+    <aside class="sc-list">
+      <div class="qz-row on"><span class="qz-row-id">01-01</span><span class="qz-row-subj">분석 기획</span>
+        <span class="badge ok">하</span><span class="qz-row-ans">②</span>
+        <span class="qz-row-marks"><span class="qz-mark">p.13-18</span></span></div>
+      <div class="qz-row"><span class="qz-row-id">01-02</span><span class="qz-row-subj">분석 기획</span>
+        <span class="badge warn">중</span><span class="qz-row-ans">①</span>
+        <span class="qz-row-marks"><span class="qz-mark todo">미확정</span></span></div>
+      <div class="qz-row"><span class="qz-row-id">01-03</span><span class="qz-row-subj">분석 기획</span>
+        <span class="badge err">상</span><span class="qz-row-ans">④</span>
+        <span class="qz-row-marks"><span class="qz-mark fig">그림</span><span class="qz-mark todo">미확정</span></span></div>
+      <div class="qz-row"><span class="qz-row-id">01-04</span><span class="qz-row-subj">분석 기획</span>
+        <span class="badge ok">하</span><span class="qz-row-ans">③</span>
+        <span class="qz-row-marks"><span class="qz-mark" style="background:var(--err-bg);color:var(--err)">OCR 의심</span></span></div>
+      <div class="qz-row"><span class="qz-row-id">01-05</span><span class="qz-row-subj">탐색</span>
+        <span class="badge warn">중</span><span class="qz-row-ans">②</span></div>
+      <div class="qz-row"><span class="qz-row-id">01-06</span><span class="qz-row-subj">탐색</span>
+        <span class="badge warn">중</span><span class="qz-row-ans">①</span></div>
+      <div class="qz-row"><span class="qz-row-id">01-07</span><span class="qz-row-subj">탐색</span>
+        <span class="badge ok">하</span><span class="qz-row-ans">④</span></div>
+    </aside>
+
+    <section class="card qz-editor">
+      <div class="qz-ed-head">
+        <span class="badge brand">1회</span><span class="qz-ed-id">01-01</span>
+        <span class="badge">분석 기획</span>
+        <div class="seg sm"><button class="on">하</button><button>중</button><button>상</button></div>
+      </div>
+      <div class="qz-derived">
+        <span class="status-chip ok">정답 ②</span>
+        <span class="status-chip">보기 4개</span>
+        <span class="status-chip">그림 없음</span>
+        <span class="status-chip warn">p.1, 13–18</span>
+        <span class="status-chip">OCR claude</span>
+      </div>
+      <div class="qz-field"><label class="qz-label">문제</label>
+        <textarea rows="3">다음 중 데이터 거버넌스의 구성요소로 옳지 않은 것은?</textarea></div>
+      <div class="qz-field"><label class="qz-label">보기 — 라디오가 정답입니다</label>
+        <div class="qz-choices">
+          <label class="qz-choice"><input type="radio" name="a"><span class="qz-choice-glyph">①</span>
+            <textarea class="qz-choice-input" rows="1">인프라 투자수익률(ROI)</textarea></label>
+          <label class="qz-choice has"><input type="radio" name="a" checked><span class="qz-choice-glyph">②</span>
+            <textarea class="qz-choice-input" rows="1">원칙(Principle)</textarea></label>
+          <label class="qz-choice"><input type="radio" name="a"><span class="qz-choice-glyph">③</span>
+            <textarea class="qz-choice-input" rows="1">조직(Organization)</textarea></label>
+          <label class="qz-choice"><input type="radio" name="a"><span class="qz-choice-glyph">④</span>
+            <textarea class="qz-choice-input" rows="1">프로세스(Process)</textarea></label>
+        </div></div>
+      <div class="qz-field"><label class="qz-label">해설</label>
+        <textarea rows="3">데이터 거버넌스의 3대 구성요소는 원칙·조직·프로세스이다. …</textarea></div>
+      <div class="qz-foot">
+        <button class="btn primary">확정 + 다음 (Ctrl+Enter)</button>
+        <button class="btn">저장</button>
+        <button class="btn">OCR 의심 표시</button>
+        <span class="field-hint qz-foot-hint">01/01-01.md 에 씁니다</span>
+      </div>
+    </section>
+
+    <aside class="card">
+      <div class="card-title">원문 대조 — 00/ PDF</div>
+      <div class="vd-env" style="margin-bottom:10px">
+        <span class="status-chip">p.13</span><span class="status-chip">p.14</span>
+        <span class="status-chip">p.15</span><span class="status-chip">…</span>
+      </div>
+      <div class="pdfview">
+        원문 PDF 13페이지<br><span class="muted">source_pages 를 눌러 페이지를 넘깁니다</span>
+      </div>
+      <div class="note">확정하면 <code>verified: true · reviewed: true · needs_review: false</code> 로 바뀝니다.</div>
+    </aside>
+  </div>
+</div>
+</body></html>
