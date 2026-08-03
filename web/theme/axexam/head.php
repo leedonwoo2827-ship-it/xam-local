@@ -102,6 +102,9 @@ $ex_pd = $ex_books ? $ex_books[0]['pd_id'] : '';
           <a class="axnav-item<?php echo $on('check.php') ?>" href="<?php echo $ex_go('check.php') ?>"><svg class="ic"><use href="#i-edit"></use></svg>문제 풀기</a>
           <a class="axnav-item" href="<?php echo $ex_go('check.php', '&amp;m=theory') ?>"><svg class="ic"><use href="#i-book"></use></svg>이론</a>
           <a class="axnav-item<?php echo $on('buy.php') ?>" href="<?php echo $ex_go('buy.php') ?>"><svg class="ic"><use href="#i-cap"></use></svg>수강 신청</a>
+          <?php /* 성적표 샘플 — 로그인·응시 없이 열린다(api/lib/sample.php).
+                   채점 뒤에 무엇이 나오는지 보여주는 유일한 경로다. */ ?>
+          <a class="axnav-item<?php echo $on('sample=1') ?>" href="<?php echo $ex_go('report.php', '&amp;sample=1') ?>"><svg class="ic"><use href="#i-chart"></use></svg>성적표 샘플</a>
         </nav>
         <nav class="axnav-util">
           <a class="axnav-item<?php echo $on('bo_table=notice') ?>" href="<?php echo G5_BBS_URL ?>/board.php?bo_table=notice"><svg class="ic"><use href="#i-bell"></use></svg>공지</a>
@@ -118,7 +121,10 @@ $ex_pd = $ex_books ? $ex_books[0]['pd_id'] : '';
                    ⚠ url 에 도메인을 넣으면 logout.php 가 거부한다 — 경로만 준다. */ ?>
           <a class="axnav-cta" href="<?php echo G5_BBS_URL ?>/logout.php?url=<?php echo urlencode('/exam/') ?>">로그아웃</a>
         <?php } else { ?>
-          <a class="axnav-item<?php echo $on('register') ?>" href="<?php echo G5_BBS_URL ?>/register.php"><svg class="ic"><use href="#i-user"></use></svg>회원가입</a>
+          <?php /* 회원가입도 버튼이다 — 정적 페이지(index.html·detail.html)의 헤더와
+                   같은 모양이어야 한다. 화면을 옮겨 다니면서 버튼이 텍스트로 바뀌면
+                   같은 헤더로 읽히지 않는다. 채워진 버튼은 '로그인' 하나로 유지한다. */ ?>
+          <a class="axnav-cta ghost<?php echo $on('register') ?>" href="<?php echo G5_BBS_URL ?>/register.php">회원가입</a>
           <a class="axnav-cta" href="<?php echo G5_BBS_URL ?>/login.php">로그인</a>
         <?php } ?>
         </nav>

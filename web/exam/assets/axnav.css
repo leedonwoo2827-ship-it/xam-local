@@ -73,6 +73,18 @@
 }
 .axnav-cta:hover{ background:#f3c200; }
 
+/* 회원가입 — 같은 크기의 외곽선 버튼.
+   채워진 버튼은 하나로 유지한다. 둘 다 노란색이면 눈이 갈 곳이 없어지고,
+   '로그인' 과 '회원가입' 을 구별하지 않고 아무거나 누르게 된다.
+   border 대신 inset box-shadow 를 쓰는 이유: 높이 34px 가 그대로 유지된다. */
+.axnav-cta.ghost{
+  background:transparent; color:#dbe4f7;
+  box-shadow:inset 0 0 0 1px var(--ax-nav-line);
+}
+.axnav-cta.ghost:hover{ background:rgba(255,255,255,.09); color:#fff; }
+/* 회원가입 페이지에 있을 때 — head.php 의 $on() 이 붙인다 */
+.axnav-cta.ghost.on{ background:rgba(255,255,255,.14); color:#fff; }
+
 /* 로그인 중 표시 */
 .axnav-me{
   display:inline-flex; align-items:center; gap:6px; margin-left:4px;

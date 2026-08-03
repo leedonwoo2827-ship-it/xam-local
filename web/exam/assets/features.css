@@ -1,0 +1,99 @@
+/* features.css — 기능 소개(자료화면)
+ *
+ * mypage.css 의 색 토큰(`.mp` 에 정의된 --c-*)을 쓴다. 두 벌 정의하지 않는다 —
+ * 한쪽만 고치면 화면마다 색이 갈린다(report.css 에서 같은 실수를 이미 했다).
+ * 그래서 `.fe` 에도 같은 토큰을 상속시킨다. */
+.fe{ max-width:1160px; margin:0 auto; padding:0 20px 60px; }
+
+/* mypage.css 가 토큰을 `.mp` 에 걸어놨으므로 여기서 한 번 더 받아온다.
+   값은 복사하지 않고 var() 로 참조 — 원본이 바뀌면 같이 바뀐다. */
+.fe{ color:var(--c-ink, #1e2637); }
+
+/* ── 목차 ─────────────────────────────────────────────────────────────────
+   푸터에서 #앵커로 뛰어온다. 어디로 떨어졌는지, 또 무엇이 더 있는지 보여야 한다. */
+.fe-toc{
+  display:flex; flex-wrap:wrap; gap:8px;
+  margin:0 0 26px; padding:14px 16px;
+  background:var(--c-soft, #f6f8fc); border:1px solid var(--c-line, #e3e8f0);
+  border-radius:12px;
+}
+.fe-toc a{
+  font-size:13px; font-weight:600; color:var(--c-body, #46536b);
+  padding:6px 12px; border-radius:999px; background:#fff;
+  border:1px solid var(--c-line, #e3e8f0); white-space:nowrap;
+}
+.fe-toc a:hover{ border-color:var(--c-blue, #2c5ce6); color:var(--c-blue, #2c5ce6); }
+.fe-toc a em{ font-style:normal; font-size:11px; opacity:.6; margin-left:4px; }
+
+/* ── 항목 카드 ─────────────────────────────────────────────────────────────
+   설명 왼쪽 / 캡처 오른쪽. 캡처가 세로로 긴 관리자 화면이라 1:1.15 로 둔다. */
+.fe-card{
+  display:grid; grid-template-columns:1fr 1.15fr; gap:30px; align-items:start;
+  padding:26px 0; border-top:1px solid var(--c-line, #e3e8f0);
+  /* 푸터 #앵커로 뛰어올 때 제목이 헤더에 가리지 않게 */
+  scroll-margin-top:84px;
+}
+.fe-card:first-of-type{ border-top:0; }
+.fe-card.soon{ opacity:.72; }
+
+.fe-n{
+  display:flex; align-items:center; gap:8px;
+  font-size:12px; font-weight:800; letter-spacing:.06em;
+  color:var(--c-blue, #2c5ce6); margin-bottom:10px;
+}
+.fe-soon{
+  font-size:11px; font-weight:700; letter-spacing:0;
+  color:var(--c-muted, #6b7688); background:var(--c-soft, #f2f4f8);
+  border:1px solid var(--c-line, #e3e8f0);
+  padding:2px 8px; border-radius:999px;
+}
+.fe-txt h3{ font-size:19px; font-weight:800; line-height:1.45; margin:0 0 10px; }
+.fe-txt p{ font-size:14px; line-height:1.75; color:var(--c-body, #46536b); margin:0 0 12px; }
+.fe-why{
+  font-size:13px !important; line-height:1.8 !important;
+  padding:12px 14px; border-radius:10px;
+  background:var(--c-soft, #f6f8fc); border:1px solid var(--c-line, #e3e8f0);
+}
+.fe-why b{ color:var(--c-ink, #1e2637); }
+.fe-why code{
+  background:#fff; border:1px solid var(--c-line, #e3e8f0);
+  padding:1px 5px; border-radius:5px; font-size:12px;
+}
+.fe-adm{
+  display:inline-block; margin-top:12px; font-size:13px; font-weight:700;
+  color:var(--c-blue, #2c5ce6);
+}
+
+/* ── 캡처 ──────────────────────────────────────────────────────────────── */
+.fe-shot img{
+  display:block; width:100%; height:auto; border-radius:12px;
+  border:1px solid var(--c-line, #e3e8f0);
+  box-shadow:0 10px 28px -14px rgba(12,20,42,.28);
+}
+/* 자리표시 — 캡처가 밀렸다는 사실이 눈에 보여야 한다.
+   빈 여백으로 두면 '원래 그런 화면'으로 읽히고 영영 안 채워진다. */
+.fe-ph{
+  display:flex; flex-direction:column; justify-content:center; align-items:center;
+  gap:7px; min-height:200px; padding:22px;
+  border:2px dashed var(--c-line-strong, #cfd7e6); border-radius:12px;
+  background:var(--c-soft, #f6f8fc); text-align:center;
+}
+.fe-ph b{ font-size:14px; color:var(--c-body, #46536b); }
+.fe-ph code{
+  font-size:12px; background:#fff; border:1px solid var(--c-line, #e3e8f0);
+  padding:3px 8px; border-radius:6px; color:var(--c-ink, #1e2637);
+}
+.fe-ph span{ font-size:12.5px; color:var(--c-muted, #6b7688); line-height:1.6; }
+.fe-ph.off{ border-style:solid; background:#fff; }
+
+@media (max-width:860px){
+  .fe-card{ grid-template-columns:1fr; gap:18px; }
+  .fe-shot{ order:2; }
+}
+
+/* 인쇄 — 자료화면이라 그대로 뽑아 쓸 수 있어야 한다 */
+@media print{
+  .fe-toc, .mp-actions, .fe-adm, .crumb-bar{ display:none !important; }
+  .fe-card{ break-inside:avoid; page-break-inside:avoid; }
+  .fe-shot img{ box-shadow:none !important; }
+}

@@ -62,22 +62,45 @@ $ex_url = G5_URL . '/exam';
               echo (isset($ex_pd) && $ex_pd !== '') ? '?pd=' . urlencode($ex_pd) : '' ?>">수강 신청</a>
         </div>
 
+        <?php /* ── 주요 기능 두 칸 ──────────────────────────────────────────
+           이용·고객지원 링크는 나중에 사이트맵 푸터로 내린다. 지금 이 자리는
+           "무엇을 주는 제품인가" 를 말하는 데 쓴다.
+
+           ⚠ 랜딩(scripts/landing_template.html)의 푸터와 **같은 내용이어야 한다.**
+             푸터가 두 곳에 있다(정적 페이지 / PHP 화면) — 한쪽만 고치면 화면을
+             옮겨 다니면서 푸터가 달라진다. 실제로 그렇게 어긋났다. */ ?>
         <div class="ft_cnt">
-            <h2>이용</h2>
-            <?php if ($is_member) { ?>
-                <a href="<?php echo $ex_url ?>/mypage.php">마이페이지</a>
-                <a href="<?php echo G5_BBS_URL ?>/logout.php?url=<?php echo urlencode('/exam/') ?>">로그아웃</a>
-            <?php } else { ?>
-                <a href="<?php echo G5_BBS_URL ?>/login.php">로그인</a>
-                <a href="<?php echo G5_BBS_URL ?>/register.php">회원가입</a>
-            <?php } ?>
+            <h2>주요 기능 · 수험생</h2>
+            <a href="<?php echo $ex_url ?>/check.php<?php
+              echo (isset($ex_pd) && $ex_pd !== '') ? '?pd=' . urlencode($ex_pd) : '' ?>">회차별 모의고사 · 즉시 채점</a>
+            <a href="<?php echo $ex_url ?>/report.php?sample=1<?php
+              echo (isset($ex_pd) && $ex_pd !== '') ? '&amp;pd=' . urlencode($ex_pd) : '' ?>">성적표 — 과목별 취약도·취약 개념</a>
+            <a href="<?php echo $ex_url ?>/mypage.php?sample=1">오답노트 · 응시 이력 보관</a>
+            <a href="<?php echo $ex_url ?>/check.php?m=theory<?php
+              echo (isset($ex_pd) && $ex_pd !== '') ? '&amp;pd=' . urlencode($ex_pd) : '' ?>">과목별 이론 요약노트</a>
+            <a href="<?php echo $ex_url ?>/check.php?m=board<?php
+              echo (isset($ex_pd) && $ex_pd !== '') ? '&amp;pd=' . urlencode($ex_pd) : '' ?>">과목게시판 1:1 질문</a>
         </div>
 
         <div class="ft_cnt">
-            <h2>고객지원</h2>
-            <a href="<?php echo G5_BBS_URL ?>/board.php?bo_table=notice">공지사항</a>
-            <a href="<?php echo G5_BBS_URL ?>/qalist.php">1:1 문의</a>
-            <a href="<?php echo G5_BBS_URL ?>/faq.php">자주 묻는 질문</a>
+            <h2>주요 기능 · 운영·도입</h2>
+            <?php /* 한 줄씩 블록으로 둔다. `<p>` + `<br>` 로 묶으면 옆의 '수험생' 열은
+                     링크가 한 줄씩 떨어지는데 이 열만 문단처럼 붙어 보인다 —
+                     같은 푸터 안에서 두 열의 리듬이 어긋난다.
+                     `.ft_txt` 는 `#ft .ft_cnt a` 와 같은 블록·행간을 쓴다(gnuboard-skin.css).
+
+                     ⚠ 답변 초안 일괄 생성은 아직 안 붙었다(DeepSeek 키 발급 전).
+                       qa_draft 컬럼·상태·검수 화면은 준비됐지만 모델을 태우지 않는다.
+                       되는 것처럼 적지 않는다 — 랜딩 푸터와 같은 기준이다. */ ?>
+            <?php /* 착지점은 features.php(자료화면)다. 관리자 화면으로 직접 보내면
+                     방문자가 관리자 로그인으로 튕겨 '링크가 죽었다'로 읽힌다.
+                     features.php 는 관리자로 로그인했을 때만 실제 화면 링크를 덧붙인다. */ ?>
+            <a href="<?php echo $ex_url ?>/features.php#review">질문 검수 큐 — 답변 전 관리자 승인</a>
+            <a href="<?php echo $ex_url ?>/features.php#draft" class="ft_soon">답변 초안 일괄 생성 <em>준비 중</em></a>
+            <a href="<?php echo $ex_url ?>/features.php#import">문제 일괄 등록 · 변경분만 갱신</a>
+            <a href="<?php echo $ex_url ?>/features.php#quality">실 정답률로 문제 오류 자동 발견</a>
+            <a href="<?php echo $ex_url ?>/features.php#credit">수강·포인트 문제집 단위 분리</a>
+            <a href="<?php echo $ex_url ?>/features.php#multipd">자격증 추가 = DB 1행 (코드 변경 0)</a>
         </div>
 
         <?php /* ── 사업자 정보 ────────────────────────────────────────────

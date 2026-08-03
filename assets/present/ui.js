@@ -135,10 +135,48 @@
     return svg + '</svg>';
   }
 
-  global.WPUI = { injectSprite: injectSprite, donut: donut, hbars: hbars, radar: radar };
+  /* ── 헤더 로그인 상태 (정적 페이지 전용) ────────────────────────────────
+     index.html·detail.html 은 정적 파일이라 서버가 로그인 상태를 그릴 수 없다.
+     그래서 로그인한 회원이 /exam/ 에 오면 [로그인] 버튼이 그대로 보였다.
+
+     ★ `data-authswap="1"` 이 붙은 nav 만 건드린다.
+       그누보드 화면(theme/axexam/head.php)은 서버에서 이미 정확히 그리므로
+       거기까지 갈아끼우면 깜빡이고 두 번 그리는 셈이 된다.
+
+     실패(네트워크·비로그인)하면 아무것도 하지 않는다 — 기본 마크업이
+     비로그인 상태이므로 그게 안전한 폴백이다. */
+  function authSwap() {
+    var nav = document.querySelector('.axnav-util[data-authswap="1"]');
+    var box = nav && nav.querySelector('.axnav-auth');
+    if (!box) return;
+
+    fetch('/exam/api/me.php', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok || !d.login) return;             // 비로그인 = 기본 마크업 그대로
+        var nick = String(d.nick || d.mb_id || '')
+          .replace(/[&<>"]/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+          });
+        box.innerHTML =
+            '<span class="axnav-me"><b>' + nick + '</b>님</span>'
+          + '<a class="axnav-item" href="/exam/mypage.php">'
+          +   '<svg class="ic"><use href="#i-user"></use></svg>마이페이지</a>'
+          + (d.admin ? '<a class="axnav-item" href="/adm/">'
+          +   '<svg class="ic"><use href="#i-shield"></use></svg>관리자</a>' : '')
+          /* 로그아웃 후 갈 곳을 명시한다 — head.php 와 같은 규칙.
+             url 에 도메인을 넣으면 logout.php 가 거부하므로 경로만 준다. */
+          + '<a class="axnav-cta" href="/bbs/logout.php?url=' + encodeURIComponent('/exam/') + '">로그아웃</a>';
+      })
+      .catch(function () { /* 조용히 비로그인 상태로 둔다 */ });
+  }
+
+  global.WPUI = { injectSprite: injectSprite, donut: donut, hbars: hbars, radar: radar,
+                  authSwap: authSwap };
 
   if (typeof document !== "undefined") {
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", injectSprite);
-    else injectSprite();
+    function boot() { injectSprite(); authSwap(); }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+    else boot();
   }
 })(window);

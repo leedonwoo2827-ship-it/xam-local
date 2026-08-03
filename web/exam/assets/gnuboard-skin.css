@@ -302,6 +302,18 @@ body{ background:var(--ex-soft); }
 #ft .ft_cnt a{ display:block; line-height:2; font-size:13px; }
 #ft .ft_info{ line-height:1.75; font-size:12.5px; }
 
+/* 링크가 아닌 항목(주요 기능 설명) — 링크와 **같은 블록·행간**을 쓴다.
+   `<p>` + `<br>` 로 묶으면 옆 열은 한 줄씩 떨어지는데 이 열만 문단처럼 붙어
+   보여서 두 열의 리듬이 어긋난다. `#ft *` 가 색을 이미 덮으므로 색은 안 쓴다. */
+#ft .ft_cnt .ft_txt{ display:block; line-height:2; font-size:13px; }
+/* 준비 중 표식 — 있는 기능과 구별되어야 하지만 목록에서 튀지는 않아야 한다 */
+#ft .ft_cnt .ft_soon{ opacity:.62; }
+#ft .ft_cnt .ft_soon em{
+  font-style:normal; font-size:11px; margin-left:5px;
+  padding:1px 6px; border-radius:999px;
+  border:1px solid rgba(255,255,255,.18) !important;
+}
+
 @media (max-width:900px){ #ft_wr{ grid-template-columns:repeat(2, 1fr); } }
 @media (max-width:520px){ #ft_wr{ grid-template-columns:1fr; } }
 
