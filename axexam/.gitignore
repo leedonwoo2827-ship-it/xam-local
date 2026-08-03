@@ -1,0 +1,54 @@
+# ── 절대 커밋 금지 (비밀) ────────────────────────────────
+*secret*.php
+*dbconfig.php
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+ftp-sync.json
+sftp.json
+.vscode/sftp.json
+
+# ── 서버 백업 (용량) ─────────────────────────────────────
+_backup/
+_probe/*.log
+
+# ── 빌드 산출물 (재생성 가능) ────────────────────────────
+# 원본은 D:\00work\ocr-output-260723\02\ 이고 빌드로 언제든 다시 만든다.
+06/
+build/
+dist/
+problems.json
+problems.js
+theory_content.js
+videos.js
+theory.js
+
+# ── 대용량 미디어 ────────────────────────────────────────
+*.mp4
+*.wav
+*.woff2
+
+# ── 그누보드 런타임 (서버가 만든다. repo 에 넣지 않는다) ──
+web/data/
+web/adm/exam_lib/*secret*
+
+# ── 파이썬 ───────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# ── OS / 에디터 ──────────────────────────────────────────
+Thumbs.db
+desktop.ini
+.DS_Store
+*.swp
+.idea/
+
+# 그누보드 코어 압축 해제본 — 업로드용 임시 폴더. repo 에 넣지 않는다
+# (내 코드만 커밋한다. 코어는 GitHub 릴리스에서 받으면 된다)
+gnuboard5-*/
+g5_*/

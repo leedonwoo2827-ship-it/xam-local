@@ -1,0 +1,132 @@
+/* ============================================================================
+   axnav.css — 전 화면 공용 상단 네비게이션
+   ============================================================================
+   랜딩(/exam/) · 문제풀이(check.html) · 그누보드 화면(회원가입·게시판)이
+   **같은 파일 하나**를 쓴다. 세 곳이 각자 다른 헤더를 갖고 있어서
+   "뭐가 어디 있는지 안 찾아진다"는 문제가 있었다.
+
+   로드하는 곳
+     · 정적 페이지 : <link rel="stylesheet" href="assets/axnav.css">
+     · 그누보드    : extend/10_exam.php 의 add_stylesheet()
+
+   마크업은 세 곳에 같은 모양으로 두되(정적은 HTML, 그누보드는 PHP),
+   **클래스와 순서는 반드시 동일하게 유지한다.** 한쪽만 고치면 통일이 깨진다.
+   ============================================================================ */
+
+:root{
+  --ax-nav-h: 60px;
+  --ax-nav-bg: #14213d;          /* --navy-800 */
+  --ax-nav-bg2:#0e1730;          /* --navy-900 */
+  --ax-nav-fg: #cdd7ee;
+  --ax-nav-fg-on:#ffffff;
+  --ax-nav-accent:#ffd02f;
+  --ax-nav-line:rgba(255,255,255,.10);
+  --ax-nav-font:"Pretendard Variable","Pretendard",-apple-system,BlinkMacSystemFont,
+                "Segoe UI","Malgun Gothic","Apple SD Gothic Neo",Roboto,sans-serif;
+}
+
+.axnav{
+  background:var(--ax-nav-bg); border-bottom:1px solid var(--ax-nav-line);
+  font-family:var(--ax-nav-font); position:relative; z-index:40;
+}
+.axnav-in{
+  max-width:1240px; margin:0 auto; padding:0 24px;
+  height:var(--ax-nav-h); display:flex; align-items:center; gap:26px;
+}
+
+/* 워드마크 */
+.axnav-logo{
+  font-size:19px; font-weight:800; letter-spacing:-.03em; color:#fff;
+  text-decoration:none; flex:0 0 auto; white-space:nowrap;
+}
+.axnav-logo i{ font-style:normal; color:var(--ax-nav-accent); }
+
+/* 링크 공통 — 아이콘 + 라벨 */
+.axnav a{ text-decoration:none; }
+.axnav-main, .axnav-util{ display:flex; align-items:center; gap:2px; }
+.axnav-main{ flex:1; }
+.axnav-util{ flex:0 0 auto; }
+
+.axnav-item{
+  display:inline-flex; align-items:center; gap:7px;
+  height:36px; padding:0 12px; border-radius:8px;
+  font-size:14px; font-weight:600; color:var(--ax-nav-fg);
+  white-space:nowrap; transition:background .15s, color .15s;
+}
+.axnav-item:hover{ background:rgba(255,255,255,.09); color:var(--ax-nav-fg-on); }
+.axnav-item.on{ background:rgba(255,255,255,.14); color:var(--ax-nav-fg-on); }
+.axnav-item .ic{
+  width:17px; height:17px; flex:0 0 auto;
+  fill:none; stroke:currentColor; stroke-width:1.8;
+  stroke-linecap:round; stroke-linejoin:round;
+}
+/* 유틸 영역은 한 단계 조용하게 */
+.axnav-util .axnav-item{ font-weight:500; color:#9fb0d4; padding:0 10px; }
+.axnav-util .axnav-item:hover{ color:#fff; }
+
+/* 로그인/가입 — 유일하게 채워진 버튼. 눈이 여기로 가야 한다 */
+.axnav-cta{
+  display:inline-flex; align-items:center; gap:6px;
+  height:34px; padding:0 15px; margin-left:6px; border-radius:var(--ax-nav-h);
+  background:var(--ax-nav-accent); color:#14213d;
+  font-size:13.5px; font-weight:700; white-space:nowrap;
+}
+.axnav-cta:hover{ background:#f3c200; }
+
+/* 회원가입 — 같은 크기의 외곽선 버튼.
+   채워진 버튼은 하나로 유지한다. 둘 다 노란색이면 눈이 갈 곳이 없어지고,
+   '로그인' 과 '회원가입' 을 구별하지 않고 아무거나 누르게 된다.
+   border 대신 inset box-shadow 를 쓰는 이유: 높이 34px 가 그대로 유지된다. */
+.axnav-cta.ghost{
+  background:transparent; color:#dbe4f7;
+  box-shadow:inset 0 0 0 1px var(--ax-nav-line);
+}
+.axnav-cta.ghost:hover{ background:rgba(255,255,255,.09); color:#fff; }
+/* 회원가입 페이지에 있을 때 — head.php 의 $on() 이 붙인다 */
+.axnav-cta.ghost.on{ background:rgba(255,255,255,.14); color:#fff; }
+
+/* 로그인 중 표시 */
+.axnav-me{
+  display:inline-flex; align-items:center; gap:6px; margin-left:4px;
+  font-size:13px; color:#8fa2c9; white-space:nowrap;
+}
+.axnav-me b{ color:#dbe4f7; font-weight:700; }
+
+/* 구분선 */
+.axnav-sep{ width:1px; height:20px; background:var(--ax-nav-line); flex:0 0 auto; margin:0 4px; }
+
+/* ── 모바일 ────────────────────────────────────────────────────────────
+   햄버거 메뉴를 만들지 않는다(JS 의존이 늘고 세 곳에 복제해야 한다).
+   대신 가로 스크롤 되는 한 줄로 접는다 — 항목이 8개뿐이라 이게 더 단순하다. */
+@media (max-width:900px){
+  .axnav-in{ height:auto; padding:8px 14px; flex-wrap:wrap; gap:8px 14px; }
+  .axnav-main, .axnav-util{
+    order:3; width:100%; overflow-x:auto; gap:2px;
+    scrollbar-width:none; -ms-overflow-style:none;
+  }
+  .axnav-main::-webkit-scrollbar, .axnav-util::-webkit-scrollbar{ display:none; }
+  .axnav-util{ order:4; border-top:1px solid var(--ax-nav-line); padding-top:6px; }
+  .axnav-logo{ order:1; }
+  .axnav-cta{ order:2; margin-left:auto; }
+  .axnav-me{ order:2; }
+  .axnav-sep{ display:none; }
+}
+@media (max-width:480px){
+  .axnav-item{ padding:0 9px; font-size:13.5px; }
+  .axnav-item .ic{ width:16px; height:16px; }
+}
+
+/* ══ SVG 스프라이트 숨김 ═══════════════════════════════════════════════════
+ * ui.js 가 <svg class="svg-sprite"> 를 body 에 주입한다(아이콘 <symbol> 48개).
+ * SVG 는 크기를 지정하지 않으면 **브라우저 기본 300×150** 을 차지한다.
+ * 심볼은 <use> 없이 그려지지 않으므로 화면에는 '빈 회색 박스'만 남는다.
+ *
+ * 이 규칙은 원래 assets/style.css 에만 있었다. 그런데 style.css 를 싣는 화면은
+ * /exam/index.html · check.php 뿐이고, /bbs/* · buy.php · mypage.php 는
+ * extend/10_exam.php 가 넣는 axnav.css · gnuboard-skin.css 만 받는다.
+ * → 그 화면들에서 헤더 위에 약 150px 빈 공간이 생겼다. 실측으로 확인한 원인이다.
+ *
+ * 스프라이트를 만드는 ui.js 는 theme/axexam/head.php 가 **모든 화면**에서 싣는다.
+ * 그래서 숨김 규칙도 모든 화면에 들어가는 이 파일에 있어야 한다.
+ * (style.css 의 같은 규칙은 남겨둔다 — 중복이지만 한쪽만 올려도 깨지지 않는다) */
+.svg-sprite{ position:absolute; width:0; height:0; overflow:hidden; }

@@ -1,0 +1,187 @@
+/* mypage.css — 마이페이지 · 수강신청 공용
+   그누보드 테마 안에서 렌더되므로 #container 하위에 들어간다.
+   axnav.css 의 토큰(--ax-*)을 재사용하지 않고 지역 변수를 쓴다 —
+   이 파일만 보고도 값을 알 수 있게. */
+/* .rp(성적표)도 같은 토큰을 쓴다. report.css 에서 다시 정의하지 않는 이유:
+   두 벌이 되면 한쪽만 고쳐 색이 갈린다. 값의 출처는 이 한 곳이다. */
+.mp, .apply, .rp{
+  --c-ink:#181d26; --c-body:#333840; --c-muted:#5b6376; --c-faint:#8e96a8;
+  --c-navy:#14213d; --c-navy2:#1b2a52; --c-blue:#1f4ed8; --c-blue-soft:#eef3ff;
+  --c-soft:#f6f8fc; --c-hair:#e6eaf2; --c-hair2:#d4d9e4;
+  --c-good:#0f9d58; --c-good-t:#0c7a45; --c-good-s:#e7f6ee;
+  --c-mid:#cf7a0d;  --c-mid-t:#a35f05;  --c-mid-s:#fff3e1;
+  --c-bad:#e23b4e;  --c-bad-t:#c22638;  --c-bad-s:#fdebed;
+  --r:12px; --r-lg:16px;
+  color:var(--c-body); font-size:15px; line-height:1.6;
+}
+
+/* ── 머리 ─────────────────────────────────────────────────────────── */
+.mp-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px;
+  flex-wrap:wrap; padding-bottom:20px; border-bottom:1px solid var(--c-hair); margin-bottom:22px; }
+.mp-head h2{ font-size:24px; font-weight:800; letter-spacing:-.03em; color:var(--c-ink); margin:0; }
+.mp-sub{ font-size:13px; color:var(--c-faint); margin:4px 0 0; }
+.mp-actions{ display:flex; gap:8px; flex-wrap:wrap; }
+.mp-btn{ display:inline-flex; align-items:center; height:38px; padding:0 16px;
+  border-radius:9px; background:var(--c-navy); color:#fff !important;
+  font-size:14px; font-weight:700; text-decoration:none; }
+.mp-btn:hover{ background:var(--c-navy2); }
+.mp-btn.ghost{ background:#fff; color:var(--c-ink) !important; border:1px solid var(--c-hair2); font-weight:600; }
+
+/* ── 요약 4칸 ─────────────────────────────────────────────────────── */
+.mp-stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; }
+.mp-stat{ background:var(--c-soft); border:1px solid var(--c-hair); border-radius:var(--r);
+  padding:16px 18px; }
+.mp-stat .n{ font-size:26px; font-weight:800; letter-spacing:-.03em; color:var(--c-ink); line-height:1.15; }
+.mp-stat .n small{ font-size:14px; font-weight:700; color:var(--c-muted); margin-left:2px; }
+.mp-stat .l{ font-size:12.5px; color:var(--c-muted); margin-top:4px; }
+.mp-stat .note{ font-size:11.5px; color:var(--c-faint); margin-top:2px; }
+
+/* ── 탭 ───────────────────────────────────────────────────────────── */
+.mp-tabs{ display:flex; gap:4px; padding:4px; background:var(--c-soft);
+  border-radius:999px; margin-bottom:18px; width:fit-content; max-width:100%; overflow-x:auto; }
+.mp-tabs button{ border:0; background:transparent; font:inherit; font-weight:700; font-size:14px;
+  color:var(--c-muted); padding:9px 20px; border-radius:999px; cursor:pointer; white-space:nowrap; }
+.mp-tabs button.on{ background:var(--c-navy); color:#fff; }
+
+/* ── 목록 ─────────────────────────────────────────────────────────── */
+.mp-panel{ min-height:180px; }
+.mp-empty{ background:#fff; border:1px dashed var(--c-hair2); border-radius:var(--r-lg);
+  padding:44px 20px; text-align:center; color:var(--c-muted); font-size:14px; }
+.mp-empty a{ color:var(--c-blue); font-weight:700; }
+
+.mp-row{ background:#fff; border:1px solid var(--c-hair); border-radius:var(--r);
+  padding:15px 18px; margin-bottom:9px; }
+.mp-row-top{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:7px; }
+.mp-tag{ display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700;
+  padding:3px 10px; border-radius:999px; background:var(--c-soft); color:var(--c-muted); }
+.mp-tag.good{ background:var(--c-good-s); color:var(--c-good-t); }
+.mp-tag.mid { background:var(--c-mid-s);  color:var(--c-mid-t); }
+.mp-tag.bad { background:var(--c-bad-s);  color:var(--c-bad-t); }
+.mp-tag.blue{ background:var(--c-blue-soft); color:var(--c-blue); }
+.mp-when{ margin-left:auto; font-size:12px; color:var(--c-faint); }
+.mp-q{ font-size:14.5px; color:var(--c-ink); font-weight:600; line-height:1.55; }
+.mp-a{ margin-top:10px; padding:12px 14px; background:var(--c-soft);
+  border-left:3px solid var(--c-blue); border-radius:8px; font-size:14px; color:var(--c-body); }
+.mp-meta{ font-size:12.5px; color:var(--c-muted); margin-top:6px; }
+
+/* 점수 막대 */
+.mp-score{ display:flex; align-items:center; gap:12px; }
+.mp-score .pct{ font-size:20px; font-weight:800; color:var(--c-ink); min-width:56px; letter-spacing:-.02em; }
+.mp-bar{ flex:1; height:8px; background:var(--c-hair); border-radius:999px; overflow:hidden; }
+.mp-bar span{ display:block; height:100%; border-radius:999px; }
+
+/* 오답노트 보기 */
+.mp-opts{ display:flex; flex-direction:column; gap:5px; margin-top:9px; }
+.mp-opt{ display:flex; gap:8px; font-size:13.5px; padding:7px 11px; border-radius:8px;
+  border:1px solid var(--c-hair); color:var(--c-body); }
+.mp-opt .n{ font-weight:800; color:var(--c-faint); flex:0 0 auto; }
+.mp-opt.ok{ border-color:var(--c-good); background:var(--c-good-s); }
+.mp-opt.ok .n{ color:var(--c-good-t); }
+.mp-opt.no{ border-color:var(--c-bad); background:var(--c-bad-s); }
+.mp-opt.no .n{ color:var(--c-bad-t); }
+.mp-more{ display:inline-block; margin-top:9px; font-size:13px; color:var(--c-blue);
+  font-weight:700; cursor:pointer; }
+
+.mp-page{ display:flex; gap:6px; justify-content:center; margin-top:16px; }
+.mp-page button{ min-width:34px; height:34px; border:1px solid var(--c-hair2); background:#fff;
+  border-radius:8px; font:inherit; font-size:13px; cursor:pointer; color:var(--c-body); }
+.mp-page button.on{ background:var(--c-navy); color:#fff; border-color:var(--c-navy); font-weight:700; }
+
+@media (max-width:768px){
+  .mp-stats{ grid-template-columns:repeat(2,1fr); }
+  .mp-head{ align-items:flex-start; }
+}
+@media (max-width:480px){
+  .mp-stats{ grid-template-columns:1fr 1fr; gap:8px; }
+  .mp-stat{ padding:13px 14px; }
+  .mp-stat .n{ font-size:22px; }
+  .mp-actions{ width:100%; }
+  .mp-btn{ flex:1; justify-content:center; }
+}
+
+/* ══ 문제집 전환 띠 (buy.php · mypage.php 공용) ════════════════════
+   문제집별로 따로 수강하는 구조라 "지금 보는 것"과 "다른 것"이 같은 자리에 보여야 한다.
+   없으면 이용자가 URL 의 ?pd= 를 손으로 고쳐야 다른 문제집에 접근한다. */
+.ap-pdbar{ display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  padding:10px 14px; margin:0 0 18px;
+  background:var(--c-soft); border:1px solid var(--c-hair); border-radius:var(--r); }
+.ap-pdbar-l{ font-size:12px; font-weight:700; color:var(--c-faint); letter-spacing:-.01em; }
+.ap-pdchip{ display:inline-flex; align-items:center; height:28px; padding:0 12px;
+  background:#fff; border:1px solid var(--c-hair); border-radius:999px;
+  font-size:13px; font-weight:600; color:var(--c-body); text-decoration:none;
+  transition:border-color .12s, color .12s; }
+.ap-pdchip:hover{ border-color:var(--c-blue); color:var(--c-blue); }
+.ap-pdchip.on{ background:var(--c-ink); border-color:var(--c-ink); color:#fff; }
+
+/* ══ 수강 신청 (buy.php) ═══════════════════════════════════════════ */
+.ap-err{ background:var(--c-bad-s); border:1px solid var(--c-bad); color:var(--c-bad-t);
+  padding:12px 16px; border-radius:var(--r); margin-bottom:18px; font-size:14px; font-weight:600; }
+.ap-login{ background:var(--c-blue-soft); border:1px solid #cdddff; border-radius:var(--r);
+  padding:18px 20px; margin-bottom:20px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.ap-login p{ margin:0; flex:1; font-size:14px; color:var(--c-body); }
+
+.ap-grid{ display:grid; grid-template-columns:1fr 1.05fr; gap:26px; align-items:start; }
+.ap-info h3, .ap-form h3{ font-size:16px; font-weight:800; color:var(--c-ink);
+  margin:0 0 12px; letter-spacing:-.02em; }
+.ap-info h3+*{ margin-top:0; }
+.ap-info h3:not(:first-child){ margin-top:26px; }
+.ap-list{ list-style:none; margin:0; padding:0; }
+.ap-list li{ padding:12px 0 12px 26px; border-bottom:1px solid var(--c-hair);
+  font-size:14px; color:var(--c-muted); line-height:1.65; position:relative; }
+.ap-list li:before{ content:"✓"; position:absolute; left:0; top:12px;
+  color:var(--c-good); font-weight:800; }
+.ap-list li b{ color:var(--c-ink); }
+.ap-p{ font-size:14px; color:var(--c-muted); line-height:1.7; margin:0; }
+.ap-p b{ color:var(--c-ink); }
+.ap-note{ font-size:12.5px; color:var(--c-faint); line-height:1.65; margin:10px 0 0; }
+
+.ap-form{ background:#fff; border:1px solid var(--c-hair); border-radius:var(--r-lg);
+  padding:24px 22px; box-shadow:0 1px 2px rgba(20,26,38,.05), 0 4px 14px rgba(20,26,38,.05); }
+.ap-field{ margin-bottom:16px; }
+.ap-field > label{ display:block; font-size:13px; font-weight:700; color:var(--c-ink); margin-bottom:7px; }
+.ap-field > label .opt{ font-weight:500; color:var(--c-faint); font-size:12px; margin-left:4px; }
+.ap-form input[type=text], .ap-form input[type=tel], .ap-form textarea{
+  width:100%; box-sizing:border-box; border:1px solid var(--c-hair2); border-radius:9px;
+  padding:11px 13px; font:inherit; font-size:14.5px; color:var(--c-ink); background:#fff; }
+.ap-form input:focus, .ap-form textarea:focus{
+  outline:0; border-color:var(--c-blue); box-shadow:0 0 0 3px rgba(44,92,230,.13); }
+.ap-form textarea{ resize:vertical; }
+
+.ap-plans{ display:flex; flex-direction:column; gap:8px; }
+.ap-plan{ display:block; cursor:pointer; }
+.ap-plan input{ position:absolute; opacity:0; width:0; height:0; }
+.ap-plan-in{ display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  border:1px solid var(--c-hair2); border-radius:10px; padding:12px 14px; transition:.15s; }
+.ap-plan input:checked + .ap-plan-in{
+  border-color:var(--c-blue); background:var(--c-blue-soft); box-shadow:0 0 0 1px var(--c-blue) inset; }
+.ap-plan-in b{ font-size:14.5px; color:var(--c-ink); }
+.ap-plan-in em{ font-style:normal; font-weight:800; color:var(--c-blue); margin-left:auto; }
+.ap-plan-in small{ width:100%; font-size:12.5px; color:var(--c-muted); }
+
+.ap-agree{ display:flex; gap:10px; align-items:flex-start; padding:13px 15px;
+  background:var(--c-soft); border:1px solid var(--c-hair); border-radius:10px;
+  font-size:13px; color:var(--c-body); line-height:1.6; margin:4px 0 16px; cursor:pointer; }
+.ap-agree input{ margin-top:2px; accent-color:var(--c-blue); width:16px; height:16px; flex:0 0 auto; }
+.ap-agree b{ color:var(--c-ink); }
+
+.ap-submit{ width:100%; height:50px; border:0; border-radius:10px;
+  background:var(--c-navy); color:#fff; font:inherit; font-size:15.5px; font-weight:700; cursor:pointer; }
+.ap-submit:hover:not(:disabled){ background:var(--c-navy2); }
+.ap-submit:disabled{ background:var(--c-hair2); color:var(--c-faint); cursor:not-allowed; }
+
+.ap-done{ text-align:center; padding:52px 20px; }
+.ap-done-ic{ width:60px; height:60px; margin:0 auto 18px; border-radius:50%;
+  background:var(--c-good-s); color:var(--c-good-t); font-size:30px; font-weight:800;
+  display:flex; align-items:center; justify-content:center; }
+.ap-done h2{ font-size:23px; font-weight:800; color:var(--c-ink); margin:0 0 8px; letter-spacing:-.03em; }
+.ap-done p{ margin:0 0 6px; font-size:15px; color:var(--c-body); }
+.ap-done-sub{ font-size:14px !important; color:var(--c-muted) !important; line-height:1.7; margin-top:14px !important; }
+.ap-done-btns{ display:flex; gap:9px; justify-content:center; margin-top:24px; flex-wrap:wrap; }
+
+@media (max-width:900px){ .ap-grid{ grid-template-columns:1fr; gap:22px; } }
+
+/* 응시 이력 행 → 성적표 링크 (mypage.js 가 <a class="mp-row mp-row-link"> 로 그린다) */
+.mp-row-link{ display:block; text-decoration:none; color:inherit; transition:border-color .15s; }
+.mp-row-link:hover{ border-color:var(--c-blue); }
+.mp-go{ margin-left:auto; font-size:12.5px; font-weight:700; color:var(--c-blue); white-space:nowrap; }
+.mp-row-link:hover .mp-go{ text-decoration:underline; }

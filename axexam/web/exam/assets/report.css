@@ -1,0 +1,190 @@
+/* report.css — 성적표(분석 리포트)
+ *
+ * mypage.css 의 CSS 변수(--c-*)를 쓴다. report.php 가 둘을 같이 싣는다.
+ * 색은 dataviz 검증을 통과한 팔레트를 그대로 쓴다 — 대비 4.5:1 이상.
+ *
+ * 판정 3단계는 색만으로 구분하지 않는다. 색약 이용자에게는 색이 정보가 되지 않으므로
+ * 반드시 글자(양호/보완/미달)를 함께 붙인다.
+ */
+
+.rp{ max-width:1000px; margin:0 auto; padding:0 0 60px; }
+
+/* ── breadcrumb ─────────────────────────────────────────────── */
+.rp .crumb-bar{ margin:0 0 18px; }
+.rp .crumb{ font-size:13px; color:var(--c-faint); display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.rp .crumb a{ color:var(--c-muted); text-decoration:none; }
+.rp .crumb a:hover{ color:var(--c-blue); }
+.rp .crumb b{ color:var(--c-ink); }
+.rp .crumb .sep{ color:var(--c-hair2); }
+
+/* ── 점수 헤드 ──────────────────────────────────────────────── */
+.rp-hero{ display:grid; grid-template-columns:auto 1fr; gap:28px; align-items:center;
+  background:#fff; border:1px solid var(--c-hair); border-radius:var(--r-lg);
+  padding:24px 26px; margin:0 0 16px; }
+.rp-score{ text-align:center; min-width:132px; }
+.rp-score .n{ font-size:52px; font-weight:800; letter-spacing:-.04em; line-height:1;
+  color:var(--c-ink); font-variant-numeric:tabular-nums; }
+.rp-score .n small{ font-size:22px; font-weight:700; color:var(--c-faint); margin-left:2px; }
+.rp-score .frac{ font-size:13px; color:var(--c-muted); margin-top:7px; }
+.rp-judge{ display:inline-flex; align-items:center; gap:6px; margin-top:11px;
+  padding:5px 14px; border-radius:999px; font-size:13px; font-weight:800; }
+.rp-judge.pass{ background:var(--c-good-s); color:var(--c-good-t); }
+.rp-judge.fail{ background:var(--c-bad-s);  color:var(--c-bad-t); }
+
+.rp-meta{ display:flex; flex-direction:column; gap:9px; }
+.rp-meta .line{ display:flex; gap:9px; flex-wrap:wrap; align-items:center; font-size:13.5px; color:var(--c-muted); }
+.rp-meta .line b{ color:var(--c-ink); }
+.rp-note{ font-size:13px; line-height:1.7; color:var(--c-body);
+  background:var(--c-soft); border-radius:var(--r); padding:11px 14px; }
+.rp-note.warn{ background:var(--c-mid-s); color:var(--c-mid-t); }
+.rp-note.bad{ background:var(--c-bad-s); color:var(--c-bad-t); }
+
+/* ── 섹션 ───────────────────────────────────────────────────── */
+.rp-card{ background:#fff; border:1px solid var(--c-hair); border-radius:var(--r-lg);
+  padding:22px 24px; margin:0 0 16px; }
+.rp-card > h3{ font-size:16px; font-weight:800; color:var(--c-ink); margin:0 0 4px; letter-spacing:-.02em; }
+.rp-card > .cap{ font-size:13px; color:var(--c-faint); margin:0 0 16px; line-height:1.6; }
+
+/* ── 과목별 막대 ────────────────────────────────────────────── */
+.rp-bars{ display:flex; flex-direction:column; gap:14px; }
+.rp-bar-row{ display:grid; grid-template-columns:1fr auto; gap:6px 12px; align-items:center; }
+.rp-bar-name{ font-size:14px; font-weight:700; color:var(--c-ink); }
+.rp-bar-val{ font-size:13px; color:var(--c-muted); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.rp-bar-val b{ font-size:15px; color:var(--c-ink); }
+.rp-track{ grid-column:1 / -1; position:relative; height:11px; border-radius:999px;
+  background:var(--c-soft); overflow:hidden; }
+.rp-track > i{ display:block; height:100%; border-radius:999px; transition:width .5s ease; }
+.rp-track .line{ position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--c-ink);
+  opacity:.4; border-radius:2px; }
+
+/* 판정 — 색 + 글자를 함께 쓴다 */
+.rp-tag{ display:inline-block; padding:2px 9px; border-radius:6px;
+  font-size:11.5px; font-weight:800; white-space:nowrap; }
+.rp-tag.good{ background:var(--c-good-s); color:var(--c-good-t); }
+.rp-tag.mid{  background:var(--c-blue-soft); color:var(--c-blue); }
+.rp-tag.weak{ background:var(--c-mid-s); color:var(--c-mid-t); }
+.rp-tag.fail{ background:var(--c-bad-s); color:var(--c-bad-t); }
+
+/* ── 취약 개념 칩 ───────────────────────────────────────────── */
+.rp-tags{ display:flex; flex-wrap:wrap; gap:8px; }
+.rp-chip{ display:inline-flex; align-items:baseline; gap:7px;
+  border:1px solid var(--c-hair); border-radius:999px; padding:7px 14px;
+  font-size:13.5px; color:var(--c-ink); background:#fff; }
+.rp-chip em{ font-style:normal; font-size:12px; font-weight:800; color:var(--c-bad); }
+.rp-chip.hot{ border-color:var(--c-bad); background:var(--c-bad-s); }
+
+/* ── 추이 ───────────────────────────────────────────────────── */
+.rp-trend{ display:flex; align-items:flex-end; gap:10px; height:110px; padding:0 2px; }
+.rp-trend .t{ flex:1; display:flex; flex-direction:column; align-items:center; gap:6px;
+  min-width:0; text-decoration:none; }
+.rp-trend .t i{ display:block; width:100%; max-width:44px; border-radius:6px 6px 0 0;
+  background:var(--c-blue); opacity:.35; transition:opacity .15s; }
+.rp-trend .t.on i{ opacity:1; }
+.rp-trend .t:hover i{ opacity:.8; }
+.rp-trend .t span{ font-size:11px; color:var(--c-faint); white-space:nowrap; }
+.rp-trend .t b{ font-size:12px; color:var(--c-ink); font-variant-numeric:tabular-nums; }
+
+/* ── 문항별 표 ──────────────────────────────────────────────── */
+.rp-tbl{ width:100%; border-collapse:collapse; font-size:13.5px; }
+.rp-tbl th, .rp-tbl td{ border-bottom:1px solid var(--c-hair); padding:9px 10px; text-align:left; }
+.rp-tbl th{ font-size:12px; font-weight:700; color:var(--c-faint); background:var(--c-soft);
+  white-space:nowrap; }
+.rp-tbl td.n{ text-align:center; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.rp-tbl tr.no td{ background:var(--c-bad-s); }
+.rp-tbl tr.skip td{ background:var(--c-soft); color:var(--c-faint); }
+.rp-tbl .q{ color:var(--c-body); }
+.rp-tbl .mark{ font-weight:800; }
+.rp-tbl .mark.ok{ color:var(--c-good-t); }
+.rp-tbl .mark.no{ color:var(--c-bad-t); }
+.rp-tbl .mark.sk{ color:var(--c-faint); }
+.rp-filter{ display:flex; gap:8px; flex-wrap:wrap; margin:0 0 14px; }
+.rp-filter button{ border:1px solid var(--c-hair); background:#fff; color:var(--c-muted);
+  font:inherit; font-size:13px; font-weight:700; padding:6px 13px; border-radius:999px; cursor:pointer; }
+.rp-filter button:hover{ border-color:var(--c-blue); color:var(--c-blue); }
+.rp-filter button.on{ background:var(--c-ink); border-color:var(--c-ink); color:#fff; }
+
+/* ── 반복 오답 ──────────────────────────────────────────────── */
+.rp-rep{ display:flex; flex-direction:column; gap:0; }
+.rp-rep a{ display:grid; grid-template-columns:auto 1fr auto; gap:12px; align-items:center;
+  padding:12px 2px; border-bottom:1px solid var(--c-hair); text-decoration:none; color:inherit; }
+.rp-rep a:last-child{ border-bottom:0; }
+.rp-rep a:hover{ background:var(--c-soft); }
+.rp-rep .cnt{ font-size:12px; font-weight:800; color:var(--c-bad-t);
+  background:var(--c-bad-s); border-radius:6px; padding:3px 9px; white-space:nowrap; }
+.rp-rep .t{ font-size:13.5px; color:var(--c-ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rp-rep .m{ font-size:12px; color:var(--c-faint); white-space:nowrap; }
+
+/* ── 다음에 볼 것 ───────────────────────────────────────────── */
+.rp-next{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:12px; }
+.rp-next a{ display:block; border:1px solid var(--c-hair); border-radius:var(--r);
+  padding:16px 18px; text-decoration:none; background:#fff; transition:border-color .15s; }
+.rp-next a:hover{ border-color:var(--c-blue); }
+.rp-next b{ display:block; font-size:14.5px; color:var(--c-ink); margin-bottom:5px; }
+.rp-next span{ font-size:12.5px; color:var(--c-muted); line-height:1.6; }
+
+@media (max-width:720px){
+  .rp-hero{ grid-template-columns:1fr; gap:18px; }
+  .rp-score{ min-width:0; }
+  .rp-tbl th.hide-s, .rp-tbl td.hide-s{ display:none; }
+  .rp-trend{ height:88px; }
+}
+
+/* 인쇄 — 성적표는 출력하고 싶어진다. 배경을 지우고 흑백에서 읽히게 한다. */
+@media print{
+  .rp .crumb-bar, .rp-actions, .mp-actions, .rp-filter{ display:none !important; }
+  .rp-card, .rp-hero{ border-color:#bbb; break-inside:avoid; }
+  .rp-track > i{ background:#555 !important; }
+}
+
+/* ── 잠긴 회차 ──────────────────────────────────────────────────
+   분석은 서버가 아예 보내지 않는다. 여기는 '무엇이 잠겼는지' 를 알려주는 화면이다. */
+.rp-lock{ text-align:center; }
+.rp-lock-ic{ font-size:34px; line-height:1; margin:6px 0 12px; }
+.rp-lock > h3{ font-size:18px; }
+.rp-lock-list{ list-style:none; margin:16px auto; padding:0; max-width:460px; text-align:left; }
+.rp-lock-list li{ position:relative; padding:9px 0 9px 26px; font-size:14px; color:var(--c-body);
+  border-bottom:1px solid var(--c-hair); line-height:1.6; }
+.rp-lock-list li:last-child{ border-bottom:0; }
+.rp-lock-list li:before{ content:"🔒"; position:absolute; left:0; top:9px; font-size:12px; opacity:.5; }
+.rp-lock-list b{ color:var(--c-ink); }
+.rp-lock .rp-note{ max-width:460px; margin:0 auto; text-align:left; }
+.rp-lock-cta{ display:flex; gap:9px; justify-content:center; flex-wrap:wrap; margin-top:18px; }
+
+/* ── 샘플(데모) 안내 ──────────────────────────────────────────────────────
+   실제 응시 기록이 아니라는 것을 화면이 먼저 말해야 한다.
+   이게 없으면 방문자가 34점을 자기 점수로 읽는다. */
+.rp-demo{
+  margin:0 0 16px; padding:12px 16px; border-radius:12px;
+  background:#fff8e1; border:1px solid #f6d97a; color:#6b5410;
+  font-size:13.5px; line-height:1.7;
+}
+.rp-demo b{ color:#4a3a06; }
+.rp-demo a{ color:#8a6d08; font-weight:700; white-space:nowrap; }
+
+/* ── 인쇄 · PDF 저장 ──────────────────────────────────────────────────────
+   서버에 PDF 라이브러리를 올리지 않는다(한글 폰트·메모리·화면과의 불일치).
+   브라우저 인쇄로 뽑고, 인쇄 CSS 로 종이에 맞춘다 — 유지 비용이 거의 0이다.
+
+   ⚠ print-color-adjust 가 없으면 브라우저가 배경을 지운다.
+     과목별 막대·정오 표시가 전부 흰색이 되어 성적표가 읽을 수 없게 된다.
+     이 화면은 색이 정보이므로 반드시 exact 로 둔다. */
+@media print{
+  @page{ size:A4; margin:12mm; }
+  html, body{
+    background:#fff !important;
+    -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  }
+  /* 화면용 껍데기는 종이에 필요 없다 — 헤더·푸터·버튼·상단이동 */
+  .axnav, .foot, footer.foot, #topBtn, .to-top,
+  .mp-actions, .rp-filter, .crumb-bar, .rp-lock-cta{ display:none !important; }
+  /* 카드가 페이지 경계에서 잘리면 성적표로 못 쓴다 */
+  .rp-card, .rp-hero, .rp-rep, .rp-next, .mp-row{
+    break-inside:avoid; page-break-inside:avoid;
+    box-shadow:none !important; border:1px solid #e3e8f0 !important;
+  }
+  .rp-tbl tr{ break-inside:avoid; page-break-inside:avoid; }
+  .rp-tbl thead{ display:table-header-group; }   /* 표가 넘어가도 머리글 반복 */
+  a{ text-decoration:none !important; color:inherit !important; }
+  a[href]:after{ content:"" !important; }        /* URL 을 뒤에 찍지 않는다 */
+  .rp-demo{ border:1px solid #d9c76a !important; }
+}
