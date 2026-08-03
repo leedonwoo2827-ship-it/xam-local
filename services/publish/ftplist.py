@@ -17,9 +17,22 @@ from core.constants import SITE_BASE, SITE_PATH
 from services.book import paths
 
 # 올릴 것 — 06/ 안의 파일·폴더
+# 공용(품목 무관) — 06/ 바로 아래.
 UPLOAD_FILES = ("check.html", "index.html", "problems.js", "videos.js",
                 "theory.js", "theory_content.js")
 UPLOAD_DIRS = ("assets", "figs", "theory")
+
+# ★ 품목별 데이터는 `06/pd/<pd>/` 에 있다 — 이 트리를 빠뜨리면 **문항도 영상도 안 올라간다.**
+#
+#   빌더가 품목별로 갈라 두었다(problems.js · videos.js · videos.private.json ·
+#   theory.js · theory_content.js · figs/ · theory/). 품목이 하나였던 시절에는 전부
+#   06/ 바로 아래(평면)에 있었고 위 두 상수가 그 시절 이름이다. 지금 빌더는 평면 사본을
+#   오히려 지우라고 경고한다 — 두 문제집이 서로를 덮어쓰기 때문이다.
+#   그래서 위 목록만 올리면 check.html·index.html·assets/ 만 올라가고 데이터가 빠진다.
+UPLOAD_PD_DIR = "pd"
+
+# `pd/<pd>/` 안에서도 이건 올리지 않는다 — 관리자 화면으로 임포트하는 파일이다.
+PD_SKIP_NAMES = ("problems.json",)
 
 # 올리지 않을 것 (이유를 함께 보여준다)
 SKIP_REASONS = {
@@ -64,8 +77,11 @@ def build(*, with_hash: bool = False) -> dict:
         p = os.path.join(out, name)
         if os.path.isfile(p):
             add_file(name, p)
+    # ★ 품목 코드는 **활성 폴더**에서 읽는다. core.constants.PD_CODE 는 .env 값이라
+    #   폴더를 바꿨을 때 갈린다 — 그러면 엉뚱한 품목 트리를 올린다.
+    from services.publish import buildcheck
+    PD_CODE = buildcheck.active_pd()
     # 품목 상세 페이지 — axexam 패치 2번 이후 {pd}.html 로 나온다.
-    from core.constants import PD_CODE
     for name in (f"{PD_CODE}.html", "sqld.html"):
         p = os.path.join(out, name)
         if not os.path.isfile(p):
@@ -86,6 +102,35 @@ def build(*, with_hash: bool = False) -> dict:
             for f in sorted(files):
                 p = os.path.join(root, f)
                 add_file(os.path.relpath(p, out), p)
+
+    # 품목별 트리 — 이게 실제 데이터다(문항·영상·이론·그림).
+    pd_base = os.path.join(out, UPLOAD_PD_DIR, PD_CODE)
+    if os.path.isdir(pd_base):
+        for root, _dirs, files in os.walk(pd_base):
+            for f in sorted(files):
+                p = os.path.join(root, f)
+                rel = os.path.relpath(p, out)
+                if f in PD_SKIP_NAMES:
+                    skip.append({"path": rel.replace("\\", "/"),
+                                 "bytes": os.path.getsize(p),
+                                 "reason": SKIP_REASONS["problems.json"]})
+                    continue
+                add_file(rel, p)
+    else:
+        skip.append({"path": f"{UPLOAD_PD_DIR}/{PD_CODE}/", "bytes": 0,
+                     "reason": ("빌드 산출물에 이 품목 폴더가 없습니다. "
+                                f"--pd {PD_CODE} 로 빌드했는지 확인하세요 — "
+                                "이 트리가 없으면 문항도 영상도 서버에 올라가지 않습니다.")})
+
+    # 다른 품목 폴더는 건드리지 않는다(SQLD 등). 알려만 준다.
+    all_pd = os.path.join(out, UPLOAD_PD_DIR)
+    if os.path.isdir(all_pd):
+        for other in sorted(os.listdir(all_pd)):
+            if other == PD_CODE or not os.path.isdir(os.path.join(all_pd, other)):
+                continue
+            skip.append({"path": f"{UPLOAD_PD_DIR}/{other}/", "bytes": 0,
+                         "reason": f"다른 품목({other})입니다. 이번 발행 대상이 아니므로 "
+                                   "올리지 않습니다 — 올리면 그 품목을 덮어씁니다."})
 
     # 올리지 않을 것
     pj = paths.problems_json()
