@@ -120,6 +120,40 @@ def setup_publish_routes() -> APIRouter:
                                 detail=f"폴더를 열지 못했습니다: {e}") from e
         return {"ok": True, "path": target}
 
+    @router.get("/ytmap")
+    async def get_ytmap():
+        """영상 매핑 상태 — 번들별 링크가 채워졌는지."""
+        from services.publish import ytmap
+        return ytmap.read()
+
+    @router.post("/ytmap/sync")
+    async def sync_ytmap(request: Request):
+        """매핑 골격 생성 / 빠진 번들 채우기. **이미 넣은 링크는 건드리지 않는다.**
+
+        빌더의 `--init-youtube-map` 은 "파일이 있으면 아무것도 안 함" 이라 회차가
+        늘어난 뒤에는 쓸 수 없다. 그래서 여기서 증분으로 맞춘다.
+        """
+        from services.publish import ytmap
+        body = await request.json() if await request.body() else {}
+        try:
+            return ytmap.sync(provider=(body.get("provider") or "").strip())
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+    @router.post("/ytmap/open")
+    async def open_ytmap():
+        """매핑 파일을 기본 편집기로 연다 — 링크를 붙여넣는 자리."""
+        from services.publish import ytmap
+        p = ytmap.path()
+        if not os.path.isfile(p):
+            raise HTTPException(status_code=404,
+                                detail=f"매핑 파일이 없습니다: {p} — [영상 매핑 만들기] 를 먼저 누르세요.")
+        try:
+            os.startfile(p)               # noqa: S606  (로컬 단일 사용자 앱)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"열지 못했습니다: {e}") from e
+        return {"ok": True, "path": p}
+
     @router.get("/checklist")
     async def get_checklist():
         return {"pd": PD_CODE, "items": ftplist.server_checklist(),

@@ -14,7 +14,8 @@ import { icon, hydrateIcons } from "./icons.js";
 import { donut, stackedBar } from "./charts.js";
 import { actionBtn } from "./panel.js";
 
-const P = { pre: null, env: null, problems: null, ftp: null, checklist: null, polling: false };
+const P = { pre: null, env: null, problems: null, ftp: null, checklist: null,
+            ytmap: null, polling: false };
 
 export const meta = {
   title: "발행 to XAMpass",
@@ -29,12 +30,14 @@ export async function mount(root, ctx) {
   const page = el("div", "page");
   page.innerHTML = `
     <div class="card"><div class="card-title">① 사전점검</div><div id="pb-pre"></div></div>
-    <div class="card"><div class="card-title">② 빌드 — axexam scripts/build_check.py</div>
+    <div class="card"><div class="card-title">② 영상 매핑 — 링크를 여기 넣습니다</div>
+      <div id="pb-ytmap"></div></div>
+    <div class="card"><div class="card-title">③ 빌드 — axexam scripts/build_check.py</div>
       <div id="pb-build"></div></div>
-    <div class="card"><div class="card-title">③ problems.json 검증 (임포트 드라이런)</div>
+    <div class="card"><div class="card-title">④ problems.json 검증 (임포트 드라이런)</div>
       <div id="pb-problems"></div></div>
-    <div class="card"><div class="card-title">④ FTP 업로드 목록</div><div id="pb-ftp"></div></div>
-    <div class="card"><div class="card-title">⑤ 서버 단계 — 여기서부터는 사람이 합니다</div>
+    <div class="card"><div class="card-title">⑤ FTP 업로드 목록</div><div id="pb-ftp"></div></div>
+    <div class="card"><div class="card-title">⑥ 서버 단계 — 여기서부터는 사람이 합니다</div>
       <div id="pb-server"></div></div>
   `;
   root.appendChild(page);
@@ -51,15 +54,18 @@ async function refresh() {
     api("/api/publish/problems"),
     api("/api/publish/ftplist"),
     api("/api/publish/checklist"),
+    api("/api/publish/ytmap"),
   ]);
-  const [pre, env, problems, ftp, checklist] = results;
+  const [pre, env, problems, ftp, checklist, ytmap] = results;
   P.pre = pre.status === "fulfilled" ? pre.value : { error: pre.reason?.message };
   P.env = env.status === "fulfilled" ? env.value : null;
   P.problems = problems.status === "fulfilled" ? problems.value : null;
   P.ftp = ftp.status === "fulfilled" ? ftp.value : { error: ftp.reason?.message };
   P.checklist = checklist.status === "fulfilled" ? checklist.value : null;
+  P.ytmap = ytmap.status === "fulfilled" ? ytmap.value : { error: ytmap.reason?.message };
 
   renderPre();
+  renderYtmap();
   renderBuild();
   renderProblems();
   renderFtp();
@@ -123,7 +129,124 @@ function renderPre() {
   });
 }
 
-/* ── ② 빌드 ────────────────────────────────────────── */
+/* ── ② 영상 매핑 ────────────────────────────────────
+ *
+ * 발행에서 손이 가장 많이 가는 칸이다. 번들이 72개라 손으로 쓰면 오타가 난다.
+ * 빌더에 `--init-youtube-map` 이 있는데 앱이 노출하지 않아 명령줄을 따로 열어야 했다.
+ *
+ * ★ `sec` 은 **시작 초**다(영상 길이가 아니다). check.js 가 `&start=` 로 쓴다.
+ *   길이를 넣으면 모든 영상이 끝에서 시작한다.
+ */
+function fmtSec(n) {
+  const m = Math.floor((n || 0) / 60);
+  return `${m}:${String((n || 0) % 60).padStart(2, "0")}`;
+}
+
+function renderYtmap() {
+  const box = $("#pb-ytmap");
+  box.innerHTML = "";
+  const d = P.ytmap;
+  if (!d || d.error) {
+    box.appendChild(el("div", "empty", "매핑 상태를 읽지 못했습니다: " + (d?.error || "")));
+    return;
+  }
+
+  const chips = el("div", "vd-env");
+  chips.appendChild(el("span", "status-chip " + (d.exists ? "ok" : "bad"),
+    d.exists ? `매핑 파일 있음` : "매핑 파일 없음"));
+  chips.appendChild(el("span", "status-chip " + (d.empty ? "bad" : "ok"),
+    `링크 ${d.filled} / ${d.bundles}`));
+  if (d.provider) chips.appendChild(el("span", "status-chip", `provider=${d.provider}`));
+  const leaky = (d.items || []).filter((i) => i.leaky && i.id);
+  if (leaky.length) {
+    chips.appendChild(el("span", "status-chip bad", `공개 유출 위험 ${leaky.length}개`));
+  }
+  box.appendChild(chips);
+
+  if (leaky.length) {
+    const w = el("div", "qz-warn err");
+    w.appendChild(icon("alert", 15));
+    w.appendChild(el("span", null,
+      `${leaky.slice(0, 6).map((i) => i.bundle).join(", ")} — provider 가 drive/link/file 인데 `
+      + "min_level 이 1 입니다. 링크가 videos.js(정적 파일)에 구워져 누구나 내려받습니다. "
+      + "링크 자체가 접근 권한이라 그게 곧 유출입니다 — min_level 을 5 로 두세요."));
+    box.appendChild(w);
+  }
+
+  const acts = el("div", "qz-foot");
+  const mk = el("button", "btn " + (d.exists ? "" : "primary"),
+    d.exists ? "빠진 번들 채우기" : "영상 매핑 만들기");
+  mk.type = "button";
+  mk.addEventListener("click", () => syncYtmap());
+  acts.appendChild(mk);
+  if (d.exists) {
+    const open = el("button", "btn", "매핑 파일 열기");
+    open.type = "button";
+    open.addEventListener("click", async () => {
+      try { await api("/api/publish/ytmap/open", { method: "POST" }); }
+      catch (e) { toast(e.message, "err"); }
+    });
+    acts.appendChild(open);
+  }
+  acts.appendChild(el("span", "field-hint qz-foot-hint",
+    "공유 URL 을 그대로 id 에 붙여넣어도 됩니다 — 빌더가 ID 만 뽑습니다. "
+    + "이미 넣은 링크는 다시 눌러도 지워지지 않습니다."));
+  box.appendChild(acts);
+  if (d.path) box.appendChild(el("pre", "pb-cmd", d.path));
+
+  if (d.extra && d.extra.length) {
+    box.appendChild(el("div", "field-hint",
+      `매핑에만 있는 번들 ${d.extra.length}개(05/ 에 없음): ${d.extra.slice(0, 8).join(", ")} — `
+      + "예전 회차라면 남겨도 되고, 지워도 빌드에 영향이 없습니다."));
+  }
+
+  // 번들 표 — 링크 유무와 문항 시작점을 함께 본다.
+  const tbl = el("table", "tbl");
+  tbl.innerHTML = `<thead><tr><th>번들</th><th>문항</th><th>길이</th>
+    <th>링크</th><th>시작</th><th>레벨</th><th>문항 시작점</th></tr></thead>`;
+  const tb = el("tbody");
+  (d.items || []).forEach((i) => {
+    const tr = el("tr", i.id ? "" : "state-todo");
+    tr.appendChild(el("td", null, i.bundle));
+    tr.appendChild(el("td", "muted", i.label || ""));
+    tr.appendChild(el("td", "muted", i.length ? fmtSec(i.length) : "—"));
+    const link = el("td");
+    link.appendChild(el("span", "status-chip " + (i.id ? "ok" : ""),
+      i.id ? (i.provider === "drive" ? "드라이브" : i.provider) : "비어 있음"));
+    tr.appendChild(link);
+    tr.appendChild(el("td", "muted", i.sec ? fmtSec(i.sec) : "처음"));
+    tr.appendChild(el("td", "muted", i.min_level ? String(i.min_level) : "공개"));
+    // 문항별 시작 초 — 강사가 "N번은 몇 분" 을 바로 볼 수 있게 펼쳐 둔다.
+    const st = el("td", "muted");
+    st.textContent = (i.starts || []).map((s) => `${s.number}번 ${fmtSec(s.startSec)}`).join(" · ");
+    tr.appendChild(st);
+    tb.appendChild(tr);
+  });
+  tbl.appendChild(tb);
+  const wrap = el("div", "tbl-wrap");
+  wrap.appendChild(tbl);
+  box.appendChild(wrap);
+
+  box.appendChild(el("div", "field-hint",
+    "★ 문항 시작점은 review.json 에서 계산한 값입니다(영상 시간축 기준). "
+    + "지금 웹은 번들 하나에 시작점 하나(sec)만 씁니다 — 문항별로 뛰려면 "
+    + "웹·빌더 스키마를 늘려야 합니다(추후)."));
+}
+
+async function syncYtmap() {
+  try {
+    const r = await api("/api/publish/ytmap/sync", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: P.ytmap?.provider || "drive" }),
+    });
+    toast(r.added?.length ? `번들 ${r.added.length}개를 추가했습니다.` : "이미 다 있습니다.");
+    await refresh();
+  } catch (e) {
+    toast("매핑을 만들지 못했습니다: " + e.message, "err");
+  }
+}
+
+/* ── ③ 빌드 ────────────────────────────────────────── */
 function renderBuild() {
   const box = $("#pb-build");
   box.innerHTML = "";

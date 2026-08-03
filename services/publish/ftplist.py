@@ -118,6 +118,17 @@ def server_checklist() -> list[dict]:
     그 토큰이 1회용이라 curl -F 로 스크립트할 수 없다.
     """
     from core.constants import PD_CODE, PD_LABEL
+    from services.book import shape
+
+    # ★ 숫자를 상수로 두지 않는다. 이 체크리스트가 곧 작업 절차라서, 낡은 숫자가
+    #   적혀 있으면 사람이 그 숫자를 기준으로 검증하고 "맞다" 고 판단해 버린다.
+    #   실제로 3회차·240문항·24편 시절 값이 굳어 있었다 — 9회차로 늘자 전부 틀렸다.
+    sh = shape.summary()
+    n_q = sh["total_questions"]
+    n_r = sh["round_count"]
+    n_b = sh["total_bundles"]
+    n_s = sh["subject_count"]
+    ymap = f"data/youtube_map.{PD_CODE}.json"
     return [
         {"key": "ex_product", "label": f"ex_product 에 pd_id='{PD_CODE}' 행 추가",
          "where": "phpMyAdmin",
@@ -128,14 +139,19 @@ def server_checklist() -> list[dict]:
                  f"VALUES ('{PD_CODE}', '{PD_LABEL}', 1, 'T1', 'deepseek-v4-flash',\n"
                  "        'openai_compat', 10, 3.0000, 20)\n"
                  "ON DUPLICATE KEY UPDATE pd_name = VALUES(pd_name);")},
-        {"key": "youtube", "label": "영상 24편을 유튜브에 업로드",
-         "where": "youtube.com",
-         "detail": ("먼저 '미등록(unlisted)' 으로 올리고 확인한 뒤 공개로 바꾼다. "
-                    "영상 ID 는 그대로이므로 매핑 파일을 다시 고칠 필요가 없다. "
-                    "⚠ 지웠다 다시 올리면 ID 가 바뀐다 — 내리지 말고 미등록으로 둔다.")},
-        {"key": "youtube_map", "label": f"youtube_map.{PD_CODE}.json 에 ID 24개 입력",
-         "where": f"_ref/axexam/data/youtube_map.{PD_CODE}.json",
-         "detail": "유튜브 URL 의 v= 값을 각 번들 항목의 id 에 넣는다. 입력 후 다시 빌드한다."},
+        {"key": "youtube", "label": f"영상 {n_b}편을 올린다 (구글 드라이브 또는 유튜브)",
+         "where": "drive.google.com / youtube.com",
+         "detail": ("★ 지웠다 다시 올리면 ID 가 바뀐다 — 내리지 말고 비공개로 둔다. "
+                    "유튜브면 '미등록(unlisted)' 으로 올리고 확인 후 공개로 바꾼다 "
+                    "(ID 가 그대로라 매핑을 다시 고칠 필요가 없다). "
+                    "드라이브면 '링크가 있는 모든 사용자' 로 공유해야 재생된다.")},
+        {"key": "youtube_map", "label": f"영상 매핑에 링크 {n_b}개 입력",
+         "where": ymap,
+         "detail": ("발행 화면의 [영상 매핑 만들기] 로 골격을 만들고, 공유 URL 을 각 항목의 "
+                    "id 에 붙여넣는다 — URL 그대로 넣어도 된다(빌더가 ID 만 뽑는다). "
+                    "★ 드라이브·link·file 은 min_level 을 5 로 둔다. 1 이면 링크가 "
+                    "videos.js(정적 파일)에 구워져 누구나 내려받는다 — 링크 자체가 권한이다. "
+                    "입력 후 다시 빌드한다.")},
         {"key": "ftp", "label": "06/ 산출물을 /www/exam/ 로 FTP 업로드",
          "where": "FileZilla",
          "detail": ("전송 유형은 **바이너리**. 동시 전송 2개 이하. 파일명 인코딩 UTF-8 강제"
@@ -147,9 +163,25 @@ def server_checklist() -> list[dict]:
                     "서버는 처리 후 업로드 파일을 즉시 지운다.")},
         {"key": "report", "label": "임포트 리포트 확인",
          "where": "/adm/exam_import.php",
-         "detail": "기대값 — 신규 240 · 갱신 0 · 변경없음 0 · 건너뜀 0 · 실패 0 · 회차 3행."},
+         "detail": (f"첫 발행이면 신규 {n_q} · 갱신 0 · 회차 {n_r}행. "
+                    f"두 번째부터는 신규 0 · 갱신(고친 수) · 변경없음(나머지) 로 나온다. "
+                    "실패·건너뜀은 항상 0 이어야 한다.")},
         {"key": "verify", "label": "웹에서 최종 확인",
          "where": SITE_BASE + SITE_PATH,
-         "detail": (f"api/products.php 에 {PD_CODE} 가 open:1 · problems:240 · rounds:3 으로 "
-                    f"보이고, check.html?pd={PD_CODE} 가 240문항·4과목 필터로 떠야 한다.")},
+         "detail": (f"api/products.php 에 {PD_CODE} 가 open:1 · problems:{n_q} · rounds:{n_r} 로 "
+                    f"보이고, check.html?pd={PD_CODE} 가 {n_q}문항·{n_s}과목 필터로 떠야 한다. "
+                    "영상은 로그인 레벨이 min_level 이상일 때만 보인다(드라이브는 5로 두었다).")},
+        # ★ 여기부터는 '나중에 고칠 때' 절차다. 초기 세팅보다 이쪽이 훨씬 자주 일어난다.
+        {"key": "revise_video", "label": "[나중] 영상만 바꿀 때 — 파일 1개",
+         "where": f"{ymap} → 빌드 → FTP",
+         "detail": ("영상 교체·삭제·추가는 **가장 싼 변경**이다. 매핑의 id 를 고치고 빌드한 뒤 "
+                    f"`pd/{PD_CODE}/videos.private.json` **한 파일만** 올리면 끝난다 "
+                    "(api/videos.php 가 그 파일을 요청마다 다시 읽는다 — 캐시도 DB도 없다). "
+                    "problems.json 재임포트도, 관리자 화면도 필요 없다. "
+                    "min_level 이 1 이면 대신 `videos.js` 를 올린다.")},
+        {"key": "revise_question", "label": "[나중] 문항을 고칠 때 — 임포트까지",
+         "where": "#/questions → 빌드 → FTP → 관리자 화면",
+         "detail": ("문항은 서버 DB 에 들어가 있으므로 problems.json 재임포트가 필요하다. "
+                    "리포트의 '갱신' 수가 고친 문항 수와 같은지 확인한다. "
+                    "pr_key 가 같은 행을 UPDATE 하므로 회차·번호를 바꾸면 새 행이 생긴다.")},
     ]

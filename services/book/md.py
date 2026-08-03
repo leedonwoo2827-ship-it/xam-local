@@ -58,13 +58,33 @@ def _scalar(value: str, key: str) -> str:
     return s
 
 
+# ★ flow 목록 항목에 `&` 가 들어가면 **따옴표로 감싼다.**
+#
+#   YAML 로는 필요 없다 — `&` 가 첫 글자가 아니면 앵커가 아니고, PyYAML 도 `R&R` 을
+#   감싸지 않는다(`[R&R]`). 그런데 #2 가 쓴 `02/*.md` 는 감싼다:
+#
+#       tags: [빅데이터조직, "R&R", 역할]        ← 실제 파일
+#       tags: [빅데이터조직, R&R, 역할]          ← 예전 렌더 결과
+#
+#   2바이트 차이지만 왕복 검증이 깨지고, 그러면 그 회차 문항 저장이 409 로 막힌다.
+#   720개 전수에서 따옴표가 쓰인 태그는 `"R&R"` 하나뿐이고 `&` 를 가진 태그도 그것뿐이라,
+#   "`&` 가 있으면 감싼다" 가 관측과 정확히 일치하는 규칙이다.
+#   (형식은 상수로 가정하지 않고 파일에서 되맞춘다 — 이 저장소의 규칙.)
+_FLOW_QUOTE = re.compile(r"&")
+
+
+def _flow_item(value: str, key: str) -> str:
+    s = _scalar(value, key)
+    return f'"{s}"' if _FLOW_QUOTE.search(s) else s
+
+
 def _fm_line(key: str, value) -> str:
     if isinstance(value, bool):
         return f"{key}: {'true' if value else 'false'}\n"
     if isinstance(value, int):
         return f"{key}: {value}\n"
     if key in FM_FLOW_LIST:
-        items = [_scalar(v, key) for v in (value or [])]
+        items = [_flow_item(v, key) for v in (value or [])]
         return f"{key}: [{', '.join(items)}]\n"
     return f"{key}: {_scalar(value, key)}\n"
 

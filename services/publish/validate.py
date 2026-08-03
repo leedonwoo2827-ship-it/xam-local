@@ -154,13 +154,18 @@ def check_questions() -> list[dict]:
         ddist = {}
         for r in rows:
             ddist[r["difficulty"]] = ddist.get(r["difficulty"], 0) + 1
-        # 목표 난이도 비율(상 30% · 중 55% · 하 15%)을 **그 회차 문항 수에 비례**해
-        # 잡는다. 24/44/12 로 못박으면 80문항 회차만 맞고, 50문항 책에서는 늘 경고가
-        # 뜬다. 비율은 집필 정책이라 유지하고 기준선만 회차 크기에서 만든다.
+        # 목표 난이도 비율을 **그 회차 문항 수에 비례**해 잡는다. 24/44/12 로 못박으면
+        # 80문항 회차만 맞고 50문항 책에서는 늘 경고가 뜬다.
+        #
+        # ★ 비율은 **집필 정책**이다 — `exam-all-빅분기-프롬프트-260803.md` 의
+        #   "상 28~32 · 중 42~46 · 하 6~8 (합 80)" 이 정본이고, 여기 값은 그 비율이다.
+        #   프롬프트를 고치면 이 값도 같이 고친다. 두 곳이 갈리면 9회차 전부 경고가 뜨고,
+        #   항상 뜨는 경고는 읽지 않게 되어 정말 편중된 회차도 같이 지나간다.
+        #   (예전 값 상30%·하15% 는 SQLD 시절 정책이라 실측 상37%·하9% 와 늘 갈렸다.)
         n_r = len(rows)
-        tgt = {"상": round(n_r * .30), "중": round(n_r * .55), "하": round(n_r * .15)}
+        tgt = {"상": round(n_r * .375), "중": round(n_r * .55), "하": round(n_r * .0875)}
         tol = {"상": max(4, round(n_r * .05)), "중": max(6, round(n_r * .08)),
-               "하": max(4, round(n_r * .05))}
+               "하": max(3, round(n_r * .04))}
         ok_d = all(abs(ddist.get(k, 0) - tgt[k]) <= tol[k] for k in tgt)
         out.append(_chk("questions", f"q.difficulty_mix.{rc}", "warn",
                         f"{rc} 난이도 "
@@ -294,32 +299,25 @@ def check_videos() -> list[dict]:
 
 
 def check_youtube() -> list[dict]:
-    """유튜브 매핑 — 영상은 mp4 를 올리지 않고 유튜브 embed 로 나간다.
+    """영상 매핑 — mp4 를 서버에 올리지 않고 외부 링크(드라이브·유튜브)로 나간다.
 
-    ★ axexam 의 data/youtube_map.json 은 책마다 갈라야 한다. 번들 키가 SQLD 의
-      m01-1…m06-5 와 우리 m01-1…m03-8 구간에서 겹치기 때문이다(패치 1번).
+    ★ 파일 위치는 **한 곳에서만 정한다** — `ytmap.path()`(= buildcheck.youtube_map_path()).
+      빌더가 앱 안으로 들어와 그 `ROOT` 가 이 저장소라, 매핑도 이 앱의 `data/` 에 있다.
+      예전에는 이 함수가 `_ref/axexam/data/` 를 봤다. 그래서 빌드 카드 배지(옳은 경로)와
+      사전점검(틀린 경로)이 서로 다른 파일을 보고 한쪽만 "없음" 이라고 했다.
+
+    ★ 품목별로 파일이 갈리는 것은 **빌더가 원래 하는 일**이다(`youtube_map_path(pd_id)`).
+      번들 키(m01-1…)가 SQLD 와 겹치기 때문인데, 상류가 이미 해결해 두었으므로
+      패치는 필요 없다. 예전 문구에 "axexam 패치 1번이 필요합니다" 가 남아 있었다.
     """
+    from services.publish import ytmap
     out: list[dict] = []
-    per_book = os.path.join(AXEXAM_DIR, "data", f"youtube_map.{PD_CODE}.json")
-    shared = os.path.join(AXEXAM_DIR, "data", "youtube_map.json")
-    path = per_book if os.path.isfile(per_book) else shared
-
-    if not os.path.isdir(AXEXAM_DIR):
-        out.append(_chk("youtube", "y.axexam", "error", "axexam 저장소 클론됨", False,
-                        f"{AXEXAM_DIR} 가 없습니다. "
-                        "git clone https://github.com/leedonwoo2827-ship-it/axexam _ref\\axexam"))
-        return out
-
-    out.append(_chk("youtube", "y.per_book_map", "error",
-                    f"품목 전용 유튜브 매핑 (youtube_map.{PD_CODE}.json)",
-                    os.path.isfile(per_book),
-                    ("공용 youtube_map.json 을 쓰면 SQLD 의 번들 키(m01-1…m06-5)와 "
-                     "겹쳐 서로의 영상 ID 를 덮어씁니다. axexam 패치 1번이 필요합니다.")
-                    if not os.path.isfile(per_book) else ""))
+    path = ytmap.path()
 
     if not os.path.isfile(path):
-        out.append(_chk("youtube", "y.map_exists", "error", "유튜브 매핑 파일 존재", False,
-                        f"{path} 가 없습니다."))
+        out.append(_chk("youtube", "y.map_exists", "error", "영상 매핑 파일 존재", False,
+                        f"{path} 가 없습니다 — 발행 화면의 [영상 매핑 만들기] 를 누르면 "
+                        f"번들 {_want_bundles()}개 골격이 생깁니다(라벨·길이까지 채웁니다)."))
         return out
 
     try:
