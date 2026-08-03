@@ -15,6 +15,8 @@
   var PD    = root.dataset.pd || '';
   var AT    = parseInt(root.dataset.at || '0', 10) || 0;
   var BRAND = root.dataset.brand || 'XAMpass';
+  /* 샘플(데모) 모드 — API 에 sample=1 을 붙인다. 서버가 합성 답안지를 만든다. */
+  var SAMPLE = root.dataset.sample === '1';
   var API   = '/exam/api/';
   var body  = document.getElementById('rpBody');
 
@@ -301,10 +303,22 @@
     document.getElementById('rpSub').textContent =
       d.pd_name + ' · ' + d.attempt.rd_no + '회 · ' + String(d.attempt.at).slice(0, 10);
 
+    /* PDF 는 브라우저 인쇄를 쓴다 — 서버에 PDF 라이브러리(wkhtmltopdf·mPDF)를 올리면
+       메모리·폰트(한글) 문제가 붙고, 화면과 결과물이 갈린다.
+       인쇄 CSS 로 화면 그대로 뽑는 쪽이 유지 비용이 0에 가깝다. */
     document.getElementById('rpActions').innerHTML =
         '<a class="mp-btn" href="/exam/check.php?pd=' + encodeURIComponent(PD)
       + '&m=quiz&rd=' + d.attempt.rd_no + '">다시 풀기</a>'
-      + '<a class="mp-btn ghost" href="/exam/mypage.php?pd=' + encodeURIComponent(PD) + '">마이페이지</a>';
+      + '<button type="button" class="mp-btn ghost" id="rpPrint">PDF 저장 · 인쇄</button>'
+      + '<a class="mp-btn ghost" href="/exam/mypage.php?pd=' + encodeURIComponent(PD)
+      + (SAMPLE ? '&sample=1' : '') + '">마이페이지</a>';
+    document.getElementById('rpPrint').addEventListener('click', function () {
+      /* 인쇄 전에 문항별 필터를 '전체' 로 올린다 — 종이에 남는 성적표에서
+         '틀린 것만' 33문항만 찍히면 나중에 그게 전부인 줄로 읽힌다. */
+      var all = document.querySelector('#rpFilter button[data-f="all"]');
+      if (all && !all.classList.contains('on')) all.click();
+      window.print();
+    });
 
     var c = document.getElementById('rpCrumb');
     if (c) {
@@ -338,7 +352,9 @@
   }
 
   /* ── 부팅 ───────────────────────────────────────────────────── */
-  var q = 'report.php?pd=' + encodeURIComponent(PD) + (AT ? '&at_id=' + AT : '');
+  var q = 'report.php?pd=' + encodeURIComponent(PD)
+        + (AT ? '&at_id=' + AT : '')
+        + (SAMPLE ? '&sample=1' : '');
 
   fetch(API + q, { credentials: 'same-origin' })
     .then(function (r) { return r.json(); })

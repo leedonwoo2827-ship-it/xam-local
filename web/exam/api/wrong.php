@@ -8,9 +8,12 @@
  * (COST.md §3)
  */
 require_once __DIR__ . '/_boot.php';
+require_once __DIR__ . '/lib/sample.php';
+
+$sample = ex_sample_on();
 
 $mb = ex_mb();
-if ($mb === '') ex_fail('login_required', 401);
+if ($mb === '' && !$sample) ex_fail('login_required', 401);
 
 $pd   = ex_pd(isset($_GET['pd']) ? $_GET['pd'] : 'sqld');
 $page = max(1, (int)(isset($_GET['page']) ? $_GET['page'] : 1));
@@ -20,6 +23,41 @@ $only = isset($_GET['only']) ? $_GET['only'] : 'wrong';   // wrong | starred | a
 
 $mbq = sql_real_escape_string($mb);
 $pdq = sql_real_escape_string($pd);
+
+/* ── 샘플 ───────────────────────────────────────────────────────────────────
+ * 성적표 샘플과 같은 답안지에서 틀린 문항만 뽑는다 → 두 화면의 숫자가 맞는다.
+ * `ex_wrong` 을 읽지 않으므로 누적치(try_cnt·wrong_cnt)는 1회분으로 둔다.
+ */
+if ($sample) {
+    $sh = ex_sample_sheet($pd, isset($_GET['rd']) ? (int)$_GET['rd'] : 1);
+    if (!$sh) ex_fail('no_problems', 404);
+    $rows = array();
+    foreach ($sh['rows'] as $r) {
+        if ((int)$r['is_ok'] === 1) continue;          // 맞춘 것은 오답노트에 없다
+        if ((int)$r['chosen'] < 0) continue;           // 미응답은 ex_wrong 에 안 쌓인다(응답한 문항만)
+        $rows[] = array(
+            'pr_key' => $r['pr_key'], 'round' => (int)$r['rd_no'] . '회',
+            'rd_no' => (int)$r['rd_no'], 'number' => (int)$r['pr_no'],
+            'subject' => $r['sj_name'], 'difficulty' => $r['difficulty'],
+            'question' => $r['question'],
+            'choices' => ex_unjson($r['choices_json'], array()),
+            'answer_index' => ($r['answer_index'] === null) ? null : (int)$r['answer_index'],
+            'answer' => $r['answer_label'],
+            'explanation' => (string)$r['explanation'],
+            'try_cnt' => 1, 'wrong_cnt' => 1,
+            'last_chosen' => (int)$r['chosen'], 'last_ok' => 0, 'starred' => 0,
+            'at' => $sh['at'],
+        );
+    }
+    $n = count($rows);
+    ex_out(array(
+        'ok' => 1, 'pd' => $pd, 'sample' => 1,
+        'total' => $n, 'page' => 1, 'per' => $n,
+        'summary' => array('problems' => $n, 'still_wrong' => $n,
+                           'tries' => $n, 'misses' => $n),
+        'items' => array_slice($rows, 0, 20),
+    ));
+}
 
 /* 마지막에 틀린 것만 = 오답노트. 맞춘 뒤로는 목록에서 빠진다.
    틀린 이력(wrong_cnt)은 남아 있어 "몇 번 틀렸는지" 는 계속 보인다. */

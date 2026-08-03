@@ -35,7 +35,12 @@
     return p >= 70 ? 'var(--c-good)' : (p >= 50 ? 'var(--c-mid)' : 'var(--c-bad)');
   }
 
+  /* 샘플(데모) 모드 — 모든 API 호출에 sample=1 을 붙인다. 서버가 합성 답안지로
+     응답하므로 비로그인도 응시 이력·오답노트가 어떻게 쌓이는지 볼 수 있다. */
+  var SAMPLE = root.dataset.sample === '1';
+
   function get(path) {
+    if (SAMPLE) path += (path.indexOf('?') < 0 ? '?' : '&') + 'sample=1';
     return fetch(API + path, { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .catch(function () { return { ok: 0 }; });
@@ -116,7 +121,9 @@
        응시 이력은 점수만 보여주고 끝나는 화면이 아니어야 한다 — 누른 뒤에 분석이 나와야
        "왜 틀렸는지" 로 이어진다. 그게 이 제품이 파는 것이다. */
     return d.items.map(function (a) {
-      var href = '/exam/report.php?pd=' + encodeURIComponent(PD) + '&at=' + (a.at_id | 0);
+      /* 샘플은 at_id 가 없다(ex_attempt 을 만들지 않는다) → sample=1 로 넘긴다 */
+      var href = '/exam/report.php?pd=' + encodeURIComponent(PD)
+               + (SAMPLE ? '&sample=1' : '&at=' + (a.at_id | 0));
       return '<a class="mp-row mp-row-link" href="' + href + '">' +
         '<div class="mp-row-top">' +
           '<span class="mp-tag blue">' + esc(a.round) + '</span>' +

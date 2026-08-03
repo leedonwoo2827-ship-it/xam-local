@@ -11,7 +11,12 @@
  */
 include_once('../common.php');
 
-if (!$is_member) {
+/* 샘플(데모) — `?sample=1` 이면 로그인 없이 열린다. 응시 이력·오답노트가
+   "채점 뒤에 무엇이 남는지" 를 보여주는 화면인데, 그걸 보려면 원래 가입하고
+   50문제를 풀어야 했다. 데이터는 합성이다(api/lib/sample.php). */
+$sample = !empty($_GET['sample']);
+
+if (!$is_member && !$sample) {
     goto_url(G5_BBS_URL . '/login.php?url=' . urlencode(G5_URL . '/exam/mypage.php'));
 }
 
@@ -29,6 +34,11 @@ if ($pd_want !== '') {
                      where pd_id = '" . sql_real_escape_string($pd_want) . "'");
     if ($r) $pd = $r['pd_id'];
 }
+/* 샘플은 비회원이라 me.php 의 books[0] 으로 정할 수 없다 → 열린 첫 문제집 */
+if ($sample && $pd === '') {
+    $r = sql_fetch("select pd_id from ex_product where pd_open = 1 order by pd_sort limit 1");
+    if ($r) $pd = $r['pd_id'];
+}
 
 $g5['title'] = '마이페이지';
 include_once(G5_PATH . '/head.php');
@@ -36,12 +46,21 @@ include_once(G5_PATH . '/head.php');
 
 <link rel="stylesheet" href="<?php echo G5_URL ?>/exam/assets/mypage.css?v=<?php echo @filemtime(G5_PATH.'/exam/assets/mypage.css') ?>">
 
-<div class="mp" data-pd="<?php echo htmlspecialchars($pd) ?>">
+<div class="mp" data-pd="<?php echo htmlspecialchars($pd) ?>"
+     data-sample="<?php echo $sample ? 1 : 0 ?>">
+
+<?php if ($sample) { ?>
+  <div class="rp-demo">
+    <b>샘플 화면입니다.</b> 실제 회원 기록이 아니라 예시 답안으로 채점한 결과입니다 —
+    채점하면 <b>응시 이력</b>과 <b>오답노트</b>가 이렇게 쌓입니다.
+    <a href="<?php echo G5_URL ?>/exam/check.php?pd=<?php echo urlencode($pd) ?>">문제 풀러 가기 →</a>
+  </div>
+<?php } ?>
 
   <div class="mp-head">
     <div>
-      <h2><?php echo htmlspecialchars($member['mb_nick'] ?: $member['mb_id']) ?>님</h2>
-      <p class="mp-sub">가입 <?php echo substr($member['mb_datetime'], 0, 10) ?></p>
+      <h2><?php echo $sample ? '샘플' : htmlspecialchars($member['mb_nick'] ?: $member['mb_id']) ?>님</h2>
+      <p class="mp-sub">가입 <?php echo $sample ? date('Y-m-d') : substr($member['mb_datetime'], 0, 10) ?></p>
     </div>
     <div class="mp-actions">
       <?php /* pd 가 비어 있으면(주소에 ?pd= 없음) 문제집 목록으로 보낸다.

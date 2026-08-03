@@ -38,9 +38,14 @@
  *   누적 오답     ex_wrong (try_cnt, wrong_cnt)
  */
 require_once __DIR__ . '/_boot.php';
+require_once __DIR__ . '/lib/sample.php';
+
+/* 샘플(데모) — 로그인 없이 열린다. 회원 테이블을 한 줄도 읽지 않는다.
+   근거와 안전장치는 lib/sample.php 주석 참조. */
+$sample = ex_sample_on();
 
 $mb = ex_mb();
-if ($mb === '') ex_fail('login_required', 401);
+if ($mb === '' && !$sample) ex_fail('login_required', 401);
 
 $pd    = ex_pd(isset($_GET['pd']) ? $_GET['pd'] : '', '');
 $at_id = isset($_GET['at_id']) ? (int)$_GET['at_id'] : 0;
@@ -56,7 +61,19 @@ if (!$prod) ex_fail('no_such_product', 404);
  * ★ mb_id 를 WHERE 에 넣는다. at_id 만으로 찾으면 **남의 성적표를 볼 수 있다** —
  *   at_id 는 연속된 정수라 남의 것을 맞히기 쉽다.
  */
-if ($at_id > 0) {
+$sheet = null;
+if ($sample) {
+    /* ex_attempt 을 아예 조회하지 않는다 — 샘플이 남의 성적표를 여는 뒷문이 되면 안 된다. */
+    $sheet = ex_sample_sheet($pd, isset($_GET['rd']) ? (int)$_GET['rd'] : 1);
+    if (!$sheet) ex_fail('no_problems', 404);
+    $at = array(
+        'at_id' => 0, 'rd_no' => $sheet['rd_no'],
+        'at_total' => $sheet['total'], 'at_correct' => $sheet['correct'],
+        'at_pct' => $sheet['pct'], 'at_sec' => 2340,
+        'at_filter' => '', 'created_at' => $sheet['at'],
+    );
+    $at_id = 0;
+} elseif ($at_id > 0) {
     $at = sql_fetch("select * from ex_attempt
                       where at_id = $at_id and mb_id = '$mbq' and pd_id = '$pdq'");
 } else {
@@ -65,7 +82,7 @@ if ($at_id > 0) {
                       order by at_id desc limit 1");
 }
 if (!$at) ex_fail('no_attempt', 404);
-$at_id = (int)$at['at_id'];
+if (!$sample) $at_id = (int)$at['at_id'];
 
 /* ── 합격 기준 ──────────────────────────────────────────────────────────────
  * 자격증마다 다르므로 ex_product.pd_config 에 둔다 — 코드 수정 없이 DB 로 바뀐다.
@@ -87,13 +104,18 @@ $rd = sql_fetch("select rd_free, rd_label from ex_round
 $free_round = $rd ? ((int)$rd['rd_free'] === 1) : false;
 
 // 수강생 — ex_entitlement 에 (회원, 문제집) 행이 있으면 전 회차 열람
-$ent = sql_fetch("select mb_id from ex_entitlement where mb_id = '$mbq' and pd_id = '$pdq'");
-$entitled = !empty($ent);
+$entitled = false;
+if (!$sample) {
+    $ent = sql_fetch("select mb_id from ex_entitlement where mb_id = '$mbq' and pd_id = '$pdq'");
+    $entitled = !empty($ent);
+}
 
 $rcfg = (is_array($cfg) && isset($cfg['report']) && is_array($cfg['report'])) ? $cfg['report'] : array();
 $free_all = !empty($rcfg['free_all']);
 
-$locked = !($free_all || $free_round || $entitled || ex_is_admin());
+/* 샘플은 잠그지 않는다 — 잠근 샘플은 아무것도 보여주지 못해 존재 이유가 없다.
+   진짜 회차의 유료 게이트와는 무관하다(샘플은 회원 응시 기록을 읽지 않는다). */
+$locked = $sample ? false : !($free_all || $free_round || $entitled || ex_is_admin());
 
 /* ── 문항별 ─────────────────────────────────────────────────────────────────
  * ex_attempt_item 이 pr_id 를 들고 있으므로 ex_problem 과 조인해 과목·난이도·본문을 붙인다.
@@ -101,14 +123,21 @@ $locked = !($free_all || $free_round || $entitled || ex_is_admin());
  * 문제를 다시 보려면 문제 화면으로 가는 게 맞다.
  */
 $items = array();
-$res = sql_query("select i.pr_id, i.chosen, i.is_ok,
-                         p.pr_key, p.pr_no, p.rd_no, p.sj_no, p.sj_name, p.difficulty,
-                         p.question, p.answer_index, p.answer_label, p.tags_json
-                    from ex_attempt_item i
-                    join ex_problem p on p.pr_id = i.pr_id
-                   where i.at_id = $at_id
-                   order by p.pr_no", false);
-while ($res && $r = sql_fetch_array($res)) {
+/* 샘플은 합성 답안지를, 실제는 ex_attempt_item 조인을 흘려보낸다.
+   ★ 아래 집계 전부(과목·난이도·태그·판정)는 두 경우에 **같은 코드가 돈다** —
+     샘플 전용 집계를 따로 만들면 화면이 바뀔 때 한쪽만 낡는다. */
+if ($sample) {
+    $res = $sheet['rows'];
+} else {
+    $res = sql_query("select i.pr_id, i.chosen, i.is_ok,
+                             p.pr_key, p.pr_no, p.rd_no, p.sj_no, p.sj_name, p.difficulty,
+                             p.question, p.answer_index, p.answer_label, p.tags_json
+                        from ex_attempt_item i
+                        join ex_problem p on p.pr_id = i.pr_id
+                       where i.at_id = $at_id
+                       order by p.pr_no", false);
+}
+while ($r = ($sample ? array_shift($res) : ($res ? sql_fetch_array($res) : null))) {
     $items[] = array(
         'pr_id'    => (int)$r['pr_id'],
         'pr_key'   => $r['pr_key'],
@@ -201,7 +230,9 @@ $weak = array_slice($weak, 0, 12);
  * 이번 회차가 아니라 **누적**이다(ex_wrong). "계속 틀리는 문제" 는 이번 점수보다 중요하다.
  */
 $repeat = array();
-$res = sql_query("select w.pr_id, w.try_cnt, w.wrong_cnt, w.last_chosen, w.last_ok,
+/* 샘플은 누적이 없다 — ex_wrong 은 회원 테이블이라 읽지 않는다.
+   '반복 오답' 블록은 데이터가 없으면 화면이 스스로 감춘다. */
+$res = $sample ? false : sql_query("select w.pr_id, w.try_cnt, w.wrong_cnt, w.last_chosen, w.last_ok,
                          p.pr_key, p.pr_no, p.rd_no, p.sj_name, p.question
                     from ex_wrong w
                     join ex_problem p on p.pr_id = w.pr_id
@@ -226,7 +257,7 @@ while ($res && $r = sql_fetch_array($res)) {
  * 오래된 것 → 최신 순으로 준다(차트가 왼쪽부터 그리게).
  */
 $trend = array();
-$res = sql_query("select at_id, rd_no, at_pct, created_at from ex_attempt
+$res = $sample ? false : sql_query("select at_id, rd_no, at_pct, created_at from ex_attempt
                    where mb_id = '$mbq' and pd_id = '$pdq'
                    order by at_id desc limit 10", false);
 while ($res && $r = sql_fetch_array($res)) {
