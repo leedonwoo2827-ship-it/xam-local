@@ -165,6 +165,13 @@
 /* 아직 없는 자격증 — 링크가 아니라는 걸 커서와 색으로 알린다.
    죽은 <a href="#"> 을 두면 눌렀는데 아무 일도 안 나서 고장으로 읽힌다. */
 .foot-soon{ display:block; padding:4px 0; color:#606b85; cursor:default; }
+/* 링크가 아닌 설명 항목. `.foot-soon`(준비 중)보다 밝게 둔다 —
+   있는 기능을 흐리게 쓰면 '아직 안 된다'로 읽힌다. */
+.foot-txt{ display:block; padding:4px 0; color:#8e99b3; cursor:default; }
+/* 준비 중인 기능의 링크. 링크이긴 하지만(설명은 있다) 있는 기능과 구별되어야 한다. */
+.foot a.foot-soon-a{ color:#606b85; }
+.foot a.foot-soon-a em{ font-style:normal; font-size:11px; color:#4e586f;
+  border:1px solid rgba(255,255,255,.14); border-radius:999px; padding:1px 6px; margin-left:5px; }
 .foot-soon em{ font-style:normal; font-size:11px; color:#4e586f;
   border:1px solid #3a4257; border-radius:var(--r-full); padding:1px 7px; margin-left:5px; }
 .foot-bot{ border-top:1px solid rgba(255,255,255,.09); padding-top:20px;
@@ -208,13 +215,20 @@
       <a class="axnav-item" href="/exam/check.php?pd={{PD}}"><svg class="ic"><use href="#i-edit"></use></svg>문제 풀기</a>
       <a class="axnav-item" href="/exam/check.php?pd={{PD}}&amp;m=theory"><svg class="ic"><use href="#i-book"></use></svg>이론</a>
       <a class="axnav-item" href="/exam/buy.php?pd={{PD}}"><svg class="ic"><use href="#i-cap"></use></svg>수강 신청</a>
+      <a class="axnav-item" href="/exam/report.php?pd={{PD}}&amp;sample=1"><svg class="ic"><use href="#i-chart"></use></svg>성적표 샘플</a>
     </nav>
-    <nav class="axnav-util">
+    <!-- data-authswap: ui.js 가 api/me.php 를 보고 우측을 갈아끼운다.
+         정적 파일이라 서버가 로그인 상태를 못 그린다 — 이 표식이 있는 nav 만 바꾼다
+         (그누보드 화면은 head.php 가 서버에서 이미 정확히 그린다). -->
+    <nav class="axnav-util" data-authswap="1">
       <a class="axnav-item" href="/bbs/board.php?bo_table=notice"><svg class="ic"><use href="#i-bell"></use></svg>공지</a>
       <a class="axnav-item" href="/bbs/qalist.php"><svg class="ic"><use href="#i-help"></use></svg>문의</a>
       <span class="axnav-sep"></span>
-      <a class="axnav-item" href="/exam/mypage.php"><svg class="ic"><use href="#i-user"></use></svg>마이페이지</a>
-      <a class="axnav-cta" href="/bbs/login.php">로그인</a>
+      <span class="axnav-auth">
+        <a class="axnav-item" href="/exam/mypage.php"><svg class="ic"><use href="#i-user"></use></svg>마이페이지</a>
+        <a class="axnav-cta ghost" href="/bbs/register.php">회원가입</a>
+        <a class="axnav-cta" href="/bbs/login.php">로그인</a>
+      </span>
     </nav>
   </div>
 </header>
@@ -410,19 +424,30 @@
         <span class="foot-soon">정보처리기사 <em>준비 중</em></span>
         <span class="foot-soon">컴퓨터활용능력 <em>준비 중</em></span>
       </div>
+      <!-- 이용·고객지원 링크는 나중에 사이트맵 푸터로 내린다.
+           지금 이 자리는 "무엇을 주는 제품인가" 를 말하는 데 쓴다 —
+           랜딩 맨 아래는 스크롤을 끝까지 내린 사람이 보는 곳이고,
+           그 사람에게 필요한 건 메뉴가 아니라 근거다. -->
       <div>
-        <h5>이용</h5>
-        <a href="/exam/check.php?pd={{PD}}">문제 풀기</a>
-        <a href="/bbs/login.php">로그인</a>
-        <a href="/bbs/register.php">회원가입</a>
-        <a href="/bbs/member_confirm.php?url=/bbs/member_form.php">내 정보</a>
+        <h5>주요 기능 · 수험생</h5>
+        <a href="/exam/check.php?pd={{PD}}">회차별 모의고사 · 즉시 채점</a>
+        <a href="/exam/report.php?pd={{PD}}&amp;sample=1">성적표 — 과목별 취약도·취약 개념</a>
+        <a href="/exam/mypage.php?sample=1">오답노트 · 응시 이력 보관</a>
+        <a href="/exam/check.php?pd={{PD}}&amp;m=theory">과목별 이론 요약노트</a>
+        <a href="/exam/check.php?pd={{PD}}&amp;m=board">과목게시판 1:1 질문</a>
       </div>
       <div>
-        <h5>고객지원</h5>
-        <a href="/bbs/board.php?bo_table=notice">공지사항</a>
-        <a href="/bbs/qalist.php">1:1 문의</a>
-        <a href="/bbs/board.php?bo_table=qa">질문답변 게시판</a>
-        <a href="/bbs/faq.php">자주 묻는 질문</a>
+        <h5>주요 기능 · 운영·도입</h5>
+        <!-- 착지점은 features.php(자료화면)다. 관리자 화면으로 직접 보내면 방문자가
+             관리자 로그인으로 튕겨 '링크가 죽었다'로 읽힌다.
+             ⚠ LLM 초안은 아직 안 붙었다(DeepSeek 키 발급 전) → '준비 중' 을 유지한다.
+               BACKLOG.md 에 "'AI 분석'이라고 쓰려면 실제로 LLM 을 태워야 한다" 고 정해뒀다. -->
+        <a href="/exam/features.php#review">질문 검수 큐 — 답변 전 관리자 승인</a>
+        <a href="/exam/features.php#draft" class="foot-soon-a">답변 초안 일괄 생성 <em>준비 중</em></a>
+        <a href="/exam/features.php#import">문제 일괄 등록 · 변경분만 갱신</a>
+        <a href="/exam/features.php#quality">실 정답률로 문제 오류 자동 발견</a>
+        <a href="/exam/features.php#credit">수강·포인트 문제집 단위 분리</a>
+        <a href="/exam/features.php#multipd">자격증 추가 = DB 1행 (코드 변경 0)</a>
       </div>
     </div>
     <div class="foot-bot">

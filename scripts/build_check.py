@@ -1,4 +1,4 @@
-"""05 lesson JSON + 02 메타 → 정답 체크 정적 웹(06) + DB 임포트용 problems.json.
+"""05 lesson JSON(또는 02 집필 MD) + 02 메타 → 정적 웹(06) + DB 임포트용 problems.json.
 
 <book>/05/*/source/lesson_*.json 을 모아 <book>/06/ 생성:
   06/check.html         WOWPASS 디자인 문제풀이+채점 화면
@@ -10,12 +10,28 @@
 
 문제의 진짜 과목·검수상태는 05 가 아니라 `02/` 에 있다 → exam_meta.py 참조.
 
+## 문제 본문의 출처가 둘이다 (`--src`)
+
+| `--src` | 읽는 곳 | 언제 |
+|---|---|---|
+| `05` | `05/*/source/lesson_*.json` | 영상 대본·번들까지 만든 문제집 (SQLD) |
+| `02` | `02/m*.md` 본문 직접 파싱 | **집필(02)·요약노트(03)만 나온 문제집** |
+| `auto` (기본) | 05 가 있으면 05, 없으면 02 | |
+
+`--src 02` 가 있는 이유: 영상은 문제집의 필수 부품이 아니다. 빅데이터분석기사 필기처럼
+`04/`·`05/` 를 아직 안 돌린 문제집도 문제풀이·성적표·과목게시판은 전부 동작해야 한다.
+예전에는 본문이 05 에만 있어서 **영상 대본을 만들기 전에는 문제집을 열 수 없었다.**
+
 사용:
   python scripts/build_check.py                       # 정적 폴백 빌드
   python scripts/build_check.py --emit-json           # problems.json (adm/exam_import.php 업로드용)
   python scripts/build_check.py --emit-json --pd adsp # 품목 지정
   python scripts/build_check.py --api-base ./api/     # check.html 에 EXAM_API 주입 (서버 배포용)
   python scripts/build_check.py --init-youtube-map    # data/youtube_map.json 골격 1회 생성
+
+  # 영상 없이 (02/ 집필 결과만으로) 새 문제집 빌드
+  python scripts/build_check.py --book D:/00work/ocr-output-260730 \
+         --pd bdae-w --pd-name "빅데이터분석기사 필기" --emit-json --prune
 """
 from __future__ import annotations
 
@@ -27,6 +43,8 @@ import shutil
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import yaml  # pyyaml>=6.0 — requirements.txt 에 이미 있다 (02/ frontmatter 파싱)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from exam_meta import load_meta, load_rounds, load_subjects, src_id  # noqa: E402
@@ -91,13 +109,49 @@ def _parse_bundle(bundle: str) -> tuple[int, int]:
     return int(m.group(1)), int(m.group(2) or 0)
 
 
+# 번들 1개 = 문제 10개. 05/ 의 편성 규칙(`m01-1` = 1회 1~10번)과 같은 값이다.
+PART_SIZE = 10
+
+
+def bundle_of(rn: int, num, part_size: int = PART_SIZE) -> str:
+    """(1, 7) → 'm01-1'. 05/ 번들 디렉터리명과 같은 규칙.
+
+    `--src 02` 에는 번들 디렉터리가 없으므로 번호에서 계산한다.
+    05 경로는 디렉터리명을 그대로 쓰므로 이 함수를 타지 않는다 — 두 경로가
+    같은 이름을 만들어야 `pr_key` 가 갈리지 않는다.
+    """
+    if not rn:
+        return ""
+    try:
+        part = (int(num) - 1) // int(part_size) + 1
+    except (TypeError, ValueError):
+        part = 0
+    return f"m{int(rn):02d}-{part}" if part > 0 else f"m{int(rn):02d}"
+
+
+def pr_key_of(bundle: str, num) -> str:
+    """임포트 upsert 축 — `UNIQUE (pd_id, pr_key)`.
+
+    ⚠ 형식이 바뀌면 같은 문제가 새 행으로 들어가고 `pr_id` 가 갈려서
+      `ex_attempt_item`·`ex_wrong` 의 참조가 조용히 끊긴다. **되돌릴 수 없다.**
+      규칙을 여기 한 곳에만 둔다 — check.js 의 `keyOf()` 와 같은 규칙이다.
+    """
+    return f"{bundle}#{num}"
+
+
+# 도식 파일 확장자. SQLD 는 전부 SVG 지만 OCR 산출물은 PNG 스크린샷이다
+# (`01/images/01-14_1.png`) — SVG 만 찾으면 그림이 조용히 사라진다.
+FIG_EXT = ("*.svg", "*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif")
+
+
 def _svg_index(book: Path) -> dict[str, Path]:
     idx: dict[str, Path] = {}
-    for sub in ("02/assets", "04/assets", "03/assets"):
+    for sub in ("02/assets", "04/assets", "03/assets", "02/images", "01/images"):
         d = book / sub
         if d.is_dir():
-            for f in d.glob("*.svg"):
-                idx.setdefault(f.name, f)
+            for pat in FIG_EXT:
+                for f in d.glob(pat):
+                    idx.setdefault(f.name, f)
     return idx
 
 
@@ -119,12 +173,11 @@ def _hash(p: dict) -> str:
     return hashlib.md5(payload.encode("utf-8")).hexdigest()
 
 
-def collect(book: Path, figs_dir: Path, meta: dict[str, dict], strict: bool = True):
-    """05 의 lesson 블록 + 02 의 메타를 조인해 문제 목록을 만든다.
+def _figs_copier(book: Path, figs_dir: Path):
+    """도식 SVG 를 06/pd/<pd>/figs/ 로 복사하는 클로저. (ensure, copied, missing)
 
-    ⚠ subject 는 lesson 블록에 **없다**(전부 None). 반드시 meta 에서 가져온다.
-       예전 `b.get("subject") or subj` 는 lesson 최상위 'SQLD' 로 폴백해
-       300문제를 전부 'SQLD' 로 채웠다.
+    05·02 두 수집 경로가 같은 규칙으로 복사해야 한다 — 한쪽만 고치면
+    한 문제집에서만 도식이 사라지고, 그건 배포 후에나 보인다.
     """
     svg_idx = _svg_index(book)
     figs_dir.mkdir(parents=True, exist_ok=True)
@@ -141,6 +194,18 @@ def collect(book: Path, figs_dir: Path, meta: dict[str, dict], strict: bool = Tr
             copied.add(base)
         else:
             missing.add(base)
+
+    return ensure, copied, missing
+
+
+def collect(book: Path, figs_dir: Path, meta: dict[str, dict], strict: bool = True):
+    """05 의 lesson 블록 + 02 의 메타를 조인해 문제 목록을 만든다.
+
+    ⚠ subject 는 lesson 블록에 **없다**(전부 None). 반드시 meta 에서 가져온다.
+       예전 `b.get("subject") or subj` 는 lesson 최상위 'SQLD' 로 폴백해
+       300문제를 전부 'SQLD' 로 채웠다.
+    """
+    ensure, copied, missing = _figs_copier(book, figs_dir)
 
     probs: list[dict] = []
     no_meta: list[str] = []
@@ -212,6 +277,166 @@ def collect(book: Path, figs_dir: Path, meta: dict[str, dict], strict: bool = Tr
     return probs, copied, missing
 
 
+# ── 02/ 집필 MD 직접 파싱 (영상 없는 문제집) ──────────────────────────────
+#
+# 섹션 순서는 `ocr-output-*/README.md` 가 정한 규칙이다:
+#   ## 문제 → ## 지문 → ## 보기 → ## 해설
+# 표·SQL·도식은 `지문` 안의 마크다운으로 온다. check.js 의 `mdb()` 가
+# 표(`|`)·펜스(```)·불릿·`![](assets/x.svg)` 를 전부 렌더하므로 **본문을 그대로 넘긴다.**
+# `sql`/`table` 필드로 쪼개면 두 벌 렌더가 되어 같은 표가 두 번 나온다.
+
+_SEC_RE = re.compile(r"^##[ \t]+(문제|지문|보기|해설)[ \t]*$", re.M)
+_CHOICE_RE = re.compile(r"^[ \t]*(?:([①-⑳])|(\d{1,2})[.)])[ \t]*(.*)$")
+
+
+def _md_split(text: str) -> tuple[dict, dict[str, str]]:
+    """`02/mNN-NN.md` → (frontmatter, {'문제':…, '지문':…, '보기':…, '해설':…})"""
+    parts = text.split("---", 2)
+    fm: dict = {}
+    body = text
+    if len(parts) >= 3:
+        try:
+            fm = yaml.safe_load(parts[1]) or {}
+        except yaml.YAMLError:
+            fm = {}
+        body = parts[2]
+
+    sec: dict[str, str] = {}
+    marks = [(m.group(1), m.start(), m.end()) for m in _SEC_RE.finditer(body)]
+    for i, (name, _s, end) in enumerate(marks):
+        nxt = marks[i + 1][1] if i + 1 < len(marks) else len(body)
+        sec[name] = body[end:nxt].strip()
+    return fm, sec
+
+
+def _md_choices(sec: str) -> list[str]:
+    """`① 보기 문구` 또는 `1. 보기 문구` → ['보기 문구', ...] (번호 표식 제거)
+
+    보기 번호는 화면이 `CIRC[ci]` 로 다시 붙인다. 본문에 남기면 '① ① 문구' 가 된다.
+
+    ⚠ **표식만 있고 내용이 다음 줄에 오는 형태가 실제로 있다** (SQLD 300문제 중 11건):
+
+        ## 보기
+        ①
+
+        ```sql
+        SELECT ... FROM ...;
+        ```
+
+        ②
+        ...
+
+    이때 05 경로의 lesson JSON 은 펜스를 버리고 코드 본문만 `\\n` 포함해 담았다
+    (실측: `'SELECT e.사원명, d.부서명\\nFROM 사원 e CROSS JOIN 부서 d;'`).
+    두 경로가 다른 문자열을 만들면 `pr_hash` 가 갈려 재임포트가 전건 UPDATE 를 낸다.
+    """
+    out: list[str] = []
+    for line in (sec or "").splitlines():
+        m = _CHOICE_RE.match(line)
+        if m:
+            out.append((m.group(3) or "").strip())
+            continue
+        if not out:
+            continue                      # 첫 표식 이전의 잡텍스트
+        s = line.strip()
+        if s.startswith("```"):
+            continue                      # 펜스는 버린다 (위 주석)
+        out[-1] = (out[-1] + "\n" + line.rstrip()).strip()
+    return out
+
+
+def collect_02(book: Path, figs_dir: Path, meta: dict[str, dict],
+               strict: bool = True, part_size: int = PART_SIZE):
+    """02/m*.md 본문을 직접 읽어 05 경로와 같은 형태의 문제 목록을 만든다.
+
+    05 경로와 반환 형태가 **완전히 같아야 한다** — 이후 단계(problems.js·
+    problems.json·화면)가 어느 경로로 수집됐는지 알 필요가 없어야 한다.
+    """
+    ensure, copied, missing = _figs_copier(book, figs_dir)
+
+    probs: list[dict] = []
+    bad: list[str] = []
+    for md_path in sorted((book / "02").glob("m*.md")):
+        fm, sec = _md_split(md_path.read_text(encoding="utf-8"))
+        mid = str(fm.get("id") or "")
+        rn = fm.get("round")
+        num = fm.get("question_no")
+        rn = int(rn) if isinstance(rn, int) else 0
+        m = meta.get(mid) or {}
+
+        q = sec.get("문제", "")
+        passage = sec.get("지문", "")
+        expl = sec.get("해설", "")
+        choices = _md_choices(sec.get("보기", ""))
+        ai = fm.get("answer_index")
+
+        # ── 검증. 여기서 죽는 게 낫다 ────────────────────────────────
+        # 조용히 통과하면 빈 문제·정답 없는 문제가 DB 에 upsert 되고,
+        # 그때는 회원 채점 기록이 이미 붙어 있어 지우기가 어려워진다.
+        where = md_path.name
+        if not rn or not isinstance(num, int):
+            bad.append(f"{where}: round/question_no 가 정수가 아니다 ({rn!r}/{num!r})")
+        elif mid != src_id(rn, num):
+            bad.append(f"{where}: id={mid!r} 가 규칙과 다르다 (기대 {src_id(rn, num)!r})")
+        if not q:
+            bad.append(f"{where}: '## 문제' 가 비었다")
+        if len(choices) < 2:
+            bad.append(f"{where}: '## 보기' 를 {len(choices)}개만 읽었다 (①②③④ 또는 1. 형식)")
+        if not isinstance(ai, int) or not (0 <= ai < max(len(choices), 1)):
+            bad.append(f"{where}: answer_index={ai!r} 가 보기 범위(0~{len(choices) - 1}) 밖이다")
+        if not fm.get("subject") or not isinstance(fm.get("subject_no"), int):
+            bad.append(f"{where}: subject/subject_no 가 없다 — 과목 필터·성적표가 죽는다")
+
+        inline = _inline(q) | _inline(passage) | _inline(expl)
+        for name in inline:
+            ensure(name)
+
+        bundle = bundle_of(rn, num, part_size)
+        rec = {
+            "round_num": rn, "round": f"{rn}회" if rn else bundle, "bundle": bundle,
+            "src_id": mid,
+            "src_from": str(fm.get("derived_from") or ""),
+            "subject": fm.get("subject") or m.get("subject") or "",
+            "subject_no": fm.get("subject_no") or m.get("subject_no") or 0,
+            "number": num,
+            "difficulty": fm.get("difficulty") or "",
+            "question": q, "passage": passage,
+            # 지문 마크다운을 쪼개지 않는다 (위 주석) — 화면이 통째로 렌더한다.
+            "sql": "", "table": None,
+            "figures": [],          # 도식은 본문 안에 인라인으로 있다
+            "choices": choices,
+            "answer_index": ai if isinstance(ai, int) else None,
+            "answer": str(fm.get("answer") or ""),
+            "explanation": expl,
+            "tags": fm.get("tags") or [],
+            "verified": bool(fm.get("verified")),
+            "reviewed": bool(fm.get("reviewed")),
+            "needs_review": bool(fm.get("needs_review")),
+        }
+        rec["n_choices"] = fm.get("n_choices") or len(choices)
+        rec["has_figure"] = bool(inline)
+        rec["has_sql"] = bool(re.search(r"```sql|^\s*SELECT\b", passage, re.M | re.I))
+        rec["has_table"] = bool(re.search(r"^\s*\|.*\|", passage, re.M))
+        rec["pr_hash"] = _hash(rec)
+        probs.append(rec)
+
+    probs.sort(key=lambda p: (p["round_num"], p.get("number") or 0))
+
+    if not probs:
+        raise SystemExit(f"[error] 02/ 에서 문제를 못 읽었다: {book / '02'}\n"
+                         "        파일명이 'mNN-NN.md' 여야 한다 (OCR 산출물 '01-01.md' 는 잡히지 않는다).\n"
+                         "        → docs/편지-프로덕트2-3.md 의 #2 계약 참조")
+    if bad:
+        head = "\n        ".join(bad[:12]) + (f"\n        … 그리고 {len(bad) - 12}건" if len(bad) > 12 else "")
+        msg = f"02/ 본문 검증 실패 {len(bad)}건:\n        {head}"
+        if strict:
+            raise SystemExit(f"[error] {msg}\n"
+                             "        --no-strict-meta 로 무시할 수 있지만 그러면 깨진 문제가 그대로 임포트된다.")
+        print(f"[warn] {msg}")
+
+    return probs, copied, missing
+
+
 def _num_range(bundle_dir: Path) -> tuple[int, int] | None:
     """번들의 문제 번호 min~max (라벨 'N회 1~10번' 용)."""
     for lj in (bundle_dir / "source").glob("lesson_*.json"):
@@ -241,25 +466,97 @@ def _bundles(book: Path) -> list[tuple[str, int, int, str]]:
     return out
 
 
-def init_youtube_map(book: Path) -> Path:
-    """data/youtube_map.json 골격을 1회 생성한다. 이미 있으면 건드리지 않는다.
+def _bundles_from_probs(probs: list[dict]) -> list[tuple[str, int, int, str]]:
+    """05/ 가 없는 문제집의 번들 목록 — 수집된 문제에서 만든다.
+
+    영상을 나중에 붙일 때 `youtube_map` 골격이 05 경로와 같은 이름·라벨이어야
+    한다. 그래야 `04/`·`05/` 를 나중에 돌려도 매핑이 그대로 맞는다.
+    """
+    agg: dict[str, list[int]] = {}
+    for p in probs:
+        b = p.get("bundle") or ""
+        n = p.get("number")
+        if b and isinstance(n, int):
+            agg.setdefault(b, []).append(n)
+    out = []
+    for bundle in sorted(agg, key=lambda b: _parse_bundle(b)):
+        rn, part = _parse_bundle(bundle)
+        nums = agg[bundle]
+        out.append((bundle, rn, part, f"{rn}회 {min(nums)}~{max(nums)}번"))
+    return out
+
+
+def _bundles_from_meta(meta: dict[str, dict],
+                       part_size: int = PART_SIZE) -> list[tuple[str, int, int, str]]:
+    """문제를 수집하지 않고 메타만으로 번들 목록. `--init-youtube-map` 전용."""
+    return _bundles_from_probs([
+        {"bundle": bundle_of(m.get("round") or 0, m.get("question_no"), part_size),
+         "number": m.get("question_no")}
+        for m in meta.values()
+        if isinstance(m.get("round"), int) and isinstance(m.get("question_no"), int)
+    ])
+
+
+def has_lessons(book: Path) -> bool:
+    """05/ 에 lesson JSON 이 실제로 있는가. 폴더만 있고 비어 있으면 False."""
+    return any((book / "05").glob("*/source/lesson_*.json"))
+
+
+def youtube_map_path(pd_id: str) -> Path | None:
+    """품목별 영상 매핑 파일. 없으면 None (영상 없이 빌드).
+
+    ⚠ `youtube_map.json` 의 키는 번들명(`m01-1`)이라 **품목 간에 충돌한다.**
+      SQLD 1회 1~10번과 빅분기 1회 1~10번이 같은 `m01-1` 이므로 한 파일에 두면
+      한쪽 영상이 다른 문제집에 붙는다. 그래서 품목별 파일로 가른다.
+
+      기존 `data/youtube_map.json` 은 SQLD 것이다(그 시절 품목이 하나였다).
+      다른 품목은 `data/youtube_map.<pd_id>.json` 을 쓴다 — 없으면 영상 없음.
+    """
+    per = ROOT / "data" / f"youtube_map.{pd_id}.json"
+    if per.exists():
+        return per
+    if pd_id == "sqld" and YOUTUBE_MAP.exists():
+        return YOUTUBE_MAP
+    return None
+
+
+def init_youtube_map(book: Path, pd_id: str = "sqld",
+                     bundles: list[tuple[str, int, int, str]] | None = None) -> Path:
+    """영상 매핑 골격을 1회 생성한다. 이미 있으면 건드리지 않는다.
 
     이 파일은 **수동 관리 입력 파일**이고 빌드가 절대 덮어쓰지 않는다.
     유튜브에 올린 뒤 URL 의 v= 값을 `id` 에 붙여 넣으면 된다.
     """
-    if YOUTUBE_MAP.exists():
-        print(f"[youtube] 이미 있음 — 덮어쓰지 않는다: {YOUTUBE_MAP}")
-        return YOUTUBE_MAP
-    YOUTUBE_MAP.parent.mkdir(parents=True, exist_ok=True)
+    dest = youtube_map_path(pd_id)
+    if dest:
+        print(f"[youtube] 이미 있음 — 덮어쓰지 않는다: {dest}")
+        return dest
+    dest = (YOUTUBE_MAP if pd_id == "sqld" else ROOT / "data" / f"youtube_map.{pd_id}.json")
+    dest.parent.mkdir(parents=True, exist_ok=True)
     data = {
         "_note": "수동 관리 파일. 빌드가 덮어쓰지 않는다. id 에 유튜브 URL 의 v= 값을 넣는다.",
         "_provider": "youtube",
         "videos": {b: {"id": "", "label": lab, "sec": 0}
-                   for b, _rn, _p, lab in _bundles(book)},
+                   for b, _rn, _p, lab in (bundles if bundles is not None else _bundles(book))},
     }
-    YOUTUBE_MAP.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"[youtube] 골격 생성 {len(data['videos'])}개 → {YOUTUBE_MAP}")
-    return YOUTUBE_MAP
+    dest.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"[youtube] 골격 생성 {len(data['videos'])}개 → {dest}")
+    return dest
+
+
+# 화면(`check.js` 의 `embedUrl()`)이 아는 provider 전부.
+#
+# ⚠ `embedUrl()` 은 모르는 provider 를 **유튜브로 간주한다**(마지막 줄 폴백).
+#   `provider: "mybox"` 라고 쓰면 `youtube-nocookie.com/embed/https://mybox…` 가 되어
+#   빈 iframe 이 뜨고 원인이 안 보인다. 그래서 빌드에서 죽인다.
+#
+#   youtube  youtube-nocookie embed
+#   drive    drive.google.com/…/preview embed (구글 드라이브는 embed 가 된다)
+#   vimeo    player.vimeo.com embed
+#   file     서버 파일 직접 재생 (<video src>)
+#   link     ★ embed 하지 않고 새 창으로 보낸다 — **네이버 마이박스는 이것을 쓴다**
+#            (마이박스는 embed 엔드포인트가 없다. 공유 페이지를 열어야 한다)
+PROVIDERS = ("youtube", "drive", "vimeo", "file", "link")
 
 
 def video_id(raw: str, provider: str) -> str:
@@ -295,8 +592,9 @@ def video_id(raw: str, provider: str) -> str:
     return s        # provider=file 이거나 못 알아본 형식 — 그대로 쓴다
 
 
-def map_videos(book: Path) -> tuple[dict, int, int]:
-    """data/youtube_map.json → VIDEOS 맵. **mp4 를 복사하지 않는다.**
+def map_videos(book: Path, pd_id: str = "sqld",
+               bundles: list[tuple[str, int, int, str]] | None = None) -> tuple[dict, int, int, dict]:
+    """품목별 영상 매핑 → VIDEOS 맵. **mp4 를 복사하지 않는다.**
 
     반환 {'1회': [{label, part, provider, id, sec}, ...]}.
     `id` 가 빈 항목은 아직 업로드 전이므로 제외한다(화면에 죽은 버튼이 생기지 않게).
@@ -304,20 +602,21 @@ def map_videos(book: Path) -> tuple[dict, int, int]:
     entries: dict[str, dict] = {}
     provider = "youtube"
     dflt_lv = 0
-    if YOUTUBE_MAP.exists():
+    ymap = youtube_map_path(pd_id)
+    if ymap:
         try:
-            raw = json.loads(YOUTUBE_MAP.read_text(encoding="utf-8"))
+            raw = json.loads(ymap.read_text(encoding="utf-8"))
             entries = raw.get("videos") or {}
             provider = raw.get("_provider") or "youtube"
             dflt_lv = int(raw.get("_min_level") or 0)
         except Exception as e:
-            print(f"[warn] youtube_map.json 파싱 실패({e}) — 영상 없이 빌드한다")
+            print(f"[warn] {ymap.name} 파싱 실패({e}) — 영상 없이 빌드한다")
 
     vids: dict[str, list] = {}       # 공개 — videos.js 로 구워진다
     priv: dict[str, list] = {}       # 레벨 제한 — videos.private.json (서버가 읽는다)
     filled = 0
     total = 0
-    for bundle, rn, part, label in _bundles(book):
+    for bundle, rn, part, label in (bundles if bundles is not None else _bundles(book)):
         total += 1
         e = entries.get(bundle) or {}
         vid = str(e.get("id") or "").strip()
@@ -329,6 +628,23 @@ def map_videos(book: Path) -> tuple[dict, int, int]:
         # 완성품으로 한 번에 넘기려면 _provider 만 youtube 로 바꾸면 된다.
         prov = e.get("provider") or provider
         lv = int(e.get("min_level", dflt_lv) or 0)
+
+        # 모르는 provider 는 화면이 유튜브로 간주해 빈 iframe 을 띄운다 → 여기서 죽인다
+        if prov not in PROVIDERS:
+            raise SystemExit(
+                f"[error] {ymap.name if ymap else 'youtube_map'} 의 '{bundle}': "
+                f"provider={prov!r} 를 화면이 모른다.\n"
+                f"        쓸 수 있는 값: {', '.join(PROVIDERS)}\n"
+                "        · 네이버 마이박스 → 'link' (embed 가 안 되므로 새 창으로 연다)\n"
+                "        · 구글 드라이브   → 'drive' (embed 된다)\n"
+                "        모르는 값을 그대로 두면 화면이 유튜브 embed 로 만들어 빈 iframe 이 뜬다.")
+
+        # 검토용 외부 링크가 공개로 나가는 것 — 링크 자체가 접근 권한이라 유출이다
+        if prov in ("link", "drive", "file") and lv <= 1:
+            print(f"[WARN]  '{bundle}' provider={prov} 인데 min_level={lv} 다 —"
+                  " 링크가 videos.js(정적 파일)에 구워져 **누구나 내려받는다.**")
+            print("        검토 단계라면 min_level 을 5 로 둔다"
+                  " (강사 계정 레벨 5 이상만 api/videos.php 로 받는다).")
 
         item = {
             "label": e.get("label") or label,
@@ -409,10 +725,7 @@ def build_theory(book: Path, out: Path) -> tuple[list[dict], dict]:
 def emit_json(probs: list[dict], meta: dict[str, dict], pd_id: str, dest: Path) -> Path:
     """adm/exam_import.php 가 업로드받아 upsert 할 problems.json 을 만든다.
 
-    ⚠ `pr_key` 는 임포트의 upsert 축(UNIQUE (pd_id, pr_key))이다.
-       바뀌면 같은 문제가 새 행으로 들어가고 pr_id 가 갈려서
-       ex_attempt_item / ex_wrong 의 참조가 끊긴다. **절대 형식을 바꾸지 않는다.**
-       (check_template.html 의 keyOf() 와 같은 규칙: bundle + '#' + number)
+    ⚠ `pr_key` 규칙은 `pr_key_of()` 한 곳에만 있다. 왜 그런지는 그 함수 주석 참조.
     """
     rd_label = {r["rd_no"]: r["rd_label"] for r in load_rounds(meta)}
     rd_count: dict[int, int] = {}
@@ -422,7 +735,7 @@ def emit_json(probs: list[dict], meta: dict[str, dict], pd_id: str, dest: Path) 
     rows = []
     for p in probs:
         rows.append({
-            "pr_key": f'{p["bundle"]}#{p["number"]}',
+            "pr_key": pr_key_of(p["bundle"], p["number"]),
             "bundle": p["bundle"],
             "rd_no": p["round_num"],
             "pr_no": p["number"],
@@ -480,7 +793,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--emit-json", action="store_true", help="problems.json 생성 (DB 임포트용)")
     ap.add_argument("--json-out", default="", help="problems.json 경로 (기본: <out>/problems.json)")
     ap.add_argument("--api-base", default="", help="예: ./api/ — check.html 에 window.EXAM_API 주입")
-    ap.add_argument("--init-youtube-map", action="store_true", help="data/youtube_map.json 골격 1회 생성")
+    ap.add_argument("--src", choices=("auto", "05", "02"), default="auto",
+                    help="문제 본문 출처. auto=05 가 있으면 05, 없으면 02 (모듈 docstring 참조)")
+    ap.add_argument("--part-size", type=int, default=PART_SIZE,
+                    help=f"--src 02 에서 번들 1개에 넣을 문제 수 (기본 {PART_SIZE}). "
+                         "pr_key 에 들어가므로 임포트 후에는 바꾸지 않는다")
+    ap.add_argument("--init-youtube-map", action="store_true", help="영상 매핑 골격 1회 생성")
     ap.add_argument("--prune", action="store_true",
                     help="예전 빌드가 남긴 06/videos/*.mp4 삭제 (원본은 05/*/draft/ 에 있다)")
     ap.add_argument("--no-strict-meta", dest="strict_meta", action="store_false",
@@ -491,7 +809,9 @@ def main(argv: list[str] | None = None) -> int:
     book = Path(args.book).resolve()
 
     if args.init_youtube_map:
-        init_youtube_map(book)
+        init_youtube_map(book, args.pd,
+                         None if has_lessons(book)
+                         else _bundles_from_meta(load_meta(book), args.part_size))
         return 0
 
     out = Path(args.out).resolve() if args.out else (book / "06")
@@ -516,7 +836,15 @@ def main(argv: list[str] | None = None) -> int:
     # 0) 02/ 메타 (과목·검수상태의 유일한 출처)
     meta = load_meta(book)
     if not meta:
-        raise SystemExit(f"[error] 02/ 메타를 못 읽었다: {book / '02'}")
+        n_md = len(list((book / "02").glob("*.md")))
+        raise SystemExit(
+            f"[error] 02/ 메타를 못 읽었다: {book / '02'}\n"
+            f"        그 폴더의 .md 파일 {n_md}개\n"
+            "        · 0개면 #2(집필)가 아직 안 돌았다\n"
+            "        · 있는데도 0건이면 **파일명이 'mNN-NN.md' 가 아니다** —\n"
+            "          exam_meta.load_meta() 가 02/m*.md 만 읽는다.\n"
+            "          OCR 산출물 이름('01-01.md')은 한 건도 잡히지 않는다.\n"
+            "        → docs/편지-프로덕트2-3.md 의 #2 계약 참조")
 
     # 1) 디자인 자산 (fonts 는 CDN 이라 여기 없다)
     #    copytree(dirs_exist_ok=True) 는 소스에 없어진 파일을 지우지 않는다 →
@@ -527,10 +855,22 @@ def main(argv: list[str] | None = None) -> int:
     shutil.copytree(PRESENT_ASSETS, out / "assets")
 
     # 2) 문제 수집 + 도식 SVG  → 06/pd/<pd>/figs/
-    probs, copied, missing = collect(book, pdir / "figs", meta, strict=args.strict_meta)
+    #
+    #    출처가 둘이다. 05(영상 번들)가 있으면 그쪽이 우선 — SQLD 는 그 경로로
+    #    300문제가 이미 DB 에 들어가 있고 `pr_key` 가 그 번들명에 묶여 있다.
+    src = args.src if args.src != "auto" else ("05" if has_lessons(book) else "02")
+    if src == "05":
+        if not has_lessons(book):
+            raise SystemExit(f"[error] --src 05 인데 lesson JSON 이 없다: {book / '05'}/*/source/")
+        probs, copied, missing = collect(book, pdir / "figs", meta, strict=args.strict_meta)
+        vbundles = None
+    else:
+        probs, copied, missing = collect_02(book, pdir / "figs", meta,
+                                           strict=args.strict_meta, part_size=args.part_size)
+        vbundles = _bundles_from_probs(probs)
 
     # 3) 영상 — 유튜브/링크 매핑. mp4 를 복사하지 않는다.
-    vids, vfilled, vtotal, vpriv = map_videos(book)
+    vids, vfilled, vtotal, vpriv = map_videos(book, args.pd, vbundles)
 
     # 4) 이론(03 요약노트)  → 06/pd/<pd>/theory/
     theory, theory_html = build_theory(book, pdir)
@@ -690,6 +1030,8 @@ def main(argv: list[str] | None = None) -> int:
     n_rounds = len(set(p["round_num"] for p in probs if p["round_num"]))
     n_vid = sum(len(v) for v in vids.values())
     print(f"[check] {len(probs)}문제 · {n_rounds}회 · 화면 {n_pages}개 → {out}")
+    print(f"        본문 출처 {src}/"
+          + ("  (05 lesson JSON)" if src == "05" else "  (집필 MD 직접 파싱 — 영상 없음)"))
     print(f"        과목 {len(subj)}종: {', '.join(subj) or '(없음)'}")
     # 브랜드·품목을 찍는다 — --pd-name 을 잘못 줘도 업로드 전에 눈에 보이게
     print(f"[brand] {brand['brand']}  ·  {brand['tagline']}")
@@ -713,7 +1055,8 @@ def main(argv: list[str] | None = None) -> int:
     if missing:
         print(f"[warn]  SVG 못 찾음 {len(missing)}: {', '.join(sorted(missing))}")
     if vfilled < vtotal:
-        print(f"[warn]  유튜브 ID 미입력 {vtotal - vfilled}개 — {YOUTUBE_MAP} 를 채운다"
+        ymap = youtube_map_path(args.pd) or (ROOT / "data" / f"youtube_map.{args.pd}.json")
+        print(f"[warn]  유튜브 ID 미입력 {vtotal - vfilled}개 — {ymap} 를 채운다"
               " (--init-youtube-map 으로 골격 생성)")
 
     # 예전 빌드가 남긴 mp4 — 이 빌드는 만들지 않지만 폴더가 남아 있으면 그대로 배포된다.

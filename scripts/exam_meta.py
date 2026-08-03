@@ -30,9 +30,15 @@ from pathlib import Path
 
 import yaml  # pyyaml>=6.0 — requirements.txt 에 이미 있다
 
-# .md frontmatter 에서만 얻을 수 있는 것들 (_index.json 에 없다)
+# .md frontmatter 에서 읽는 것들.
+#
+# `round`·`question_no` 는 `_index.json` 에도 있지만 여기에 함께 둔다 —
+# `_index.json` 이 없는 문제집(집필 앱이 아직 안 만든 경우)에서도
+# `load_rounds()`·`load_subjects()` 가 서야 한다. 없으면 회차 라벨이
+# '1회' 로 떨어져 화면에 그대로 노출된다. 값이 겹칠 때는 .md 가 이긴다.
 _MD_ONLY = ("subject", "subject_no", "verified", "reviewed", "needs_review",
-            "authored_by", "round_label", "difficulty", "answer", "answer_index",
+            "authored_by", "round", "round_label", "question_no",
+            "difficulty", "answer", "answer_index",
             "n_choices", "derived_from", "tags")
 
 

@@ -60,13 +60,18 @@
       <a class="axnav-item" href="/exam/check.php?pd={{PD}}"><svg class="ic"><use href="#i-edit"></use></svg>문제 풀기</a>
       <a class="axnav-item" href="/exam/check.php?pd={{PD}}&amp;m=theory"><svg class="ic"><use href="#i-book"></use></svg>이론</a>
       <a class="axnav-item" href="/exam/buy.php?pd={{PD}}"><svg class="ic"><use href="#i-cap"></use></svg>수강 신청</a>
+      <a class="axnav-item" href="/exam/report.php?pd={{PD}}&amp;sample=1"><svg class="ic"><use href="#i-chart"></use></svg>성적표 샘플</a>
     </nav>
-    <nav class="axnav-util">
+    <!-- data-authswap: ui.js 가 api/me.php 를 보고 우측을 갈아끼운다 (정적 파일이라 서버가 못 그린다) -->
+    <nav class="axnav-util" data-authswap="1">
       <a class="axnav-item" href="/bbs/board.php?bo_table=notice"><svg class="ic"><use href="#i-bell"></use></svg>공지</a>
       <a class="axnav-item" href="/bbs/qalist.php"><svg class="ic"><use href="#i-help"></use></svg>문의</a>
       <span class="axnav-sep"></span>
-      <a class="axnav-item" href="/exam/mypage.php"><svg class="ic"><use href="#i-user"></use></svg>마이페이지</a>
-      <a class="axnav-cta" href="/bbs/login.php">로그인</a>
+      <span class="axnav-auth">
+        <a class="axnav-item" href="/exam/mypage.php"><svg class="ic"><use href="#i-user"></use></svg>마이페이지</a>
+        <a class="axnav-cta ghost" href="/bbs/register.php">회원가입</a>
+        <a class="axnav-cta" href="/bbs/login.php">로그인</a>
+      </span>
     </nav>
   </div>
 </header>
