@@ -34,10 +34,17 @@
     </button>
 
     <ul class="side-nav" id="side-nav">
+      <!-- 기출(01/) — 스캔 PDF 를 구조화 MD 로 만드는 단계. 도구 #1 -->
       <li><a href="#/ocr" data-nav="oc" title="OCR 검수 (스캔 → 01/)">
         <span data-icon="folder"></span><span>OCR 검수 <em class="nav-dest">스캔→01</em></span></a></li>
       <li><a href="#/scan" data-nav="sc" title="구조화 MD로 정리">
         <span data-icon="file"></span><span>구조화 MD로 정리</span></a></li>
+
+      <!-- ★ 여기가 경계다 — 위는 기출(01/), 아래는 자사 산물(_rounds·02~06).
+           아래 화면들은 도구 #2 가 02/ 를 만든 뒤에야 열린다. 그 차이가 커서
+           같은 목록에 붙여 두면 "왜 저건 안 열리나" 를 매번 다시 겪는다. -->
+      <li class="side-nav-sep" aria-hidden="true"></li>
+
       <li><a href="#/questions" data-nav="q" title="문항 교정">
         <span data-icon="file"></span><span>문항 교정</span></a></li>
       <li><a href="#/video" data-nav="v" title="영상 제작·검수">

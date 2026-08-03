@@ -269,6 +269,15 @@ body[data-rail="collapsed"] .side-nav a { justify-content: center; padding: 9px 
 body[data-rail="collapsed"] .side-nav a span,
 body[data-rail="collapsed"] .side-nav a .nav-dest { display: none; }
 
+/* 메뉴 경계선 — 기출(01/) 과 자사 산물(_rounds·02~06) 을 가른다.
+   아래 화면들은 도구 #2 가 02/ 를 만든 뒤에야 열리므로, 같은 목록에 붙여 두면
+   "왜 저건 안 열리나" 를 매번 다시 겪는다. 레일을 접어도 남는다(폭만 줄인다). */
+.side-nav-sep {
+  height: 1px; margin: 7px 10px;
+  background: var(--hairline);
+}
+body[data-rail="collapsed"] .side-nav-sep { margin: 7px 8px; }
+
 .side-section {
   display: flex; align-items: baseline; justify-content: space-between;
   margin: 22px 10px 6px;
