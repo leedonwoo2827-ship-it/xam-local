@@ -227,6 +227,41 @@ function renderYtmap() {
   wrap.appendChild(tbl);
   box.appendChild(wrap);
 
+  // 붙여넣기 — 72개를 손으로 넣으면 한 줄 밀려 영상이 엉뚱한 회차에 붙는다.
+  const pd = el("details", "pb-paste");
+  pd.open = d.empty > 0;
+  const sm = el("summary", null, `링크 붙여넣기 (${d.empty}개 비어 있음)`);
+  pd.appendChild(sm);
+  pd.appendChild(el("div", "field-hint",
+    "번들코드와 링크가 같은 줄에 있으면 됩니다 — 파일명·URL·따옴표 섞여도 잡습니다. "
+    + "예: m01-1.static.mp4  https://drive.google.com/file/d/1AbC.../view"));
+  const ta = el("textarea");
+  ta.rows = 8;
+  ta.placeholder = "m01-1.static.mp4	https://drive.google.com/file/d/1AbC.../view
+m01-2.static.mp4	…";
+  ta.style.width = "100%";
+  pd.appendChild(ta);
+  const pb = el("button", "btn primary", "붙여넣은 링크 채우기");
+  pb.type = "button";
+  pb.addEventListener("click", async () => {
+    const text = ta.value.trim();
+    if (!text) { toast("붙여넣을 내용이 없습니다."); return; }
+    try {
+      const r = await api("/api/publish/ytmap/paste", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const bits = [`${r.matched.length}개 채움`];
+      if (r.overwrote?.length) bits.push(`${r.overwrote.length}개 교체`);
+      if (r.unknown?.length) bits.push(`모르는 번들 ${r.unknown.length}개`);
+      if (r.skipped?.length) bits.push(`건너뜀 ${r.skipped.length}줄`);
+      toast(bits.join(" · "), r.matched.length ? "" : "err");
+      await refresh();
+    } catch (e) { toast("채우지 못했습니다: " + e.message, "err"); }
+  });
+  pd.appendChild(pb);
+  box.appendChild(pd);
+
   box.appendChild(el("div", "field-hint",
     "★ 문항 시작점은 review.json 에서 계산한 값입니다(영상 시간축 기준). "
     + "지금 웹은 번들 하나에 시작점 하나(sec)만 씁니다 — 문항별로 뛰려면 "

@@ -140,6 +140,21 @@ def setup_publish_routes() -> APIRouter:
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
+    @router.post("/ytmap/paste")
+    async def paste_ytmap(request: Request):
+        """붙여넣은 목록으로 링크 72개를 한 번에 채운다.
+
+        한 줄에서 번들코드와 ID/URL 을 각각 찾아 맞추므로 형식이 느슨해도 된다.
+        번들이 72개라 손으로 넣으면 한 줄 밀려 영상이 엉뚱한 회차에 붙는다 —
+        그건 영상을 봐야 알 수 있어서 되돌리기 비싸다.
+        """
+        from services.publish import ytmap
+        body = await request.json() if await request.body() else {}
+        try:
+            return ytmap.fill_from_text(body.get("text") or "")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
     @router.post("/ytmap/open")
     async def open_ytmap():
         """매핑 파일을 기본 편집기로 연다 — 링크를 붙여넣는 자리."""

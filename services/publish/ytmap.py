@@ -174,6 +174,91 @@ def read() -> dict:
     }
 
 
+_BUNDLE_RE = re.compile(r"\bm(\d{1,2})-(\d{1,2})\b")
+# 드라이브·유튜브 ID 는 10자 이상의 영숫자·`-`·`_` 다. URL 이든 맨 ID 든 이걸로 잡는다.
+_ID_RE = re.compile(r"[A-Za-z0-9_-]{10,}")
+# URL 안에서 ID 가 앉는 자리들 — 이게 있으면 우선한다(파일명이 먼저 잡히는 것을 막는다).
+_URL_ID_RE = re.compile(
+    r"(?:/file/d/|[?&]id=|youtu\.be/|[?&]v=|/embed/|/shorts/|/d/)([A-Za-z0-9_-]{10,})")
+
+
+def fill_from_text(text: str) -> dict:
+    """붙여넣은 목록으로 `id` 를 한 번에 채운다.
+
+    ★ 이 기능이 있는 이유: 번들이 72개다. 드라이브에서 공유 링크를 하나씩 복사해
+      파일에 붙여넣으면 그것만 한 시간이 넘고 중간에 한 줄이 밀리면 **영상이 엉뚱한
+      회차에 붙는다**(그리고 그건 영상을 봐야 알 수 있다).
+
+    한 줄에서 **번들코드**(m01-1)와 **ID/URL** 을 각각 찾아 맞춘다. 그래서 형식이
+    느슨해도 된다 — 아래 전부 같은 결과가 된다:
+
+        m01-1.static.mp4    1AbCdEf...
+        m01-1  https://drive.google.com/file/d/1AbCdEf.../view?usp=sharing
+        "m01-1.static.mp4","1AbCdEf..."
+        m01-1 → https://youtu.be/dQw4w9WgXcQ
+
+    번들코드가 없는 줄은 건너뛰고 그 줄을 돌려준다(조용히 버리지 않는다).
+    URL 을 그대로 저장한다 — 빌더가 provider 를 보고 ID 를 뽑는다(손실 변환을 하지 않는다).
+    """
+    p = path()
+    if not os.path.isfile(p):
+        raise ValueError("매핑 파일이 없습니다 — [영상 매핑 만들기] 를 먼저 누르세요.")
+    with open(p, encoding="utf-8") as f:
+        raw = json.load(f)
+    videos: dict = raw.get("videos") or {}
+    known = set(paths.all_bundles())
+
+    filled, skipped, unknown, overwrote = [], [], [], []
+    for line in (text or "").splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        mb = _BUNDLE_RE.search(s)
+        if not mb:
+            skipped.append(s[:80])
+            continue
+        bundle = f"m{int(mb.group(1)):02d}-{int(mb.group(2))}"
+        if bundle not in known:
+            unknown.append(bundle)
+            continue
+        # URL 안의 ID 를 먼저 본다. 없으면 번들코드를 지운 뒤 남는 토큰에서 찾는다 —
+        # 안 지우면 파일명(m01-1.static.mp4)의 조각이 ID 로 잡힌다.
+        m = _URL_ID_RE.search(s)
+        if m:
+            vid = s[m.start(0) - 0:] if False else s      # URL 전체를 그대로 넣는다
+            vid = next((t for t in s.split() if m.group(1) in t), m.group(1))
+        else:
+            rest = _BUNDLE_RE.sub(" ", s)
+            rest = re.sub(r"\b\w*\.(mp4|mov|mkv|webm)\b", " ", rest, flags=re.I)
+            cands = [t for t in _ID_RE.findall(rest) if not t.isdigit()]
+            if not cands:
+                skipped.append(s[:80])
+                continue
+            vid = max(cands, key=len)
+        e = dict(videos.get(bundle) or {})
+        if (e.get("id") or "").strip() and e["id"].strip() != vid.strip():
+            overwrote.append(bundle)
+        e["id"] = vid.strip()
+        e.setdefault("label", _label(bundle))
+        e.setdefault("sec", 0)
+        videos[bundle] = e
+        filled.append(bundle)
+
+    raw["videos"] = videos
+    tmp = p + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(raw, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    os.replace(tmp, p)
+
+    st = read()
+    st["matched"] = sorted(set(filled))
+    st["overwrote"] = sorted(set(overwrote))
+    st["unknown"] = sorted(set(unknown))
+    st["skipped"] = skipped[:10]
+    return st
+
+
 def sync(provider: str = "") -> dict:
     """없으면 만들고, 있으면 빠진 번들만 채운다. **id 는 보존한다.**
 
