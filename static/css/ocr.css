@@ -1,0 +1,228 @@
+/* OCR 검수 (도구 #1) — 페이지 단위 화면.
+ *
+ * app.css 와 나눈 이유: 이 화면은 원본 도구(260730-ocr)의 3열 배치를 그대로 옮긴
+ * 것이라 규칙이 다른 화면과 겹치지 않는다. 한 파일에 섞으면 나중에 어느 규칙이
+ * 어느 화면 것인지 분간이 안 된다. 색·간격 토큰은 app.css 의 것을 그대로 쓴다.
+ *
+ *   패널(위층)  = 페이지 목록
+ *   바탕(아래층) = [스캔 이미지] | [OCR 원문] | [문제 카드]   ← 앞 둘은 접힌다
+ */
+
+/* ── 패널: 페이지 목록 ────────────────────────────────────────────────────── */
+.oc-head {
+  padding: 2px 0 12px;
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: 12px;
+}
+.oc-book { font-size: var(--t-base); margin-bottom: 8px; word-break: break-all; }
+.oc-dash { display: flex; flex-direction: column; gap: 18px; }
+.oc-round h3 { font-size: var(--t-sm); margin: 0 0 8px; color: var(--text-2); }
+.oc-grid { display: flex; flex-wrap: wrap; gap: 7px; }
+
+/* ★ 배경과 테두리 색은 여기서 정하지 않는다. app.css 의 상태 3색 규칙이 정한다.
+ *
+ *   ocr.css 는 app.css **뒤에** 로드되므로, 여기서 `background`·`border-color` 를
+ *   쓰면 같은 명시도에서 나중 파일이 이겨 정책이 통째로 죽는다. 실제로 그렇게
+ *   걸렸다 — 클래스는 붙었는데 카드가 전부 하얗게 나왔다.
+ *   테두리는 **폭과 스타일만** 잡고 색은 비워 둔다(transparent).
+ */
+.oc-cell {
+  width: 84px; min-height: 62px; padding: 6px 4px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm); cursor: pointer; font: inherit; text-align: center;
+  transition: border-color .12s var(--ease), transform .12s var(--ease);
+}
+.oc-cell:hover { border-color: var(--verm-500, var(--brand)); transform: translateY(-1px); }
+.oc-cell:focus-visible { outline: 2px solid var(--verm-500, var(--brand)); outline-offset: 2px; }
+.oc-cell-id { font-weight: 650; font-size: 11.5px; letter-spacing: -.01em; }
+/* 글자색은 정책(.state-* small)이 정한다 — 크기만 여기서. */
+.oc-cell small { font-size: 10.5px; }
+/* ── 페이지 카드의 색 ──────────────────────────────────────────────────────
+ * ★ 색은 정하지 않는다. app.css 의 **상태 3색 규칙**(.state-todo / .state-part /
+ *   .state-done / .state-empty)을 그대로 쓴다. 판정 기준만 여기 적어 둔다:
+ *
+ *     전부 대조   state-done    (n_verified >= n_questions)
+ *     일부 대조   state-part
+ *     판독만      state-todo    ← 하얗게. 여기가 '할 일' 이다
+ *     문항 없음   state-empty   초안만 있는 페이지
+ *
+ *   화면마다 색을 새로 정하면 같은 뜻이 화면마다 달라진다. ocr.js 가 클래스를 붙인다.
+ */
+.oc-cell .oc-cell-id { /* 정책의 .st-title 역할 */ }
+
+/* ── 바탕: 3열 작업면 ─────────────────────────────────────────────────────── */
+.oc-work {
+  display: grid;
+  grid-template-columns: minmax(240px, .8fr) 1.9fr;      /* OCR 원문 | 문제 카드 */
+  height: calc(100vh - 132px); min-height: 420px;
+  border: 1px solid var(--hairline); border-radius: var(--r-md);
+  overflow: hidden; background: var(--white);
+}
+.oc-work.showscan       { grid-template-columns: minmax(220px, .62fr) .9fr 1.6fr; }
+.oc-work.noocr          { grid-template-columns: 1fr; }
+.oc-work.noocr.showscan { grid-template-columns: minmax(220px, .7fr) 1.9fr; }
+.oc-work.noocr .oc-ocr  { display: none; }
+
+.oc-pane { min-width: 0; overflow: auto; }
+.oc-pane + .oc-pane { border-left: 1px solid var(--hairline); }
+
+/* 스캔 이미지 — 기본은 숨김. 어두운 바탕이라야 스캔 여백 경계가 보인다. */
+.oc-img { display: none; background: #2b2b28; position: relative; }
+.oc-work.showscan .oc-img { display: block; }
+.oc-imgwrap { position: relative; display: inline-block; }
+.oc-imgwrap img { display: block; max-width: none; }
+/* 드래그 선택 영역. pointer-events 를 끊어야 드래그가 이 박스에 걸려 끊기지 않는다. */
+.oc-sel {
+  position: absolute; display: none; pointer-events: none;
+  border: 2px solid var(--verm-500, var(--brand));
+  background: rgb(var(--brand-rgb) / .16);
+}
+
+.oc-ocr { display: flex; flex-direction: column; }
+.oc-pane-head {
+  display: flex; align-items: center; gap: 8px; flex: none;
+  padding: 7px 11px; font-size: var(--t-sm); font-weight: 650;
+  background: var(--bone); border-bottom: 1px solid var(--hairline);
+}
+.oc-ocr textarea {
+  flex: 1; width: 100%; border: 0; outline: none; resize: none; padding: 10px 11px;
+  font: 12px/1.6 ui-monospace, Consolas, monospace;
+  color: var(--text); background: var(--white);
+}
+
+.oc-edit { padding: 12px; }
+.oc-toolbar {
+  position: sticky; top: 0; z-index: 3;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding-bottom: 8px; background: var(--white);
+}
+.oc-toolbar label { display: inline-flex; align-items: center; gap: 5px; font-size: var(--t-sm); }
+/* 확대 슬라이더 — 헤더 액션 줄에 섞여 앉는다(원본 도구와 같은 자리). */
+.oc-zoom {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: var(--t-sm); color: var(--text-2); white-space: nowrap;
+}
+.oc-zoom input[type="range"] { width: 92px; accent-color: var(--brand); }
+.oc-toolbar input[type="number"] { width: 58px; }
+.oc-toolbar input[type="text"] { width: 240px; }
+.oc-edit input, .oc-edit select, .oc-edit textarea {
+  font: inherit; padding: 4px 7px; color: var(--text);
+  background: var(--white); border: 1px solid var(--hairline); border-radius: var(--r-sm);
+}
+.oc-edit textarea { width: 100%; resize: vertical; line-height: 1.5; }
+.oc-edit textarea.mono { font: 12px/1.55 ui-monospace, Consolas, monospace; }
+#oc-status.ok { color: var(--ok); }
+
+/* ── 문제 카드 ────────────────────────────────────────────────────────────── */
+.oc-q {
+  background: var(--white); border: 1px solid var(--hairline);
+  border-radius: var(--r-md); padding: 11px; margin-bottom: 13px;
+}
+/* 대조완료 = 사람이 원본과 맞춰 본 문항. 80장을 훑을 때 한눈에 보여야 한다. */
+.oc-q.verified {
+  border-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 5%, var(--white));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 22%, transparent);
+}
+.oc-q-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 9px; }
+.oc-inline { display: inline-flex; align-items: center; gap: 4px; font-size: var(--t-sm); color: var(--text-2); }
+.oc-spacer { flex: 1; }
+.oc-chk { display: inline-flex; align-items: center; gap: 4px; font-size: var(--t-sm); white-space: nowrap; }
+.oc-chk input { width: 15px; height: 15px; accent-color: var(--verm-500, var(--brand)); }
+
+.oc-field { margin-bottom: 7px; }
+.oc-field .qz-label { display: block; margin-bottom: 3px; }
+.oc-choices { margin: 4px 0 8px; }
+.oc-choice { display: flex; gap: 7px; align-items: flex-start; margin-bottom: 4px; }
+.oc-glyph { width: 18px; padding-top: 5px; text-align: center; flex: none; color: var(--text-2); }
+.oc-q-foot { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
+
+/* ── 자산(표 · SQL박스 · 텍스트 · 수식 · 그림) ─────────────────────────────── */
+.oc-assets {
+  border: 1px dashed var(--hairline);
+  background: var(--bone); border-radius: var(--r-sm);
+  padding: 7px 9px; margin: 7px 0;
+}
+.oc-assets-head {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: var(--t-sm); font-weight: 650; margin-bottom: 5px;
+}
+.oc-assets-head .field-hint { margin: 0; font-weight: 400; }
+.oc-asset {
+  background: var(--white); border: 1px solid var(--hairline);
+  border-radius: var(--r-sm); padding: 6px 7px; margin: 5px 0;
+}
+.oc-asset-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.oc-asset-bar .btn:last-child { margin-left: auto; }
+/* 토큰 버튼 — 이 문자열을 본문에 넣으면 그 위치에 자산이 펼쳐진다.
+   눌러서 지문에 삽입할 수 있게 버튼으로 뒀다(손으로 타이핑하면 오타가 난다). */
+.oc-tok {
+  font: 11px ui-monospace, Consolas, monospace;
+  background: color-mix(in srgb, var(--brand) 9%, var(--white));
+  border: 1px solid color-mix(in srgb, var(--brand) 32%, var(--hairline));
+  color: var(--brand); padding: 2px 7px;
+  border-radius: var(--r-sm); cursor: pointer;
+}
+.oc-figrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.oc-figrow img { max-height: 88px; border: 1px solid var(--hairline); border-radius: 3px; }
+.oc-figrow input { flex: 1; min-width: 120px; }
+
+/* ── 미리보기 — 마크다운을 몰라도 실제 문제 모양을 본다 ─────────────────────── */
+.oc-preview {
+  border: 1px solid var(--hairline); background: var(--bone);
+  border-radius: var(--r-sm); padding: 13px 15px; margin-top: 9px;
+  font-size: 15.5px; line-height: 1.65;
+}
+.oc-pv-qno { font-size: 28px; font-weight: 800; line-height: 1; margin-bottom: 8px; }
+.oc-preview h4 {
+  margin: 12px 0 5px; font-size: var(--t-sm); color: var(--brand);
+  border-bottom: 1px solid var(--hairline); padding-bottom: 2px;
+}
+.oc-preview h4:first-child { margin-top: 0; }
+.oc-preview p { margin: 7px 0; }
+.oc-preview p.choice-line { font-size: 17px; margin: 9px 0; }
+.oc-preview img { max-width: 100%; border: 1px solid var(--hairline); margin: 4px 0; }
+.oc-preview .cap { font-size: var(--t-xs); color: var(--text-3); margin-bottom: 6px; }
+.oc-preview .code {
+  background: var(--white); color: var(--text); border: 1px solid var(--hairline);
+  padding: 9px 11px; border-radius: var(--r-sm); overflow-x: auto;
+  font: 13.5px/1.5 ui-monospace, Consolas, monospace;
+  white-space: pre-wrap; word-break: break-word;
+}
+.oc-preview .code.textbox { font: inherit; white-space: pre-wrap; }
+.oc-preview .sql-kw { color: var(--brand); font-weight: 600; }
+.oc-preview .sql-st { color: var(--ok); }
+.oc-preview .sql-cm { color: var(--text-3); font-style: italic; }
+.oc-preview table.tbl { border-collapse: collapse; margin: 6px 0; }
+.oc-preview .tbl th, .oc-preview .tbl td {
+  border: 1px solid var(--hairline); padding: 4px 10px; font-size: 13.5px; text-align: left;
+}
+.oc-preview .tbl th { background: var(--bone); }
+.oc-preview ol { margin: 4px 0 4px 22px; padding: 0; }
+/* 수식은 넘칠 때 가로로만 스크롤한다 — 세로 스크롤이 생기면 줄 높이가 흔들린다. */
+.oc-preview mjx-container { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+.oc-preview mjx-container[display] { margin: 8px 0; }
+
+/* ── 첫 실행: 작업 폴더 지정 (바탕 카드) ────────────────────────────────────
+ * 부유 패널이 아니라 바탕에 둔다. 고르지도 않은 폴더의 스캔 목록이 먼저 뜨는 것을
+ * 막는 것이 이 화면의 목적이다. */
+.hm-first { display: flex; flex-direction: column; gap: 14px; }
+.hm-suggest {
+  border: 1px solid var(--hairline); border-radius: var(--r-sm);
+  background: var(--bone); padding: 11px 13px;
+}
+.hm-suggest-head {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 7px;
+  font-size: var(--t-sm);
+}
+.hm-suggest .pb-cmd { margin: 0 0 8px; }
+.hm-first-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* 헤더 가운데 '지금 어디' 표시 — 원본 도구의 `bdae1.pdf p.1 · 1회` 자리. */
+.oc-pglabel {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: var(--t-sm); color: var(--text-2); white-space: nowrap;
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis;
+}

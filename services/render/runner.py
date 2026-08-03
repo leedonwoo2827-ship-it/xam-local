@@ -1,4 +1,14 @@
-"""chodangi-mp4-forge(#3) 구동 — make_bundle_video.py 를 서브프로세스로.
+"""#3 렌더 엔진 구동 — `vendor/chodangi/make_bundle_video.py` 를 서브프로세스로.
+
+★ 엔진이 이 저장소 안에 있다 (2026-08-03). 예전에는 외부 폴더
+  `D:\\00work\\chodangi-mp4-forge-main`(이 PC 에 없던 경로)를 가리켰다. 이제
+  `vendor/chodangi/` 에 들어와 있고 자막 시간축 수정 4건도 그 소스에 영구 반영됐다
+  — 패치 도구가 아니라 코드다.
+
+★ 서브프로세스로 돌리는 것은 그대로 유지한다. in-process 로 부르면
+  onnxruntime 모델(수백 MB)과 Chromium·ffmpeg 자식이 FastAPI 프로세스에 얹히고,
+  취소가 사실상 불가능해진다. 격리·취소·메모리 회수가 다 공짜인 쪽을 고른다.
+  엔진 폴더를 cwd 로 주므로 `from slides import …` 같은 절대 import 가 그대로 산다.
 
 ★ render.bat 은 쓰지 않는다. chcp·pause·드래그드롭 분기가 서브프로세스에서 방해되고,
   BOOK 경로가 그 안에 하드코딩되어 있다. 드라이버를 직접 부르며 --book 을 명시한다.
@@ -18,7 +28,7 @@ import re
 import subprocess
 import threading
 
-from core.constants import CHODANGI_DIR
+from core.constants import BASE_DIR, ENGINE_DIR
 from services.book import paths
 from services.jobs import registry
 from services.render import bundles, precheck
@@ -46,32 +56,61 @@ _RE_ERROR = re.compile(r"\[(?:error|ERROR)\]\s*(.*)$")
 _RE_WARN = re.compile(r"\[warn\]\s*(.*)$")
 
 
+def engine_dir() -> str:
+    """내장한 렌더 엔진 폴더. 서브프로세스의 cwd 이자 sys.path 뿌리다."""
+    return ENGINE_DIR
+
+
 def driver_python() -> str:
-    return os.path.join(CHODANGI_DIR, ".venv", "Scripts", "python.exe")
+    """엔진을 돌릴 파이썬 — **이 앱의 venv** 다.
+
+    예전에는 chodangi 저장소의 `.venv` 를 썼다. 엔진이 안으로 들어왔으니 의존성도
+    이 venv 하나로 합친다(requirements.txt 에 onnxruntime·playwright 등을 넣었다).
+    """
+    return os.path.join(BASE_DIR, "venv", "Scripts", "python.exe") \
+        if os.name == "nt" else os.path.join(BASE_DIR, "venv", "bin", "python")
 
 
 def driver_script() -> str:
-    return os.path.join(CHODANGI_DIR, "make_bundle_video.py")
+    return os.path.join(ENGINE_DIR, "make_bundle_video.py")
+
+
+def _which(name: str) -> str:
+    import shutil as _sh
+    return _sh.which(name) or ""
 
 
 def env_info() -> dict:
-    """실행 환경 점검 — 화면 상단 카드가 이걸 그린다."""
+    """실행 환경 점검 — 화면 상단 카드가 이걸 그린다.
+
+    ★ 내장할 수 없는 것 둘을 여기서 확인한다. 바이너리라서 저장소에 넣을 수 없다.
+      · ffmpeg          PATH 에 있어야 한다. 없으면 TTS 를 몇 분 돌린 뒤 마지막에 실패한다.
+      · Chromium        playwright 가 내려받는다(`python -m playwright install chromium`).
+      둘 중 하나라도 없으면 **시작 전에** 끊는다.
+    """
     py = driver_python()
     drv = driver_script()
-    # chodangi 의 render.bat 이 이 경로를 하드코딩하고 있다. 우리 BOOK 과 다르면
-    # 사람이 알아차려야 한다(우리는 항상 --book 을 명시하므로 동작 자체는 안전하다).
-    hardcoded = r"D:\00work\ocr-output-260730"
-    book = paths.book_dir()
+    assets = os.path.join(ENGINE_DIR, "assets")
+    onnx = os.path.join(assets, "onnx")
+    ffmpeg = _which("ffmpeg")
+    try:
+        import playwright  # noqa: F401
+        pw_ok = True
+    except ImportError:
+        pw_ok = False
     return {
-        "chodangi": CHODANGI_DIR,
+        "engine": ENGINE_DIR,
         "python": py,
         "python_ok": os.path.isfile(py),
         "driver": drv,
         "driver_ok": os.path.isfile(drv),
-        "book": book,
-        "book_matches_hardcoded": os.path.normcase(os.path.abspath(book))
-                                  == os.path.normcase(hardcoded),
-        "hardcoded_book": hardcoded,
+        # TTS 모델 — .gitignore 대상이라 clone 직후에는 없다.
+        "assets_ok": os.path.isdir(onnx),
+        "assets": assets,
+        "ffmpeg": ffmpeg,
+        "ffmpeg_ok": bool(ffmpeg),
+        "playwright_ok": pw_ok,
+        "book": paths.book_dir(),
         "concurrency": 1,
         "busy": registry.running("render") is not None,
     }
@@ -190,7 +229,7 @@ def _run_one(job: dict, bundle: str, *, no_audio: bool, keep_scratch: bool) -> i
     registry.log(job, f"[make] {bundle} 시작 — {' '.join(args[1:])}", force=True)
 
     proc = subprocess.Popen(
-        args, cwd=CHODANGI_DIR, env=_build_env(),
+        args, cwd=ENGINE_DIR, env=_build_env(),
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, encoding="utf-8", errors="replace", bufsize=1,
         creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),

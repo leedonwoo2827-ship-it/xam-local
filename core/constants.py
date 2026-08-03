@@ -1,6 +1,6 @@
 """경로·버전·품목 코드 — 이 앱의 모든 절대 경로가 여기서만 결정된다.
 
-BOOK / CHODANGI / AXEXAM 은 전부 이 PC 밖에 있는 외부 트리다. 하드코딩 기본값을
+BOOK 은 이 PC 밖의 외부 트리다(작업 폴더 화면에서 고른다). 하드코딩 기본값을
 두되 .env 로 덮어쓸 수 있게 해야, 책이 하나 더 생겼을 때 코드를 안 고친다.
 """
 from __future__ import annotations
@@ -29,10 +29,26 @@ def _env_path(key: str, default: str) -> str:
 #       00/ 01/ 02/ 03/ 04/ 05/ 06/ _rounds/ 를 갖는다.
 BOOK_DIR = _env_path("XAM_BOOK", r"D:\00work\ocr-output-260730")
 
-# CHODANGI: 도구 #3. make_bundle_video.py 를 이 폴더에서 cwd 로 실행한다.
-CHODANGI_DIR = _env_path("XAM_CHODANGI", r"D:\00work\chodangi-mp4-forge-main")
+# OCR: 도구 #1 의 판독 작업 폴더 (data/raw_pages · data/ocr_draft · data/answers).
+# 비워 두면 BOOK 이름에서 유도한다 — ocr-output-260730 → 형제 폴더 260730-ocr.
+# 판독은 Claude Code 창이 하고 이 앱은 그 초안을 검수·확정한다(같이 쓰는 폴더).
+OCR_DIR = (os.getenv("XAM_OCR") or "").strip().strip('"')
+OCR_DIR = os.path.abspath(OCR_DIR) if OCR_DIR else ""
 
-# AXEXAM: 웹(그누보드) 저장소. scripts/build_check.py 를 여기서 호출한다.
+# ENGINE: 도구 #3 렌더 엔진 — **이 저장소 안에 있다** (2026-08-03 내장).
+#   make_bundle_video.py 를 이 폴더에서 cwd 로 실행한다. 절대 import(`from slides …`)
+#   가 그대로 살도록 폴더째로 넣었고, 자막 시간축 수정 4건은 그 소스에 반영돼 있다.
+#   외부 폴더(XAM_CHODANGI)를 가리키던 시절의 값은 이 PC 에 없는 경로였다.
+ENGINE_DIR = os.path.join(BASE_DIR, "vendor", "chodangi")
+
+# AXBUILD: 발행 빌더 — **이 저장소 안에 있다** (2026-08-03 내장).
+#   axexam 의 scripts/{build_check,exam_meta}.py + 템플릿을 들여왔다.
+#   06/ (정적 페이지 + problems.json) 을 만드는 것이 이 빌더다.
+AXBUILD_DIR = os.path.join(BASE_DIR, "services", "publish", "axbuild")
+
+# AXEXAM: 웹(그누보드5) 저장소. PHP·web/ 의 원본이다.
+#   ★ 발행 빌드에는 **필요하지 않다**(빌더가 위 AXBUILD_DIR 에 있다).
+#     웹 소스를 참고할 때만 쓴다. 이 PC 의 클론은 D:\00work\260729-new.
 AXEXAM_DIR = _env_path("XAM_AXEXAM", os.path.join(BASE_DIR, "_ref", "axexam"))
 
 # ── 품목 ────────────────────────────────────────────────────────────────────
@@ -46,16 +62,29 @@ SITE_PATH = "/" + (os.getenv("XAM_SITE_PATH") or "exam").strip("/") + "/"
 
 PORT = int(os.getenv("XAM_PORT") or "8870")
 
-# ── 책의 형태 (사전점검 기대값) ──────────────────────────────────────────────
-ROUND_CODES = ("m01", "m02", "m03")
-QUESTIONS_PER_ROUND = 80
-QUESTIONS_PER_BUNDLE = 10
-BUNDLES_PER_ROUND = QUESTIONS_PER_ROUND // QUESTIONS_PER_BUNDLE   # 8
-TOTAL_QUESTIONS = len(ROUND_CODES) * QUESTIONS_PER_ROUND          # 240
-TOTAL_BUNDLES = len(ROUND_CODES) * BUNDLES_PER_ROUND              # 24
-SUBJECT_COUNT = 4
+# ── 책의 형태 ────────────────────────────────────────────────────────────────
+# ★ 회차 수·문항 수·과목 수는 **상수가 아니다.** 폴더에서 센다:
+#     회차   services.book.paths.round_codes()      (_rounds/mNN.json 개수)
+#     문항   services.book.shape.questions_per_round()
+#     과목   services.book.shape.subject_count()
+#     번들   services.book.paths.all_bundles()
+#   여기 있던 ROUND_CODES=("m01","m02","m03") · TOTAL_QUESTIONS=240 ·
+#   TOTAL_BUNDLES=24 · SUBJECT_COUNT=4 를 지웠다. 자사 회차가 m01~m09(720문항 ·
+#   72번들)로 늘어날 예정이고, 그때 상수로 남아 있으면 사전점검이 "240개 기대" 를
+#   들고 조용히 통과·실패한다.
+#
+# 아래 둘만 남는다 — 파이프라인 규약이라 책이 바뀌어도 같다.
+QUESTIONS_PER_BUNDLE = 10        # 영상 번들 하나 = 10문항 (pr_key 규칙과 묶여 있다)
 
-# 요약노트 4과목 — 03/summary_{key}.html
+# 회차당 문항 수를 폴더에서 못 읽을 때의 마지막 폴백. 계산에 쓰지 말고
+# "아직 아무것도 못 읽었다" 는 뜻으로만 쓴다.
+FALLBACK_QUESTIONS_PER_ROUND = 80
+
+# 요약노트 키 — 03/summary_{key}.html
+# ★ 실제 키는 `services.book.paths.summary_keys()` 가 **폴더에서 읽는다.**
+#   여기 값은 03/ 이 비어 있을 때의 마지막 폴백이다. 260730 의 실제 키는
+#   planning · explore · modeling · interpret 이고, 이 상수를 그대로 쓰면
+#   요약노트 화면이 404 를 내고 사전점검이 "4종 없음" 을 낸다.
 SUMMARY_KEYS = ("분석기획", "탐색", "모델링", "결과해석")
 
 # 잡 이력 보관 개수 / 로그 링버퍼 줄수

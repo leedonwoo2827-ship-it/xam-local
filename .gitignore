@@ -10,3 +10,14 @@ data/
 
 # 참조용 외부 저장소. 각자 클론한다(별도 git 저장소이므로 중첩시키지 않는다).
 _ref/
+
+# ── 내장한 #3 렌더 엔진 (vendor/chodangi) ────────────────────────────────────
+# 코드는 커밋한다. 아래 둘만 뺀다.
+#
+# assets/  Supertonic3 TTS 모델(onnx) 등 395MB. git 에 올리면 clone 이 실용성을
+#          잃는다. setup.bat 이 존재를 확인하고, 없으면 어디서 가져오는지 안내한다.
+#          ★ 이것이 "의존성 0" 에서 유일하게 남는 큰 반입물이다.
+vendor/chodangi/assets/
+# munje/   렌더 스크래치(번들당 수백 MB). 매 실행이 비우고 시작한다.
+vendor/chodangi/munje/
+vendor/chodangi/work/

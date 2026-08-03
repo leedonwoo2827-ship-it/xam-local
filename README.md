@@ -1,5 +1,52 @@
 # XAM LOCAL — 문제은행 로컬 운영 콘솔
 
+> ## ★ 2026-08-03 — 로컬 실측으로 고친 것 (먼저 읽는다)
+>
+> 이 저장소의 첫 판은 원격 세션에서 만들어졌고, **#1 을 추측으로 · #3 을 예전 버전
+> 기준으로 · 일부 값을 짐작으로** 썼다. 이 PC 에서 왕복 검증을 돌리자
+> `02/*.md 0/240` · `색인 0/2` · `05/lesson 0/24` 로 **전부 실패**했다.
+> 원인 8건을 실측해 고쳤다. 규칙은 하나다 — **형식은 상수가 아니라 파일에서 되맞춘다.**
+>
+> | # | 첫 판의 전제 | 이 PC 의 실측 | 고친 곳 |
+> |---|---|---|---|
+> | 1 | `02/*.md` 는 LF 전용 | **CRLF.** `_rounds`·`03/` 은 LF — 한 트리 안에서 갈린다 | `core/atomic_io.file_newline` · `paths.to_disk` |
+> | 2 | `02/` 에 `## 지문` 없음 | `passage`(빅분기 15문항) · `table`+`sql`(SQLD 26문항) | `md.passage_parts` |
+> | 3 | lesson 블록에 `passage` 없음 | 지문 있는 문항에만, 그림 줄 뺀 값 | `lesson.block_from_rounds` |
+> | 4 | `difficulty_stats` 정답순 = ①②③④ | **첫 등장 순서**(④ 60 부터) | `index.build_stats` |
+> | 5 | `_rounds` = indent 2 | **indent 1.** SQLD 는 2, m04 만 LF, m05·m06 은 인라인 배열 | `services/book/jsonio.py` (신규) |
+> | 6 | 보기는 항상 `① 본문` 한 줄 | 코드블록·표 보기는 `①` 단독 줄 + 빈 줄 + 블록 | `md.is_block_choice` |
+> | 7 | 회차 3 · 문항 240 · 번들 24 · 과목 4 (상수) | SQLD 는 6회차·300문항·30번들·**2과목**. 자사는 곧 9회차 | `services/book/shape.py` (신규) |
+> | 8 | 요약노트 키 = `분석기획·탐색·모델링·결과해석` | 실제는 `planning·explore·modeling·interpret` | `paths.summary_keys()` |
+>
+> 그리고 **도구 #1(OCR 검수)과 #3(영상 렌더 엔진), 발행 빌더가 모두 이 앱 안으로
+> 들어왔다.** 밖에 남는 것은 **도구 #2(Claude Desktop 스킬)** 하나다.
+>
+> ```
+> services/ocr/              ← #1  스캔 PDF → 초안 → 01/*.md 확정
+> vendor/chodangi/           ← #3  deck.html → mp4 (자막 시간축 수정 반영)
+> services/publish/axbuild/  ←     06/ + problems.json 빌더
+> ```
+>
+> `.env` 의 `XAM_CHODANGI` 는 없어졌고 `XAM_AXEXAM` 은 웹 소스 참고용(선택)이다.
+> 밖에 남는 의존성은 `ffmpeg` · Chromium · TTS 모델 뿐이다(§밖에 남는 것).
+>
+> ### 지금 이 폴더의 상태 (2026-08-03)
+>
+> `D:\00work\ocr-output-260730` 은 **`00/` + `01/` 만 있다.** 도구 #2 최종본으로
+> 자사 9회분을 다시 만들 예정이라 `02~06`·`_rounds` 를 비웠다
+> (기록: 그 폴더의 `_deleted-manifest-260803.txt`).
+> 판독 초안은 `D:\00work\260730-ocr\data\` 에 그대로 있다 — #2 가 읽을 곳이다.
+>
+> **`01/` 만 있는 폴더는 정상적인 작업 상태다.** `OCR 검수` 와 `구조화 MD로 정리` 가
+> 열리고, `문항 교정`·`영상`·`발행` 은 `_rounds/`·`02/` 가 생기면 열린다.
+>
+> 왕복 검증에 `_rounds/*.json` 그룹을 새로 넣었다. 문항 하나를 저장할 때마다 그
+> 111KB 원천 파일이 통째로 다시 쓰이는데, 첫 판은 그걸 검증하지 않았다.
+>
+> **아직 열린 것 하나** — `ocr-output-260723`(SQLD) 의 `_rounds/m06.json` 은 만든
+> writer 의 서식(짧으면 한 줄, 길면 블록)을 되맞추지 못했다. 게이트가 **닫힌 채**라
+> SQLD 저장은 막혀 있다(데이터는 안전). 빅분기는 100% 통과한다.
+
 ## ★ UX 원칙 — 목록은 패널(위층), 작업은 바탕(아래층)
 
 **이것이 이 앱 UX의 핵심이다. 어떤 화면을 새로 만들어도 반드시 이 규칙을 따른다.**
@@ -13,8 +60,10 @@ Layer 0  바탕        ← 작업. 일하는 곳.        #/scan/:id  #/questions
 | 라우트 | 레이어 | 내용 |
 |---|---|---|
 | `#/home` | 바탕 | 파이프라인 4단계. 패널을 닫으면 여기로 돌아온다 |
-| `#/books` | **패널** | 작업 폴더 목록 (좌하단 칩 클릭). 품목 전환 |
-| `#/scan` | **패널** | OCR 본문 목록 (01/ 80문항) |
+| `#/books` | **패널** | 작업 폴더 목록 (좌하단 칩 클릭). 품목 전환 · 판독 폴더 지정 |
+| `#/ocr` | **패널** | ★ OCR 검수 — 스캔 페이지 목록 (회차별) |
+| `#/ocr/:src/:page` | 바탕 | 그 페이지 작업 — 좌 OCR 원문 / 우 문제 카드 · 스캔 드래그로 그림 |
+| `#/scan` | **패널** | OCR 본문 목록 (확정된 01/*.md 를 한 문항씩) |
 | `#/scan/:id` | 바탕 | 그 문항 정리 — 문제·지문·보기·해설 + 원문 PDF + 확정 |
 | `#/questions` | **패널** | 문항 목록 (회차 필터) |
 | `#/questions/:id` | 바탕 | 그 문항 교정 — 5파일 트랜잭션 |
@@ -33,6 +82,33 @@ Layer 0  바탕        ← 작업. 일하는 곳.        #/scan/:id  #/questions
 `static/js/panel.js` 의 `GROUPS`. 각 화면 모듈은 `mount(root, ctx)` 에서 `ctx.panel`
 유무로 `mountList()` / `mountWork()` 를 갈라 쓴다.
 
+**첫 화면은 바탕이다.** 앱을 켜면 `#/home` 이 뜬다 — 패널을 열어 두고 시작하지 않는다.
+예전 기본값이 `#/scan` 이라, 작업 폴더를 고르지도 않았는데 "이미 스캔된 80문항 목록" 이
+담긴 부유 창이 먼저 떠 있었다. 패널은 사람이 열어야 뜬다.
+작업 폴더를 한 번도 지정하지 않았으면(`data/books.json` 없음) 그 바탕에서 **폴더 지정부터**
+받는다(`.env` 값은 '제안' 으로만 보여 준다). 한 번 지정하면 그다음부터 그 폴더로 시작한다.
+
+## ★ UX 원칙 2 — 상태 3색 규칙 (목록은 빠진 것이 눈에 걸려야 한다)
+
+```
+state-todo    아직 안 함 · 확인 필요   →  하얗게. 색을 주지 않는다   ← 여기가 '할 일'
+state-part    하다 만 · 일부만 끝남    →  노랑
+state-done    끝남 · 대조·검수 완료    →  청록 채움(--ok 계열)
+state-empty   판정 불가 · 틀만 있음    →  점선
+```
+
+**안 한 쪽에 색을 주면 안 된다.** 목록은 훑는 화면이라, 모든 칸에 색이 있으면 어디가
+남았는지 세어야 알 수 있다. 실제로 그 사고가 있었다 — OCR 페이지 카드가 "초안에 문항이
+있으면 초록" 이어서, 판독만 하고 대조는 하나도 안 한 3회차가 완료한 1·2회차와 똑같이
+초록이었다. 훑어도 할 일이 보이지 않았다.
+
+색이 채워지는 방향이 진행도다 — 끝난 것은 늘고, 안 끝난 것은 하얗게 줄어든다.
+
+**구현 지점**: 판정은 `static/js/util.js` 의 `stateClass(전체, 끝난것)` 하나,
+색은 `static/css/app.css` 의 `§상태 3색 규칙` 한 곳. **새 목록을 만들 때 색을 새로
+정하지 말고 이 클래스를 붙인다.** 화면마다 색을 정하면 같은 뜻이 화면마다 달라진다.
+지금 쓰는 곳: OCR 페이지 카드(`.oc-cell`) · 구조화 MD 목록(`.sc-row`).
+
 
 `https://axexam.mycafe24.com/exam/` (그누보드5 · PHP 8.4 · MariaDB) 에 두 번째 품목
 **빅데이터분석기사 필기**(240문항 = 3회차 × 80, 4과목, 영상 24편)를 올리기 위한
@@ -46,12 +122,44 @@ run.bat          → http://127.0.0.1:8870/
 ## 도구 4개의 관계
 
 ```
-#1 exam-ocr-tool      원격 Claude 세션에서 돌았다. 산물만 동기화됨 → BOOK
-#2 exambook-forge     Claude Code 스킬. deck.html · lesson JSON 집필
-#3 chodangi-mp4-forge 로컬. deck.html → mp4          D:\00work\chodangi-mp4-forge-main
+#1 OCR 검수           ★ 이 앱 안으로 들어왔다 → services/ocr/ · 화면 #/ocr
+                        판독(스캔→초안)은 Claude Code 창이 하고, 검수·확정은 이 앱이 한다
+#2 exambook-forge     Claude Code 스킬. deck.html · lesson JSON 집필   ← 유일하게 밖에 남는다
+#3 chodangi-mp4-forge 로컬. deck.html → mp4          D:\00work\260724-chodangi-mp4
 #4 XAM LOCAL          ← 이 앱. 검수 · 구동 · 발행
-   axexam            웹(그누보드5). 로컬이 원본, 서버는 사본   _ref\axexam
+   axexam            웹(그누보드5). 로컬이 원본, 서버는 사본   D:\00work\260729-new
 ```
+
+★ `.env.example` 의 경로 두 개는 이 PC 에 없다. 실제 위치는 위 표와 같다
+  (`chodangi-mp4-forge-main` → `260724-chodangi-mp4`, `_ref\axexam` → `260729-new`).
+
+### 도구 #1 — 이 앱 안의 OCR 검수
+
+```
+00/*.pdf  ──[이 앱: PDF 렌더]──►  <OCR폴더>/data/raw_pages/<stem>/page_NNN.png
+                                          │
+                          [Claude Code 창: 판독]  ← 늘 이 창에서 요청한다
+                                          ▼
+                                  data/ocr_draft/<stem>_pNNN.json
+                                          │
+                          [이 앱 #/ocr: 검수 · 확정]
+                                          ▼
+                                  01/{회차}-{문항}.md
+```
+
+`<OCR폴더>` 는 BOOK 밖이다(도구 #1 프로젝트 안 `data/`). BOOK 이름에서 유도하고
+(`ocr-output-260730` → 형제 `260730-ocr`), `.env` 의 `XAM_OCR` 이나 작업 폴더
+패널의 `판독 폴더` 버튼으로 바꾼다. **이 창과 앱이 같이 쓰는 폴더**라서 앱의 쓰기는
+전부 원자적 + `.bak` 이고, 내용이 같으면 쓰지 않는다.
+
+```
+venv\Scripts\python -m services.ocr.pdfrender          00/*.pdf → 페이지 PNG (--dry 로 계획만)
+venv\Scripts\python -m services.ocr.checks             ★ 확정 게이트 + 회차 정합성
+venv\Scripts\python -m services.ocr.answers --check    분리형 교재 정답·해설 주입 (대조만)
+```
+
+`checks` 가 통과하지 않으면 화면의 `확정(MD 저장)` 이 409 로 막힌다 — 통과하지 못하는
+렌더러로 확정하면 이미 검수해 둔 `01/*.md` 가 조용히 바뀐다.
 
 ## 데이터 흐름 — 이것만은 외워야 한다
 
@@ -126,11 +234,16 @@ venv\Scripts\python -m services.book.verify
 ```
 
 ```
+  _rounds/*.json                 3/3        ★ 저장이 이 파일 전체를 다시 쓴다
   02/*.md                        240/240
   02/_index.json + stats         2/2
   05/*/source/lesson_*.json      24/24
-  02/assets/*.svg                76/76  (참고용, 게이트 아님)
+  02/assets/*.svg                43/43     (참고용, 게이트 아님)
 ```
+
+★ **숫자는 폴더에서 나온 값이다.** 회차가 m01~m09 로 늘면 같은 명령이
+`9/9` · `720/720` · `72/72` 를 찍어야 한다. 숫자가 안 바뀌면 어딘가에 상수가
+남아 있다는 뜻이다. SQLD 로 전환하면 `6/6` · `300/300` · `30/30` 이 된다.
 
 **전부 통과하지 않으면 `PUT /api/questions/{id}` 가 409 로 막힌다.** 화면에서도 같은
 검사를 `GET /api/verify/roundtrip` 으로 볼 수 있다.
@@ -233,17 +346,22 @@ _ref\axexam\.venv\Scripts\python.exe scripts\build_check.py
 서버에서는 이력을 되읽을 수 없으므로(`.htaccess` 403) `data/publish/checklist.json` 이
 유일한 발행 이력이다.
 
-## chodangi 패치 4건 — 자막 시간축
+## 자막 시간축 수정 4건 — 이제 소스에 반영돼 있다
 
-```
-venv\Scripts\python -m tools.patch_chodangi --check    상태 확인
-venv\Scripts\python -m tools.patch_chodangi            적용 (원본은 *.xam.bak)
-venv\Scripts\python -m tools.patch_chodangi --revert   되돌리기
-```
+★ **렌더 엔진이 이 앱 안으로 들어왔다** (`vendor/chodangi/`, 2026-08-03). 예전의
+`tools/patch_chodangi.py` 는 지웠다 — 패치가 아니라 **코드**다. 어디를 왜 고쳤는지는
+그 파일들의 주석에 그대로 있다.
 
-★ **`chodangi-mp4-forge` 저장소는 없어지고 렌더 엔진이 이 앱으로 들어온다.** 그래서
-거기에 직접 커밋하지 않고 **재현 가능한 패치**로 이쪽에 남겼다. 새로 클론해도 그대로
-적용된다(상류 최신 기준으로 검증 — 적용 · 멱등 · revert 시 바이트 동일).
+| 무엇 | 어디 |
+|---|---|
+| 1 crossfade 보정 | `vendor/chodangi/voicewright/srt.py::merge_scene_cues` |
+| 2 crossfade 전달 | `voicewright/batch.py` · `chodangi_app/synth.py` |
+| 3 무음 씬 포함(오디오 기준 훑기) | `chodangi_app/synth.py::rebuild_chapter_srt` |
+| 4 `CROSSFADE_SEC` 단일 상수 · `review.json` `timebase` · 진행 로그 · 스크래치 비우기 | `make_bundle_video.py` |
+
+반입 기준은 이 PC 의 `D:\00work\260724-chodangi-mp4` =
+`chodangi-mp4-forge` **main @3ff1350 (07-31, 상류와 동기)** 였고, 그 복사본은
+자막 시간축이 **미패치** 상태였다(`srt.py` 가 `cursor += dur`, `CROSSFADE_SEC` 없음).
 
 자막이 영상보다 앞서는 버그 **두 개**였다. m01-1(46씬)에서 합쳐 83.6초 어긋났다.
 
@@ -273,21 +391,26 @@ make_bundle_video.CROSSFADE_SEC = 0.6
 (패치 전 924.354) · 씬44 자막 `-56.600초` → `+0.000초` · 마지막 큐 끝 895.954초 =
 마지막 낭독 씬 끝.
 
-## axexam 패치 3건
+## axexam 패치 3건 — 적용하지 않는다 (상류가 이미 더 낫게 해결했다)
 
-```
-venv\Scripts\python -m tools.patch_axexam --check    상태 확인
-venv\Scripts\python -m tools.patch_axexam            적용 (원본은 *.xam.bak)
-venv\Scripts\python -m tools.patch_axexam --revert   되돌리기
-```
+★ 발행 **빌더**도 이 앱 안으로 들어왔다 (`services/publish/axbuild/`). 들여오면서
+`tools/patch_axexam.py` 의 3건을 적용하려 했는데, 이 PC 의 axexam
+(`D:\00work\260729-new`) 을 확인해 보니 **셋 다 이미 해결돼 있고 방식이 더 좋았다.**
+그래서 패치를 적용하지 않고 도구를 지웠다 — 적용하면 되돌리는 셈이다.
 
-1. **`--youtube-map` 플래그 신설** — 지금은 `data/youtube_map.json` 하나를 모든 책이
-   공유한다. 번들 키가 SQLD 의 `m01-1`…`m06-5` 와 우리 `m01-1`…`m03-8` 구간에서
-   **정면 충돌**한다. 진짜 사고 지점.
-2. **`emit(DETAIL, "sqld.html")` → `f"{args.pd}.html"`** — 패치 전엔 우리 책을 빌드하면
-   SQLD 마케팅 문구가 든 `06/sqld.html` 이 나오고, 올리면 기존 상세 페이지를 덮어쓴다.
-3. **`detail_template.html` 파라미터화** — 제목 · 문항수 · 회차수 · 과목 목록 · 모든
-   `?pd=` 를 치환 토큰으로. 새 품목은 `_PD_LABELS` 에 한 줄만 더한다.
+| 패치가 하려던 것 | 상류의 현재 구현 |
+|---|---|
+| `--youtube-map` 플래그 신설 | `youtube_map_path(pd_id)` 가 `data/youtube_map.<pd>.json` 을 자동 선택 — 플래그 불필요 |
+| `emit(DETAIL, "sqld.html")` → `{pd}.html` | `detail.html` 하나로 굽고 `?pd=` 로 품목을 가른다 |
+| `detail_template.html` 파라미터화 | `{{BRAND}}` · `{{PD}}` 등으로 이미 전면 토큰화 |
+
+빌더에서 고친 것은 **한 줄**이다 — `ROOT` 를 이 저장소 루트로 (`parents[1]` →
+`parents[3]`). 위치가 `scripts/` 에서 `services/publish/axbuild/` 로 바뀌었기 때문이고,
+안 고치면 `data/youtube_map.<pd>.json` 을 엉뚱한 곳에서 찾아 조용히 "영상 없음" 으로
+빌드된다.
+
+`buildcheck.build_args()` 는 `--youtube-map` 을 **빌더가 그 플래그를 받을 때만** 넘긴다.
+버전을 가정하지 않으므로 상류가 어느 쪽이어도 동작한다.
 
 **2차(미구현, 문서로만 남김)** — 역반영. 웹에서 고친 문항(`edited_by` 가 채워진 행)은
 재임포트에서 건너뛰고 `02/` 와 어긋난 채 남는다. axexam 의 BACKLOG 도 "안 하면 언젠가
@@ -299,17 +422,33 @@ venv\Scripts\python -m tools.patch_axexam --revert   되돌리기
 
 ```
 app.py            FastAPI · MIME shield · load_dotenv(utf-8-sig) · 라우터 · /static+/book 마운트
-core/             constants.py (모든 경로) · atomic_io.py
+core/             constants.py (모든 경로) · atomic_io.py (개행 감지 포함)
 routes/           ★ JSON/파일전송 전용. 페이지 HTML 은 app.py 만. Pydantic 없음
-services/book/    paths derive md lesson rounds index store verify   ← FastAPI import 금지
-services/render/  bundles precheck runner
-services/publish/ validate buildcheck ftplist
+services/book/    paths shape jsonio derive md lesson rounds index store verify scan books
+                    ← FastAPI import 금지.  shape=회차·문항·과목 개수(폴더 계산)
+                                            jsonio=JSON 서식 되맞추기
+services/ocr/     ★ 도구 #1 — project draft finalize pdfrender answers checks
+services/render/  bundles precheck runner        (runner → vendor/chodangi 서브프로세스)
+services/publish/ validate buildcheck ftplist  +  axbuild/ ★ 발행 빌더 내장
 services/jobs/    jobstore registry
-static/           index.html · css/app.css · js/{util icons charts panel shell store + 화면 4개}
-tools/            patch_axexam.py · patch_chodangi.py
-data/             런타임 (git 제외) — jobs/ publish/
-_ref/axexam/      웹 저장소 (별도 클론)
+static/           index.html · css/{app,ocr}.css · vendor/tex-svg.js(수식)
+                  js/{util icons charts panel shell store + 화면 6개(ocr 포함)}
+vendor/chodangi/  ★ 도구 #3 렌더 엔진 내장 — make_bundle_video · slides · voicewright
+                  · mp4maker · chodangi_app · config · assets(TTS 395MB, git 제외)
+data/             런타임 (git 제외) — books.json · jobs/ · publish/ · youtube_map.<pd>.json
+_ref/axexam/      웹 소스 참고용(선택). 발행 빌드에는 필요 없다
 ```
+
+### 밖에 남는 것 (의존성)
+
+내장할 수 없는 것만 남는다. `setup.bat` 이 전부 확인한다.
+
+| 무엇 | 왜 못 넣나 | 없으면 |
+|---|---|---|
+| `ffmpeg` (PATH) | 바이너리 | TTS 를 몇 분 돌린 뒤 **마지막 합성에서** 실패 |
+| Chromium (playwright) | 바이너리 · 114MB | deck 캡처 불가 (`--no-audio` 도 못 씀) |
+| `vendor/chodangi/assets/` | 395MB · git 실용성 | 음성 없음(`--no-audio` 로만 렌더) |
+| 도구 #2 (Claude Desktop 스킬) | 저작 도구 | `05/` deck·lesson 을 만들 수 없다 |
 
 프론트는 `aim-local`(`d:\00work\260801-aim redesign`) 구조를 이식했다. 3층 레이어
 (베이스 / 부유 패널 / 모달), 2층 해시 라우터, `meta` + `mount(root, ctx)` 화면 모듈 계약,

@@ -9,8 +9,9 @@ import os
 import re
 from typing import Iterator
 
+from core import atomic_io
 from core.constants import (
-    BOOK_DIR, BUNDLES_PER_ROUND, QUESTIONS_PER_BUNDLE, SUMMARY_KEYS,
+    BOOK_DIR, FALLBACK_QUESTIONS_PER_ROUND, QUESTIONS_PER_BUNDLE, SUMMARY_KEYS,
 )
 
 # ── 식별자 ──────────────────────────────────────────────────────────────────
@@ -137,7 +138,9 @@ def bundles_in_round(round_code: str) -> int:
             return -(-n // QUESTIONS_PER_BUNDLE)      # 올림
     except (OSError, ValueError):
         pass
-    return BUNDLES_PER_ROUND
+    # 못 읽었을 때만 폴백. 상수 BUNDLES_PER_ROUND 는 지웠다(회차 수·문항 수는
+    # 책마다 다르고 곧 늘어난다) — 규약 상수인 QUESTIONS_PER_BUNDLE 로만 계산한다.
+    return -(-FALLBACK_QUESTIONS_PER_ROUND // QUESTIONS_PER_BUNDLE)
 
 
 def all_bundles() -> list[str]:
@@ -151,10 +154,16 @@ def all_bundles() -> list[str]:
 
 
 def all_qids() -> Iterator[str]:
-    from core.constants import QUESTIONS_PER_ROUND
+    """이 폴더의 모든 문항 id.
+
+    ★ 회차당 문항 수를 상수로 돌면 안 된다 — 회차마다 다를 수 있다(집필 중인
+      마지막 회차가 30문항일 수 있다). 그 회차의 실제 문항 수를 센다.
+    """
+    from services.book import shape
     for rc in round_codes():
         rn = parse_round_code(rc)
-        for qno in range(1, QUESTIONS_PER_ROUND + 1):
+        n = shape.questions_in_round(rc) or FALLBACK_QUESTIONS_PER_ROUND
+        for qno in range(1, n + 1):
             yield qid(rn, qno)
 
 
@@ -207,7 +216,30 @@ def summary_index_html() -> str:
 
 
 def summary_keys() -> tuple[str, ...]:
-    return SUMMARY_KEYS
+    """03/ 의 요약노트 키 — **폴더에서 읽는다.**
+
+    ★ 업로드본은 `("분석기획","탐색","모델링","결과해석")` 로 못박아 뒀다. 이 PC 의
+      실제 파일은 `summary_planning.html` · `explore` · `modeling` · `interpret` 다.
+      그래서 요약노트 화면이 404 를 내고, 사전점검은 "요약노트 4종 없음" 을 냈다.
+      키는 책마다 사람이 정하는 값이라 코드에 있을 값이 아니다.
+
+    `.html` 우선, 없으면 `.md` 로 센다. 발행되는 것은 html 이다.
+    """
+    d = os.path.join(book_dir(), "03")
+    found: list[str] = []
+    for ext in (".html", ".md"):
+        try:
+            names = sorted(os.listdir(d))
+        except OSError:
+            break
+        for f in names:
+            if f.startswith("summary_") and f.endswith(ext) and f != "summary_index.html":
+                k = f[len("summary_"):-len(ext)]
+                if k and k not in found:
+                    found.append(k)
+        if found:
+            break
+    return tuple(found) or SUMMARY_KEYS
 
 
 # ── 04/ 회차 lesson (읽기 전용 — build_check.py 가 읽지 않는다) ─────────────
@@ -280,6 +312,52 @@ def etag(path: str) -> str:
         return f"{st.st_mtime_ns}-{st.st_size}"
     except FileNotFoundError:
         return "0-0"
+
+
+def newline_for(path: str) -> str:
+    """이 파일에 써야 하는 개행.
+
+    ★ 상수가 아니다. 같은 BOOK 트리 안에서도 갈린다 — 실측(260730):
+      02/*.md · 02/*.json · 04/ · 05/lesson = CRLF,  _rounds/*.json · 03/* = LF.
+      만든 쪽이 Windows 텍스트 모드로 썼는지에 달렸을 뿐이라 규칙이 없다.
+
+    1) 파일이 있으면 그 파일의 개행. (기존 266개가 이 경로로 그대로 보존된다)
+    2) 없으면 **같은 폴더 · 같은 확장자 형제들의 다수결.** 회차가 m04~m09 로 늘 때
+       새 파일이 형제들과 같은 규약으로 태어나야 한다. 여기서 LF 로 굳히면
+       한 폴더 안에 두 규약이 섞인다.
+    3) 형제도 없으면 LF.
+    """
+    nl = atomic_io.file_newline(path)
+    if nl is not None:
+        return nl
+
+    d, name = os.path.dirname(path), os.path.basename(path)
+    _, ext = os.path.splitext(name)
+    lf = crlf = 0
+    try:
+        siblings = sorted(os.listdir(d))
+    except OSError:
+        return atomic_io.LF
+    for f in siblings:
+        if f == name or not f.endswith(ext) or f.endswith(".bak"):
+            continue
+        s = atomic_io.file_newline(os.path.join(d, f))
+        if s == atomic_io.CRLF:
+            crlf += 1
+        elif s == atomic_io.LF:
+            lf += 1
+        if lf + crlf >= 8:          # 표본 8개면 충분하다. 240개를 다 열 이유가 없다.
+            break
+    return atomic_io.CRLF if crlf > lf else atomic_io.LF
+
+
+def to_disk(path: str, text: str) -> str:
+    """렌더러 출력(LF 기준) → 그 파일에 실제로 들어갈 바이트.
+
+    렌더러는 LF 로만 조립하고(내용이 원천), 개행은 전부 이 한 곳을 지난다.
+    왕복 검증도 저장도 같은 함수를 써야 둘이 갈리지 않는다.
+    """
+    return atomic_io.with_newline(text, newline_for(path))
 
 
 def mtime(path: str) -> float:

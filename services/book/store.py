@@ -75,7 +75,8 @@ def read(question_id: str) -> dict:
     # 드리프트 — 조용히 한쪽이 이기게 하지 않는다.
     if os.path.isfile(md_path):
         with open(md_path, encoding="utf-8", newline="") as f:
-            if f.read() != md.render(q, meta, md.read_flags(md_path)):
+            # 개행은 비교 대상이 아니다 — paths.to_disk() 로 맞춘 뒤 내용만 본다.
+            if f.read() != paths.to_disk(md_path, md.render(q, meta, md.read_flags(md_path))):
                 warnings.append({
                     "code": "md_drift", "level": "warn",
                     "text": ("02/*.md 가 _rounds 로 재생성한 결과와 다릅니다. "
@@ -268,8 +269,13 @@ def save(question_id: str, values: dict, flags: dict | None = None,
             lpath = paths.bundle_lesson(bundle)
             if os.path.isfile(lpath):
                 ldoc = lesson.load(bundle)
+                # ★ 이번에 값이 실제로 달라진 필드만 넘긴다. 전부 재생성하면 도구 #2 가
+                #   넣어 둔 손질(그림 줄 제거·강조 표기)을 그 번들에서 잃는다.
+                changed_fields = {k for k in lesson.FIELD_TO_KEYS
+                                  if q.get(k) != before.get(k)}
                 # 낭독문을 이번에 건드렸으면 lesson 도 새 값으로. 아니면 디스크 손질 보존.
-                ldoc = lesson.render(ldoc, q, keep_speech=not speech_edited)
+                ldoc = lesson.render(ldoc, q, keep_speech=not speech_edited,
+                                     fields=changed_fields)
                 if lesson.save(bundle, ldoc):
                     written.append(paths.rel(lpath))
             else:
@@ -317,6 +323,12 @@ def set_review(question_id: str, reviewed: bool, etag: str | None = None) -> dic
 
 
 def _write_if_changed(path: str, text: str) -> bool:
+    """개행을 그 파일의 규약으로 맞춘 뒤, 내용이 실제로 바뀐 경우에만 쓴다.
+
+    ★ 맞추기 전에 비교하면 CRLF 파일이 매번 '바뀐 것' 으로 보여서 240개가
+      첫 저장에서 전부 다시 쓰인다. paths.to_disk() 가 검증과 같은 함수다.
+    """
+    text = paths.to_disk(path, text)
     if os.path.isfile(path):
         with open(path, encoding="utf-8", newline="") as f:
             if f.read() == text:

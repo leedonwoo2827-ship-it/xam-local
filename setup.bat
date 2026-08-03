@@ -42,34 +42,67 @@ if errorlevel 1 goto :pipfail
 echo       ok
 
 echo.
-echo [4/4] checking external trees...
+echo [4/5] checking config and bundled engines...
 if exist ".env" goto :haveenvfile
 if exist ".env.example" copy /y ".env.example" ".env" >nul
 echo       created .env from .env.example - review it
 :haveenvfile
 
-if exist "D:\00work\ocr-output-260730\_rounds\m01.json" goto :bookok
-echo       WARNING: BOOK not found at D:\00work\ocr-output-260730
-echo                set XAM_BOOK in .env
-goto :chodangi
+REM BOOK is chosen in the app (folder panel). .env only holds the first-run default.
+if exist "D:\00work\ocr-output-260730\01" goto :bookok
+echo       NOTE: default BOOK not found at D:\00work\ocr-output-260730
+echo             pick a work folder in the app, or set XAM_BOOK in .env
+goto :engine
 :bookok
 echo       BOOK ok
 
-:chodangi
-if exist "D:\00work\chodangi-mp4-forge-main\make_bundle_video.py" goto :chodok
-echo       WARNING: chodangi-mp4-forge not found - video render disabled
-echo                set XAM_CHODANGI in .env
-goto :axexam
-:chodok
-echo       chodangi ok
+REM The render engine and the publish builder now live INSIDE this repo.
+REM Nothing to clone. Only the two binaries below cannot be bundled.
+:engine
+if exist "vendor\chodangi\make_bundle_video.py" goto :engok
+echo       ERROR: vendor\chodangi is missing - video render will not work
+goto :builder
+:engok
+echo       render engine ok (vendor\chodangi)
 
-:axexam
-if exist "_ref\axexam\scripts\build_check.py" goto :axok
-echo       NOTE: _ref\axexam not cloned yet - publish build disabled
-echo             git clone https://github.com/leedonwoo2827-ship-it/axexam _ref\axexam
+:builder
+if exist "services\publish\axbuild\build_check.py" goto :bldok
+echo       ERROR: services\publish\axbuild is missing - publish build will not work
+goto :done4
+:bldok
+echo       publish builder ok (services\publish\axbuild)
+
+:done4
+echo.
+echo [5/5] checking things that cannot be bundled...
+REM ffmpeg is fatal for the mux step. Fail here, not after minutes of TTS.
+where /q ffmpeg
+if not errorlevel 1 goto :ffok
+echo       WARNING: ffmpeg is NOT in PATH - video mux will fail at the very end
+echo                install:  winget install Gyan.FFmpeg    then open a NEW window
+goto :chromium
+:ffok
+echo       ffmpeg ok
+
+:chromium
+venv\Scripts\python -c "from playwright.sync_api import sync_playwright" >nul 2>nul
+if errorlevel 1 goto :pwmissing
+venv\Scripts\python -m playwright install chromium >> "%LOG%" 2>&1
+echo       chromium ok (playwright)
+goto :ttsassets
+:pwmissing
+echo       WARNING: playwright not importable - deck capture disabled
+echo                see %LOG%
+
+:ttsassets
+REM Supertonic3 TTS models. ~395MB, kept out of git on purpose.
+if exist "vendor\chodangi\assets\onnx" goto :ttsok
+echo       WARNING: TTS models missing - vendor\chodangi\assets\onnx
+echo                copy the assets\ folder from a machine that has it
+echo                (video render works only with --no-audio until then)
 goto :done
-:axok
-echo       axexam ok
+:ttsok
+echo       TTS models ok
 
 :done
 echo.

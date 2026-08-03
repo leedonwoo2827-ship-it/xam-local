@@ -17,7 +17,7 @@ import difflib
 import json
 import os
 
-from services.book import index as bindex, lesson, md, paths, rounds
+from services.book import index as bindex, jsonio, lesson, md, paths, rounds
 
 
 def _read(path: str) -> str | None:
@@ -26,6 +26,15 @@ def _read(path: str) -> str | None:
         return None
     with open(path, encoding="utf-8", newline="") as f:
         return f.read()
+
+
+def _rendered(path: str, text: str) -> str:
+    """렌더러 출력을 '그 파일에 실제로 들어갈 바이트' 로 맞춘다.
+
+    렌더러는 LF 로만 조립한다(내용이 원천). 개행은 paths.to_disk() 한 곳에서만
+    정하고, 저장 경로도 같은 함수를 쓴다 — 검증과 저장이 갈리면 검증이 무의미하다.
+    """
+    return paths.to_disk(path, text)
 
 
 def _first_diff(a: str, b: str) -> dict:
@@ -60,7 +69,7 @@ def verify_md() -> dict:
             continue
         try:
             flags = md.read_flags(path)
-            rendered = md.render(q, meta, flags)
+            rendered = _rendered(path, md.render(q, meta, flags))
         except Exception as e:
             fail.append({"id": qid, "error": f"{type(e).__name__}: {e}"})
             continue
@@ -77,6 +86,27 @@ def verify_md() -> dict:
     return {"kind": "02/*.md", "total": ok + len(fail) + len(missing),
             "ok": ok, "fail": fail[:20], "fail_count": len(fail),
             "missing": missing[:20], "missing_count": len(missing)}
+
+
+def verify_rounds() -> dict:
+    """_rounds/mNN.json — 집필 원천. 저장할 때마다 **파일 전체**를 다시 쓴다.
+
+    ★ 이 그룹이 왜 필요한가: 업로드본은 이걸 검증하지 않았고, 서식을 indent=2 로
+      못박아 뒀다. 실측은 260730 이 indent=1 이라서, 문항 하나를 저장하면 111KB
+      원천이 118KB 로 통째로 재작성된다 — 80문항 서식이 전부 바뀌고 `.bak` 으로도
+      무엇이 사람의 수정이었는지 분간이 안 된다. 나머지 그룹과 같은 등급의 게이트다.
+    """
+    ok, fail = 0, []
+    for rc in paths.round_codes():
+        path = paths.rounds_json(rc)
+        r = jsonio.roundtrip(path)
+        if r.get("ok"):
+            ok += 1
+        else:
+            fail.append({"id": rc, "path": paths.rel(path), **r})
+    return {"kind": "_rounds/*.json", "total": ok + len(fail),
+            "ok": ok, "fail": fail[:20], "fail_count": len(fail),
+            "missing": [], "missing_count": 0}
 
 
 def verify_index() -> dict:
@@ -136,7 +166,7 @@ def verify_lesson() -> dict:
                 # keep_speech=True — 편집하지 않은 낭독문은 디스크 값을 지킨다.
                 # 실측 드리프트 2건(m01-5 q42 · m02-5 q45)이 TTS 손질이라 되돌리면 안 된다.
                 cur = lesson.render(cur, q, keep_speech=True)
-            rendered = lesson.render_text(cur)
+            rendered = lesson.render_text(cur, bundle)
         except Exception as e:
             fail.append({"bundle": bundle, "error": f"{type(e).__name__}: {e}"})
             continue
@@ -200,13 +230,15 @@ def run_all() -> dict:
                 f"이 작업 폴더에는 아직 문항이 없습니다: {paths.book_dir()}"
                 " — _rounds/ 와 02/ 가 있는 폴더로 전환하세요."}
 
-    groups = [verify_md(), verify_index(), verify_lesson(), verify_assets()]
-    md_g, idx_g, les_g, ast_g = groups
+    groups = [verify_rounds(), verify_md(), verify_index(), verify_lesson(),
+              verify_assets()]
+    rnd_g, md_g, idx_g, les_g, ast_g = groups
     drift = lesson.speech_drift()
 
     # assets 는 '통과해야 하는' 항목이 아니다 — 그림이 다르면 알려주기만 한다.
     blocking_ok = (
-        md_g["fail_count"] == 0 and md_g["missing_count"] == 0
+        rnd_g["fail_count"] == 0 and rnd_g["total"] > 0
+        and md_g["fail_count"] == 0 and md_g["missing_count"] == 0
         and idx_g["ok"] == idx_g["total"]
         and les_g["fail_count"] == 0 and les_g["missing_count"] == 0
     )
@@ -214,8 +246,17 @@ def run_all() -> dict:
         "ok": blocking_ok,
         "book": paths.book_dir(),
         "groups": groups,
+        # ★ 이름으로도 꺼낼 수 있게 같이 준다. groups 를 위치로 언팩하던 곳이
+        #   있었고(`md_g, idx_g, les_g, ast_g = v["groups"]`), _rounds 그룹을
+        #   더하자 그 한 줄이 500 을 냈다. 그룹을 또 늘릴 수 있으니 위치 언팩은
+        #   쓰지 않는다.
+        "by_kind": {
+            "rounds": rnd_g, "md": md_g, "index": idx_g,
+            "lesson": les_g, "assets": ast_g,
+        },
         "speech_drift": drift,
         "summary": {
+            "rounds": f"{rnd_g['ok']}/{rnd_g['total']}",
             "md": f"{md_g['ok']}/{md_g['total']}",
             "index": f"{idx_g['ok']}/{idx_g['total']}",
             "lesson": f"{les_g['ok']}/{les_g['total']}",
@@ -235,7 +276,9 @@ def _main() -> int:
         print("[error]", r["error"])
         return 2
     s = r["summary"]
+    # ★ 기대 숫자를 문장에 박지 않는다 — 회차가 m01~m09 로 늘면 그대로 커진다.
     print(f"BOOK: {r['book']}")
+    print(f"  _rounds/*.json                 {s['rounds']}")
     print(f"  02/*.md                        {s['md']}")
     print(f"  02/_index.json + stats         {s['index']}")
     print(f"  05/*/source/lesson_*.json      {s['lesson']}")

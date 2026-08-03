@@ -25,6 +25,11 @@ export const GROUPS = {
     subtitle: "이 앱이 읽고 쓸 폴더를 지정합니다.",
     sections: [],
   },
+  ocr: {
+    title: "OCR 검수 · 페이지",
+    subtitle: "스캔 페이지를 고르면 아래 작업창에서 열립니다. 판독은 Claude Code 창에서 합니다.",
+    sections: [],
+  },
   scan: {
     title: "OCR 본문",
     subtitle: "고르면 아래 작업창에서 열립니다. 01/*.md 를 쓰는 단계입니다.",

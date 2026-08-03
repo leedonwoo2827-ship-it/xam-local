@@ -11,11 +11,8 @@ import json
 import os
 import xml.etree.ElementTree as ET
 
-from core.constants import (
-    AXEXAM_DIR, BUNDLES_PER_ROUND, PD_CODE, QUESTIONS_PER_ROUND,
-    SUBJECT_COUNT, SUMMARY_KEYS,
-)
-from services.book import index as bindex, lesson, md, paths, rounds, verify
+from core.constants import AXEXAM_DIR, PD_CODE
+from services.book import index as bindex, lesson, md, paths, rounds, shape, verify
 from services.render import bundles as rbundles
 
 # pd 코드 검증 — _boot.php / exam_lib/problem.php 의 정규식과 같아야 한다.
@@ -54,13 +51,17 @@ def check_questions() -> list[dict]:
             continue
         qs = doc.get("questions") or []
         nos = [int(q.get("question_no", 0)) for q in qs]
+        # ★ 기대 문항 수를 상수로 두지 않는다. 회차마다 다를 수 있고(집필 중인
+        #   마지막 회차), 책마다 다르다(빅분기 80 · SQLD 50). 이 회차의 실제 수를
+        #   기준으로 "1..N 결번·중복 없음" 만 본다 — 그게 실제로 검사할 값이다.
+        n = len(qs)
         out.append(_chk("questions", f"q.count.{rc}", "error",
-                        f"{rc} 문항 {QUESTIONS_PER_ROUND}개", len(qs) == QUESTIONS_PER_ROUND,
-                        f"현재 {len(qs)}개"))
+                        f"{rc} 문항 있음", n > 0, f"현재 {n}개"))
         out.append(_chk("questions", f"q.gaps.{rc}", "error",
-                        f"{rc} 번호 1~{QUESTIONS_PER_ROUND} 결번·중복 없음",
-                        sorted(nos) == list(range(1, QUESTIONS_PER_ROUND + 1)),
-                        f"중복/결번: {len(nos) - len(set(nos))}개 중복"))
+                        f"{rc} 번호 1~{n} 결번·중복 없음",
+                        n > 0 and sorted(nos) == list(range(1, n + 1)),
+                        f"중복 {len(nos) - len(set(nos))}개 · "
+                        f"번호 {min(nos) if nos else 0}~{max(nos) if nos else 0}"))
 
     # 보기 4개 · 정답 범위 · subject_no 정수
     bad_choices = [i["id"] for i in items if i["n_choices"] != 4]
@@ -82,10 +83,15 @@ def check_questions() -> list[dict]:
                      "통째로 깨집니다(build_check 의 과목 N종 리포트는 이걸 못 잡습니다).")
                     if bad_subj else ""))
 
+    # 과목 — 개수를 못박지 않는다(SQLD 는 2과목, 빅분기는 4과목).
+    # 검사할 값은 "과목이 하나로 뭉개지지 않았는가" 다. 실제 사고가 그것이었다:
+    # subject_no 가 문자열이면 웹의 subjects 가 빈 배열이 되고 전 행 sj_no=0 이 된다.
     subjects = sorted({(i["subject_no"], i["subject"]) for i in items})
     out.append(_chk("questions", "q.subject_count", "error",
-                    f"과목 {SUBJECT_COUNT}종", len(subjects) == SUBJECT_COUNT,
-                    " / ".join(f"{n}:{s}" for n, s in subjects)))
+                    f"과목 {len(subjects)}종 (2종 이상)", len(subjects) >= 2,
+                    " / ".join(f"{n}:{s}" for n, s in subjects)
+                    + ("  ← 과목이 1종이면 subject 폴백 버그입니다."
+                       if len(subjects) < 2 else "")))
 
     # ★ 미검수 0개 — 이게 화면①의 존재 이유다
     unrev = [i["id"] for i in items if not i["reviewed"]]
@@ -111,7 +117,14 @@ def check_questions() -> list[dict]:
 
     # 바이트 충실도 — 02/md 와 05/lesson 이 _rounds 와 일치하는가
     v = verify.run_all()
-    md_g, idx_g, les_g, ast_g = v["groups"]
+    # 위치 언팩을 쓰지 않는다 — 그룹이 늘면(실제로 _rounds 가 늘었다) 조용히 깨진다.
+    g = v["by_kind"]
+    rnd_g, md_g, idx_g, les_g = g["rounds"], g["md"], g["index"], g["lesson"]
+    out.append(_chk("questions", "q.rounds_format", "error",
+                    "_rounds/*.json 서식 재현 가능 (저장이 파일 전체를 다시 쓴다)",
+                    rnd_g["fail_count"] == 0 and rnd_g["total"] > 0,
+                    "; ".join(f"{f['id']}: {f.get('error', '')}"
+                              for f in rnd_g["fail"][:4])))
     out.append(_chk("questions", "q.md_sync", "error", "02/*.md 가 _rounds 와 일치",
                     md_g["fail_count"] == 0 and md_g["missing_count"] == 0,
                     f"불일치 {md_g['fail_count']}건 · 없음 {md_g['missing_count']}건"))
@@ -132,7 +145,8 @@ def check_questions() -> list[dict]:
         dist = {}
         for r in rows:
             dist[r["answer"]] = dist.get(r["answer"], 0) + 1
-        want = QUESTIONS_PER_ROUND // 4
+        # 정답 균형은 그 회차의 실제 문항 수 기준이다.
+        want = len(rows) // 4
         ok = all(abs(dist.get(g, 0) - want) <= 2 for g in "①②③④")
         out.append(_chk("questions", f"q.answer_balance.{rc}", "warn",
                         f"{rc} 정답 분포 각 {want}±2", ok,
@@ -140,11 +154,18 @@ def check_questions() -> list[dict]:
         ddist = {}
         for r in rows:
             ddist[r["difficulty"]] = ddist.get(r["difficulty"], 0) + 1
-        ok_d = (abs(ddist.get("상", 0) - 24) <= 4 and abs(ddist.get("중", 0) - 44) <= 6
-                and abs(ddist.get("하", 0) - 12) <= 4)
+        # 목표 난이도 비율(상 30% · 중 55% · 하 15%)을 **그 회차 문항 수에 비례**해
+        # 잡는다. 24/44/12 로 못박으면 80문항 회차만 맞고, 50문항 책에서는 늘 경고가
+        # 뜬다. 비율은 집필 정책이라 유지하고 기준선만 회차 크기에서 만든다.
+        n_r = len(rows)
+        tgt = {"상": round(n_r * .30), "중": round(n_r * .55), "하": round(n_r * .15)}
+        tol = {"상": max(4, round(n_r * .05)), "중": max(6, round(n_r * .08)),
+               "하": max(4, round(n_r * .05))}
+        ok_d = all(abs(ddist.get(k, 0) - tgt[k]) <= tol[k] for k in tgt)
         out.append(_chk("questions", f"q.difficulty_mix.{rc}", "warn",
-                        f"{rc} 난이도 상24±4·중44±6·하12±4", ok_d,
-                        " ".join(f"{k}{v}" for k, v in ddist.items())))
+                        f"{rc} 난이도 "
+                        + " · ".join(f"{k}{tgt[k]}±{tol[k]}" for k in ("상", "중", "하")),
+                        ok_d, " ".join(f"{k}{v}" for k, v in ddist.items())))
 
     # 고아 SVG
     used = set()
@@ -200,8 +221,10 @@ def check_videos() -> list[dict]:
     rows = rbundles.scan_all()
     by_code = {r["code"]: r for r in rows}
 
+    per = ", ".join(f"{rc} {paths.bundles_in_round(rc)}개"
+                    for rc in paths.round_codes())
     out.append(_chk("videos", "v.bundle_count", "error",
-                    f"번들 {_want_bundles()}개 (회차별 {BUNDLES_PER_ROUND}개)",
+                    f"번들 {_want_bundles()}개 ({per})",
                     len(rows) == _want_bundles(), f"현재 {len(rows)}개"))
 
     broken = [r["code"] for r in rows if not r["ok_1to1"]]
@@ -324,14 +347,14 @@ def check_youtube() -> list[dict]:
 
 def check_summaries() -> list[dict]:
     out: list[dict] = []
-    missing = [k for k in SUMMARY_KEYS if not os.path.isfile(paths.summary_html(k))]
+    missing = [k for k in paths.summary_keys() if not os.path.isfile(paths.summary_html(k))]
     out.append(_chk("summaries", "s.four_files", "error",
-                    f"요약노트 HTML {len(SUMMARY_KEYS)}종 존재", not missing,
+                    f"요약노트 HTML {len(paths.summary_keys())}종 존재", not missing,
                     ", ".join(missing)))
-    no_md = [k for k in SUMMARY_KEYS if not os.path.isfile(paths.summary_md(k))]
+    no_md = [k for k in paths.summary_keys() if not os.path.isfile(paths.summary_md(k))]
     out.append(_chk("summaries", "s.md_pair", "warn", "요약노트 .md 짝 존재",
                     not no_md, ", ".join(no_md)))
-    stale = [k for k in SUMMARY_KEYS
+    stale = [k for k in paths.summary_keys()
              if os.path.isfile(paths.summary_md(k))
              and paths.mtime(paths.summary_html(k)) < paths.mtime(paths.summary_md(k))]
     out.append(_chk("summaries", "s.html_fresh", "warn",

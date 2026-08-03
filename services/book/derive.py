@@ -70,6 +70,20 @@ def strip_inline_figures(text: str) -> str:
     return _INLINE_FIG_RE.sub("", text or "").rstrip()
 
 
+# 강조 표기 — 도구 #2 가 lesson 에 넣을 때 손질하고, 그 손질이 회차마다 다르다.
+#   실측: m01 은 `**가장 어려운**` → `<b>가장 어려운</b>`, m03 은 강조를 **제거**.
+# 우리는 어느 쪽으로도 재현하지 않는다(재현할 규칙이 없다). 드리프트 비교에서만
+# 양쪽을 벗겨 내용이 정말 다른지 본다.
+_EMPHASIS_RE = re.compile(r"\*\*(.+?)\*\*|</?b>", re.S)
+
+
+def normalize_emphasis(text) -> str:
+    """`**…**` 과 `<b>…</b>` 를 벗긴 평문. 드리프트 비교 전용 — 저장에는 쓰지 않는다."""
+    if not isinstance(text, str):
+        return text
+    return _EMPHASIS_RE.sub(lambda m: m.group(1) or "", text)
+
+
 def inline_figure_names(text: str) -> list[str]:
     """본문에 인라인된 그림 파일명(확장자 제외). 에디터의 미리보기용."""
     out = []

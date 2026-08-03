@@ -41,7 +41,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from core.constants import (
-    APP_NAME, APP_VERSION, AXEXAM_DIR, BASE_DIR, BOOK_DIR, CHODANGI_DIR,
+    APP_NAME, APP_VERSION, AXEXAM_DIR, BASE_DIR, BOOK_DIR, ENGINE_DIR,
     DATA_DIR, JOBS_DIR, PD_CODE, PD_LABEL, PORT, PUBLISH_DIR, STATIC_DIR,
 )
 
@@ -63,6 +63,7 @@ app = FastAPI(
 _ROUTERS = (
     ("routes.books_routes", "setup_books_routes", "작업 폴더"),
     ("routes.book_routes", "setup_book_routes", "BOOK 개요"),
+    ("routes.ocr_routes", "setup_ocr_routes", "OCR 검수(페이지 단위)"),
     ("routes.scan_routes", "setup_scan_routes", "구조화 MD"),
     ("routes.question_routes", "setup_question_routes", "문항 교정"),
     ("routes.verify_routes", "setup_verify_routes", "바이트 충실도 검증"),
@@ -176,7 +177,7 @@ async def version():
         "pd": PD_CODE,
         "pd_label": PD_LABEL,
         "book": _initial_book_dir(),
-        "chodangi": CHODANGI_DIR,
+        "engine": ENGINE_DIR,
         "axexam": AXEXAM_DIR,
     }
 

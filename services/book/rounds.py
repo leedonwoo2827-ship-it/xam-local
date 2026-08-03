@@ -14,8 +14,8 @@ import os
 import threading
 from typing import Any
 
-from core.atomic_io import atomic_write_json, backup_sibling
-from services.book import paths
+from core.atomic_io import atomic_write_text, backup_sibling
+from services.book import jsonio, paths
 
 # 회차 단위 락. 한 회차의 80문항은 파일 하나에 들어 있어서, 두 요청이 같은
 # 회차를 동시에 읽기-수정-쓰기 하면 나중 것이 앞 것을 통째로 되돌린다.
@@ -79,8 +79,11 @@ def save(round_code: str, doc: dict) -> None:
     """
     path = paths.rounds_json(round_code)
     backup_sibling(path)
-    # _rounds 는 우리가 만든 파일이 아니므로 원본 포맷(indent=2)을 따른다.
-    atomic_write_json(path, doc, indent=2)
+    # ★ _rounds 는 우리가 만든 파일이 아니다. 서식을 **그 파일에서 되맞춰** 쓴다.
+    #   실측: 260730 은 indent=1·LF, 260723 은 indent=2 인데 m04 만 LF 다.
+    #   indent 를 2 로 못박으면 문항 하나 고칠 때 111KB 원천이 118KB 로 통째로
+    #   재작성되고, 80문항 서식이 전부 바뀐다.
+    atomic_write_text(path, jsonio.render(path, doc))
 
 
 def all_questions() -> list[tuple[str, dict, dict]]:

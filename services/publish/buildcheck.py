@@ -18,23 +18,31 @@ import os
 import re
 import subprocess
 
-from core.constants import (
-    AXEXAM_DIR, QUESTIONS_PER_ROUND, SUBJECT_COUNT,
-)
+from core.constants import AXBUILD_DIR, AXEXAM_DIR, BASE_DIR, DATA_DIR
 from services.book import paths
 from services.jobs import registry
 
 _PR_KEY_RE = re.compile(r"^m\d{2}-\d{1,2}#\d{1,3}$")
 
 
+def builder_dir() -> str:
+    """내장한 빌더 폴더. 서브프로세스의 cwd 이자 exam_meta import 뿌리다."""
+    return AXBUILD_DIR
+
+
+def builder_script() -> str:
+    return os.path.join(AXBUILD_DIR, "build_check.py")
+
+
 def axexam_python() -> str:
-    """axexam 의 venv python. 없으면 우리 venv 로 떨어진다 —
-    build_check.py 의 의존성은 PyYAML 하나라 우리 쪽에도 있다."""
-    p = os.path.join(AXEXAM_DIR, ".venv", "Scripts", "python.exe")
-    if os.path.isfile(p):
-        return p
+    """빌더를 돌릴 파이썬 — **이 앱의 venv** 다.
+
+    ★ 예전에는 axexam 저장소의 `.venv` 를 먼저 찾았다. 빌더가 안으로 들어왔으니
+      우리 venv 하나로 돈다(의존성은 PyYAML 뿐이고 이미 있다).
+    """
     import sys
-    return sys.executable
+    p = os.path.join(BASE_DIR, "venv", "Scripts", "python.exe")
+    return p if os.path.isfile(p) else sys.executable
 
 
 def active_pd() -> str:
@@ -67,24 +75,41 @@ def require_pd() -> str:
 
 
 def youtube_map_path() -> str:
-    """품목 전용 매핑. 공용 youtube_map.json 은 SQLD 와 번들 키가 겹친다."""
-    return os.path.join(AXEXAM_DIR, "data", f"youtube_map.{active_pd()}.json")
+    """품목 전용 매핑. 공용 youtube_map.json 은 SQLD 와 번들 키가 겹친다.
+
+    ★ 빌더가 안으로 들어와 `ROOT` 가 이 저장소 루트다. 그래서 매핑도 이 앱의
+      `data/` 에 둔다 — 빌더의 `youtube_map_path(pd_id)` 가 같은 곳을 본다.
+    """
+    return os.path.join(DATA_DIR, f"youtube_map.{active_pd()}.json")
 
 
 def supports_youtube_map_flag() -> bool:
-    """axexam 에 --youtube-map 패치가 적용되었는가."""
-    p = os.path.join(AXEXAM_DIR, "scripts", "build_check.py")
+    """빌더가 `--youtube-map` 플래그를 받는가.
+
+    ★ 지금 상류 빌더는 **이 플래그가 없다.** 대신 `--pd` 로
+      `data/youtube_map.<pd>.json` 을 스스로 고른다(더 나은 방식이라 그대로 쓴다).
+      그래서 이 함수는 보통 False 이고, 넘기지 않는 게 맞다. 플래그가 다시 생기면
+      자동으로 넘어간다 — 버전을 가정하지 않는다.
+
+    ★ **문자열 검색이 아니라 `add_argument` 정의를 본다.** 처음에는 파일 전체에서
+      `"--youtube-map"` 을 찾았는데, 주석·독스트링에 그 글자가 있으면 True 가 되고
+      빌드가 `unrecognized arguments` 로 죽는다. 실제로 그렇게 걸렸다 —
+      내장할 때 붙인 주석 한 줄이 오탐을 만들었다.
+      비슷한 이름(`--init-youtube-map`)도 있으니 정의를 정확히 맞춘다.
+    """
     try:
-        with open(p, encoding="utf-8") as f:
-            return "--youtube-map" in f.read()
+        with open(builder_script(), encoding="utf-8") as f:
+            src = f.read()
     except OSError:
         return False
+    return bool(re.search(r'add_argument\(\s*"--youtube-map"', src))
 
 
 def env_info() -> dict:
-    script = os.path.join(AXEXAM_DIR, "scripts", "build_check.py")
+    script = builder_script()
     return {
-        "axexam": AXEXAM_DIR,
+        "builder": AXBUILD_DIR,
+        "axexam": AXEXAM_DIR,          # 웹 소스(참고용). 없어도 발행은 된다.
         "cloned": os.path.isfile(script),
         "script": script,
         "python": axexam_python(),
@@ -93,23 +118,24 @@ def env_info() -> dict:
         "out": paths.out_dir(),
         "youtube_map": youtube_map_path(),
         "youtube_map_exists": os.path.isfile(youtube_map_path()),
-        "patch_youtube_map": supports_youtube_map_flag(),
+        "youtube_map_flag": supports_youtube_map_flag(),
         "problems_json": paths.problems_json(),
     }
 
 
 def build_args() -> list[str]:
     """실행할 명령 — 화면에도 이 문자열을 그대로 보여준다."""
-    a = [axexam_python(), os.path.join("scripts", "build_check.py"),
+    a = [axexam_python(), "build_check.py",
          # ★ 생략 금지. 그리고 상수가 아니라 **지금 고른 폴더·품목**을 넘긴다.
+         #   둘 다 기본값이 SQLD 라서 하나만 빠지면 라이브 SQLD 를 덮어쓴다.
          "--book", paths.book_dir(),
          "--pd", require_pd(),
          "--api-base", "./api/",      # ApiDS 모드 + window.EXAM_PD 주입
          "--emit-json",
          "--prune"]                   # 예전 빌드의 mp4 정리 (영상은 유튜브로 나간다)
     if supports_youtube_map_flag():
-        a[3:3] = []                   # 순서 유지용 no-op
-        a += ["--youtube-map", os.path.join("data", f"youtube_map.{require_pd()}.json")]
+        a += ["--youtube-map",
+              os.path.join("data", f"youtube_map.{require_pd()}.json")]
     return a
 
 
@@ -131,8 +157,10 @@ def expected() -> dict:
     total = sum(len(docs[c].get("questions") or []) for c in codes)
     subs = {(q.get("subject") or "").strip()
             for c in codes for q in (docs[c].get("questions") or [])} - {""}
+    # ★ 과목 수도 폴더값이다. 상수(4)로 떨어지면 SQLD(2과목)에서 "과목 4종" 을
+    #   기대하고 어서션이 실패한다. 못 읽었으면 0 을 주고 호출자가 어서션을 건다.
     return {"rounds": len(codes), "questions": total,
-            "subjects": len(subs) or SUBJECT_COUNT, "codes": codes}
+            "subjects": len(subs), "codes": codes}
 
 
 def assertions(exp: dict) -> list[tuple]:
@@ -149,9 +177,10 @@ def start() -> dict:
     require_pd()          # ★ 잡을 만들기 전에 끊는다
     env = env_info()
     if not env["cloned"]:
+        # 빌더는 이 저장소 안에 있다 — 없다면 파일이 지워진 것이다(클론 문제가 아니다).
         raise FileNotFoundError(
-            f"axexam 저장소를 찾을 수 없습니다: {env['script']}\n"
-            "git clone https://github.com/leedonwoo2827-ship-it/axexam _ref\\axexam")
+            f"발행 빌더를 찾을 수 없습니다: {env['script']}\n"
+            "services/publish/axbuild/ 가 저장소에 들어 있어야 합니다.")
 
     job = registry.create("build", f"발행 빌드 · pd={active_pd()}", [],
                           steps=["build", "assert", "problems"])
@@ -163,7 +192,7 @@ def start() -> dict:
 def _work(job: dict) -> None:
     registry.item(job, "build", status="running")
     args = build_args()
-    registry.log(job, f"[build] cwd={AXEXAM_DIR}", force=True)
+    registry.log(job, f"[build] cwd={AXBUILD_DIR}", force=True)
     registry.log(job, f"[build] {command_text()}", force=True)
 
     env = dict(os.environ)
@@ -171,7 +200,7 @@ def _work(job: dict) -> None:
     env["PYTHONUNBUFFERED"] = "1"
 
     proc = subprocess.Popen(
-        args, cwd=AXEXAM_DIR, env=env,
+        args, cwd=AXBUILD_DIR, env=env,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, encoding="utf-8", errors="replace", bufsize=1)
     out_lines: list[str] = []
@@ -289,10 +318,16 @@ def validate_problems_json(path: str | None = None) -> dict:
     rounds_ = doc.get("rounds") or []
     if len(rounds_) != exp["rounds"]:
         errors.append(f"회차가 {len(rounds_)}개입니다 — {exp['rounds']}개여야 합니다.")
+    # ★ 회차별 기대 문항 수도 그 회차의 _rounds 실측값이다. 상수 80 으로 두면
+    #   50문항 책이나 집필 중인 마지막 회차에서 무조건 오류가 난다.
+    from services.book import shape
     for r in rounds_:
-        if int(r.get("rd_count", 0)) != QUESTIONS_PER_ROUND:
-            errors.append(f"{r.get('rd_no')}회 문항이 {r.get('rd_count')}개입니다 "
-                          f"— {QUESTIONS_PER_ROUND}개여야 합니다.")
+        rc = f"m{int(r.get('rd_no') or 0):02d}"
+        want = shape.questions_in_round(rc)
+        got = int(r.get("rd_count", 0))
+        if want and got != want:
+            errors.append(f"{r.get('rd_no')}회 문항이 {got}개입니다 "
+                          f"— _rounds/{rc}.json 기준 {want}개여야 합니다.")
 
     subjects = doc.get("subjects") or []
     if len(subjects) != exp["subjects"]:

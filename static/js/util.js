@@ -327,3 +327,32 @@ export function fmtDate(v) {
   const p = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
+
+
+/* ══ 상태 3색 규칙 — 목록을 만드는 모든 화면이 이 함수를 쓴다 ══════════════════
+ *
+ * ★ 목적은 하나다 — **빠진 것이 눈에 걸려야 한다.**
+ *
+ *     state-done   전부 끝남    청록 채움
+ *     state-part   하다 만      노랑
+ *     state-todo   아직 안 함   **하얗게.** 색을 주지 않는다 = 여기가 '할 일'
+ *     state-empty  판정 불가    점선(틀만 있음)
+ *
+ * 색을 안 한 쪽에 주면 안 되는 이유: 목록은 훑는 화면이다. 모든 칸에 색이 있으면
+ * 어디가 남았는지 세어야 알 수 있다. 실제로 그 사고가 있었다 — OCR 페이지 카드가
+ * "초안에 문항이 있으면 초록" 이라, 판독만 하고 대조는 하나도 안 한 회차가 완료한
+ * 회차와 똑같이 초록이었다.
+ *
+ * 색 값은 app.css 의 §상태 3색 규칙 한 곳에만 있다. 새 목록을 만들 때 색을 새로
+ * 정하지 말고 이 함수가 주는 클래스를 붙인다.
+ *
+ *   stateClass(전체, 끝난것)              → 비율로 판정
+ *   stateClass(0, 0, hasSomething=false)  → 내용이 없으면 todo, 틀만 있으면 empty
+ */
+export function stateClass(total, done, hasSomething = true) {
+  const n = Number(total) || 0;
+  const v = Number(done) || 0;
+  if (!n) return hasSomething ? "state-empty" : "state-todo";
+  if (v >= n) return "state-done";
+  return v > 0 ? "state-part" : "state-todo";
+}

@@ -10,11 +10,8 @@ import os
 
 from fastapi import APIRouter, HTTPException
 
-from core.constants import (
-    PD_LABEL, SUMMARY_KEYS,
-    TOTAL_BUNDLES, TOTAL_QUESTIONS,
-)
-from services.book import index as bindex, paths, rounds
+from core.constants import PD_LABEL
+from services.book import index as bindex, paths, rounds, shape
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +44,22 @@ def _pd() -> str:
 
 
 def _label() -> str:
+    """활성 폴더의 표시 이름. 없으면 .env 의 값으로 떨어진다.
+
+    ★ 좌하단 칩이 이 값을 쓴다. 예전에는 셸이 /api/version 의 상수를 직접 봤는데,
+      그러면 폴더 카드에서 이름을 고쳐도 칩이 바뀌지 않고, 폴더를 지정하지 않은
+      첫 실행에도 이미 품목이 정해진 것처럼 보였다.
+    """
     return (_active().get("label") or "").strip() or PD_LABEL
+
+
+def _first_run() -> bool:
+    """사람이 작업 폴더를 한 번도 지정하지 않았는가 (data/books.json 없음)."""
+    try:
+        from services.book import books
+        return books.is_first_run()
+    except Exception:
+        return False
 
 
 def setup_book_routes() -> APIRouter:
@@ -57,9 +69,10 @@ def setup_book_routes() -> APIRouter:
         if not paths.exists():
             raise HTTPException(
                 status_code=503,
-                detail=(f"이 작업 폴더에는 문항이 없습니다: {paths.book_dir()}\n"
-                        "_rounds/ 와 02/ 가 있는 폴더로 전환하세요. "
-                        "01/ 만 있으면 '구조화 MD로 정리' 화면만 됩니다."),
+                detail=(f"이 작업 폴더는 아직 01/ 단계입니다: {paths.book_dir()}\n"
+                        "문항 교정·영상·발행은 _rounds/ 와 02/ 가 있어야 열립니다 — "
+                        "그 둘은 도구 #2(Claude Desktop 스킬)가 만듭니다. "
+                        "지금 쓸 수 있는 화면은 'OCR 검수' 와 '구조화 MD로 정리' 입니다."),
             )
 
     @router.get("/info")
@@ -69,12 +82,19 @@ def setup_book_routes() -> APIRouter:
             # 여기서는 503 을 던지지 않는다 — 화면이 '경로 오류' 를 그려야 한다.
             return {
                 "exists": False, "book": paths.book_dir(), "pd": _pd(),
-                "pd_label": _label(), "scan_only": paths.scan_exists(),
+                "pd_label": _label(), "first_run": _first_run(), "scan_only": paths.scan_exists(),
                 "rounds": [], "total": 0, "reviewed": 0,
                 "stages": {"01": {"md": _count_files("01", ".md")}},
-                "error": (f"이 작업 폴더에는 아직 문항이 없습니다: {paths.book_dir()}"
-                          + (" — 01/ 기출은 있으니 '구조화 MD로 정리' 부터 하세요."
-                             if paths.scan_exists() else "")),
+                # ★ 사실대로 쓴다. 02/ 를 만드는 것은 이 앱의 화면이 아니라 도구 #2
+                #   (Claude Desktop 스킬)다. 예전 문구가 "'구조화 MD로 정리' 로 02/ 를
+                #   먼저 만드세요" 였는데, 그 화면은 01/ 을 손보는 곳이라 따라가면 막힌다.
+                "error": (
+                    f"이 작업 폴더는 아직 01/ 단계입니다: {paths.book_dir()}\n"
+                    "문항 교정·영상·발행은 _rounds/ 와 02/ 가 있어야 열립니다 — "
+                    "그 둘은 도구 #2(Claude Desktop 스킬)가 01/ 을 읽어 만듭니다."
+                    if paths.scan_exists() else
+                    f"이 작업 폴더에는 아직 아무 단계도 없습니다: {paths.book_dir()}\n"
+                    "00/ 에 원본 PDF 를 넣고 'OCR 검수' 에서 [PDF 렌더] 부터 시작하세요."),
             }
 
         count_files = _count_files
@@ -101,11 +121,13 @@ def setup_book_routes() -> APIRouter:
             "exists": True,
             "book": paths.book_dir(),
             "pd": _pd(),
-            "pd_label": _label(),
+            "pd_label": _label(), "first_run": _first_run(),
             "scan_only": False,
             "total": res["total"],
             "reviewed": res["reviewed"],
-            "expected_total": TOTAL_QUESTIONS,
+            # 기대값도 폴더에서 센다. 상수로 두면 회차가 늘 때 조용히 낡는다.
+            "expected_total": shape.total_questions(),
+            "shape": shape.summary(),
             "rounds": round_rows,
             "stages": {
                 "00": {"files": count_files("00")},
@@ -113,12 +135,12 @@ def setup_book_routes() -> APIRouter:
                 "02": {"md": count_files("02", ".md"),
                        "assets": count_files(os.path.join("02", "assets"), ".svg")},
                 "03": {"html": count_files("03", ".html"), "md": count_files("03", ".md"),
-                       "keys": list(SUMMARY_KEYS)},
+                       "keys": list(paths.summary_keys())},
                 "04": {"json": count_files("04", ".json"),
                        "assets": count_files(os.path.join("04", "assets"), ".svg")},
                 "05": {"bundles": sum(1 for b in paths.all_bundles()
                                       if os.path.isdir(paths.bundle_dir(b))),
-                       "expected": TOTAL_BUNDLES},
+                       "expected": shape.total_bundles()},
                 "06": {"exists": os.path.isdir(paths.out_dir()),
                        "files": count_files("06")},
             },
@@ -155,10 +177,17 @@ def setup_book_routes() -> APIRouter:
                 problems.append({"level": "error",
                                  "text": f"_rounds/{rc}.json 이 없습니다."})
         res = bindex.query()
-        if res["total"] != TOTAL_QUESTIONS:
+        # ★ "기대 240개" 를 상수로 들고 있으면 회차가 늘 때마다 이 경고가 잘못 뜬다.
+        #   회차별 문항 수가 서로 다를 때만 알린다 — 그건 집필이 덜 끝난 신호다.
+        sh = shape.summary()
+        if sh["uneven"]:
+            uneven = ", ".join(f"{k} {v}문" for k, v in sh["questions_by_round"].items())
             problems.append({"level": "warn",
-                             "text": f"문항 수가 {res['total']}개입니다 "
-                                     f"(기대 {TOTAL_QUESTIONS}개)."})
+                             "text": f"회차별 문항 수가 다릅니다 — {uneven}."})
+        if res["total"] != sh["total_questions"]:
+            problems.append({"level": "warn",
+                             "text": f"색인 문항 {res['total']}개 vs "
+                                     f"_rounds {sh['total_questions']}개 — 색인이 낡았습니다."})
         if res["reviewed"] < res["total"]:
             problems.append({"level": "warn",
                              "text": f"미검수 문항 {res['total'] - res['reviewed']}개 — "

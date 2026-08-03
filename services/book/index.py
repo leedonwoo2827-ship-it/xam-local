@@ -17,9 +17,8 @@ from __future__ import annotations
 
 import os
 
-from core.atomic_io import atomic_write_json, backup_sibling
-from core.constants import ANSWER_GLYPHS
-from services.book import derive, md, paths, rounds
+from core.atomic_io import atomic_write_text, backup_sibling
+from services.book import derive, jsonio, md, paths, rounds
 
 # _index.json 의 item 키 순서 — 실측값.
 ITEM_ORDER = (
@@ -183,9 +182,11 @@ def build_stats(items: list[dict]) -> dict:
     """difficulty_stats.json — 첫 등장 순서를 지킨다."""
     diff_order = _first_appearance(i["difficulty"] for i in items)
     subj_order = _first_appearance(i["subject"] for i in items)
-    # 정답 분포는 ①②③④ 고정 순서. (첫 등장 순서도 같은 결과지만, 고정이 더 안정적이다 —
-    #  생성기의 target_index=(qno-1)%4 규칙 때문에 항상 ①②③④ 로 시작한다.)
-    ans_order = [g for g in ANSWER_GLYPHS if any(i["answer"] == g for i in items)]
+    # ★ 정답 분포도 **첫 등장 순서**다. 업로드본은 ①②③④ 고정으로 봤는데
+    #   (`target_index=(qno-1)%4` 라는 생성기 규칙을 가정했다) 실측은 그렇지 않다:
+    #   260730 의 difficulty_stats.json 은 ④(60) 부터 시작한다 = m01-01 의 정답.
+    #   고정 순서로 내면 이 파일 하나가 매번 어긋난다.
+    ans_order = _first_appearance(i["answer"] for i in items)
 
     overall = {
         "difficulty": _count_in_order((i["difficulty"] for i in items), diff_order),
@@ -215,13 +216,12 @@ def build_stats(items: list[dict]) -> dict:
 
 
 def render_index(items: list[dict]) -> str:
-    import json
-    return json.dumps(build_index(items), ensure_ascii=False, indent=2)
+    """02/_index.json 전문 — 서식은 그 파일에서 되맞춘다(jsonio)."""
+    return jsonio.render(paths.q_index(), build_index(items))
 
 
 def render_stats(items: list[dict]) -> str:
-    import json
-    return json.dumps(build_stats(items), ensure_ascii=False, indent=2)
+    return jsonio.render(paths.q_stats(), build_stats(items))
 
 
 def write(items: list[dict] | None = None) -> dict:
@@ -247,7 +247,6 @@ def write(items: list[dict] | None = None) -> dict:
             changed[os.path.basename(path)] = False
             continue
         backup_sibling(path)
-        from core.atomic_io import atomic_write_text
         atomic_write_text(path, text)
         changed[os.path.basename(path)] = True
 

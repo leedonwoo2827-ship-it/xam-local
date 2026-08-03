@@ -49,8 +49,26 @@ def _save(d: dict) -> None:
     atomic_write_json(STORE, d, indent=2)
 
 
+def is_first_run() -> bool:
+    """사람이 작업 폴더를 **한 번도 지정하지 않았는가.**
+
+    `data/books.json` 이 있으면 지정한 적이 있다는 뜻이다. 없으면 `.env` 의
+    `XAM_BOOK` 을 잠정값으로 쓰고 있을 뿐이다.
+
+    ★ 이 구분이 필요한 이유: 첫 실행에 목록 패널이 자동으로 뜨면, 아직 아무 폴더도
+      고르지 않았는데 "이미 스캔된 80문항" 이 담긴 부유 창이 먼저 보인다. 어느 폴더의
+      결과인지도 모르는 목록을 닫아야 바탕이 나오니 순서가 거꾸로다.
+      한 번 지정한 뒤에는 그 폴더가 그대로 먼저 뜬다 — 바꾸는 것도 언제든 된다.
+    """
+    return not os.path.isfile(STORE)
+
+
 def active_path() -> str:
-    """지금 쓰는 BOOK 경로. paths.book_dir() 이 이 값을 쓴다."""
+    """지금 쓰는 BOOK 경로. paths.book_dir() 이 이 값을 쓴다.
+
+    첫 실행에도 `.env` 의 값으로 떨어진다 — 경로 조립이 빈 문자열로 깨지지 않게
+    하는 안전판이다. "지정했는가" 는 is_first_run() 으로 따로 본다.
+    """
     d = _load()
     p = d.get("active") or BOOK_DIR
     return os.path.abspath(p)
@@ -62,6 +80,53 @@ def active_meta() -> dict:
         if os.path.normcase(it["path"]) == os.path.normcase(p):
             return dict(it)
     return {"path": p, "pd": PD_CODE, "label": PD_LABEL}
+
+
+def active_ocr_path() -> str:
+    """이 BOOK 에 딸린 OCR 판독 폴더(도구 #1 의 data/ 가 있는 곳). 미지정이면 빈 문자열.
+
+    ★ BOOK 과 별개로 지정한다. 판독 작업물(스캔 PNG · 초안 JSON)은 BOOK 밖에 있고,
+      Claude Code 창과 이 앱이 같이 쓰는 폴더다. 지정이 없으면 project.py 가
+      BOOK 이름에서 유도한다 — 틀려도 "초안이 없다" 로 보일 뿐이라 안전하다.
+    """
+    for it in _load()["items"]:
+        if os.path.normcase(it["path"]) == os.path.normcase(active_path()):
+            v = (it.get("ocr") or "").strip()
+            return os.path.abspath(v) if v else ""
+    return ""
+
+
+def _ocr_state(item: dict) -> tuple[str, bool]:
+    """(실제로 쓰일 OCR 폴더, 그 폴더가 판독 폴더로 보이는가).
+
+    지정이 없으면 BOOK 이름에서 유도한 값을 보여 준다 — 사람이 "이걸 쓸 것" 을
+    확인하고 틀리면 고를 수 있게. `data/` 가 없으면 ok=False 다.
+    """
+    from core.constants import OCR_DIR
+    p = (item.get("ocr") or "").strip() or OCR_DIR
+    if not p:
+        from services.ocr.project import derive_from_book
+        p = derive_from_book(item["path"])
+    return p, bool(p) and os.path.isdir(os.path.join(p, "data"))
+
+
+def set_ocr_path(book_path: str, ocr_path: str) -> dict:
+    """작업 폴더 항목에 OCR 폴더를 붙인다. 빈 문자열이면 지정을 지운다(유도로 되돌림)."""
+    d = _load()
+    target = os.path.normcase(os.path.abspath(book_path))
+    hit = None
+    for it in d["items"]:
+        if os.path.normcase(os.path.abspath(it["path"])) == target:
+            if ocr_path:
+                it["ocr"] = os.path.abspath(ocr_path)
+            else:
+                it.pop("ocr", None)
+            hit = it
+            break
+    if hit is None:
+        raise ValueError(f"등록되지 않은 작업 폴더입니다: {book_path}")
+    _save(d)
+    return dict(hit)
 
 
 # ── 폴더 스캔 ───────────────────────────────────────────────────────────────
@@ -270,10 +335,16 @@ def list_books() -> dict:
         rec["pd"] = it.get("pd") or ""
         rec["label"] = it.get("label") or _label_from_content(it["path"])
         rec["active"] = os.path.normcase(os.path.abspath(it["path"])) == act
+        # OCR 판독 폴더 — 지정값과, 지정이 없을 때 유도되는 값을 함께 준다.
+        # 화면이 "지정" 과 "유도" 를 구분해 보여야 한다(유도는 틀릴 수 있다).
+        rec["ocr"] = it.get("ocr") or ""
+        rec["ocr_effective"], rec["ocr_ok"] = _ocr_state(it)
         # pd 가 폴더 안 _book.json 에서 확인되는가. 아니면 발행을 막는다.
         rec["pd_confirmed"] = bool(rec["pd"]) and _guess(it["path"])[0] == rec["pd"]
         items.append(rec)
-    return {"active": d.get("active"), "count": len(items), "items": items}
+    return {"active": d.get("active"), "count": len(items), "items": items,
+            # 아직 사람이 지정한 적이 없으면 화면이 '지정' 부터 요구한다.
+            "first_run": is_first_run()}
 
 
 def add(path: str, *, pd: str = "", label: str = "") -> dict:

@@ -115,6 +115,16 @@ function render() {
     if ((it.subjects || []).length) {
       mid.appendChild(el("div", "field-hint", "과목: " + it.subjects.join(" · ")));
     }
+    // ── OCR 판독 폴더 ──
+    // BOOK 밖에 있고 Claude Code 창과 이 앱이 같이 쓰는 폴더라서 따로 지정한다.
+    // 지정이 없으면 BOOK 이름에서 유도한 값을 쓴다 — 그게 뭔지 보여 줘야 한다.
+    const ocr = el("div", "field-hint" + (it.ocr_ok ? "" : " bad"));
+    ocr.appendChild(el("span", null,
+      (it.ocr ? "판독 폴더(지정): " : "판독 폴더(유도): ")
+      + (it.ocr_effective || "(없음)")
+      + (it.ocr_ok ? "" : "  ← data\\raw_pages 가 없습니다")));
+    mid.appendChild(ocr);
+
     if (it.error) mid.appendChild(el("div", "field-hint bad", it.error));
     card.appendChild(mid);
 
@@ -132,6 +142,12 @@ function render() {
     ren.title = "표시 이름과 품목 코드(pd)를 고칩니다.";
     ren.addEventListener("click", (e) => { e.stopPropagation(); editMeta(it); });
     acts.appendChild(ren);
+
+    const ocrBtn = el("button", "btn sm" + (it.ocr_ok ? "" : " warn"), "판독 폴더");
+    ocrBtn.type = "button";
+    ocrBtn.title = "도구 #1 의 스캔 PNG · 초안 JSON 이 있는 폴더를 지정합니다.";
+    ocrBtn.addEventListener("click", (e) => { e.stopPropagation(); pickOcr(it); });
+    acts.appendChild(ocrBtn);
 
     const open = el("button", "btn sm", "폴더 열기");
     open.type = "button";
@@ -355,6 +371,46 @@ async function remove(it) {
     await refresh();
   } catch (e) {
     toast("빼지 못했습니다: " + e.message, "err");
+  }
+}
+
+/** OCR 판독 폴더 지정 — OS 네이티브 선택창.
+ *
+ * BOOK 과 별개로 두는 이유: 판독 작업물(스캔 PNG · 초안 JSON)은 BOOK 트리 밖의
+ * 도구 #1 프로젝트 안에 있고, 그 폴더는 Claude Code 창과 이 앱이 같이 쓴다.
+ * 지정을 지우면 BOOK 이름에서 유도로 되돌아간다.
+ */
+async function pickOcr(it) {
+  const go = await confirmModal({
+    title: "판독 폴더를 지정할까요?",
+    body: `<b>${escapeHtml(it.label || it.path)}</b><br>`
+      + `지금 쓰는 값: <pre class="pb-cmd">${escapeHtml(it.ocr_effective || "(없음)")}</pre>`
+      + (it.ocr ? "" : "<p class='muted'>이 값은 작업 폴더 이름에서 <b>유도</b>한 것입니다.</p>")
+      + "<p>도구 #1 의 <code>data\\raw_pages</code> · <code>data\\ocr_draft</code> 가 "
+      + "들어 있는 폴더를 고르세요. 판독은 Claude Code 창이 하고, 이 앱은 그 초안을 "
+      + "검수해 <code>01/</code> 로 확정합니다.</p>",
+    ok: "폴더 고르기", cancel: it.ocr ? "지정 지우기" : "취소",
+  });
+  try {
+    if (go) {
+      const r = await api("/api/books/ocr", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: it.path, pick: true }),
+      });
+      if (r.cancelled) return;
+      toast("판독 폴더를 지정했습니다.");
+    } else if (it.ocr) {
+      await api("/api/books/ocr", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: it.path, ocr: "" }),
+      });
+      toast("지정을 지웠습니다 — 작업 폴더 이름에서 유도합니다.");
+    } else {
+      return;
+    }
+    await refresh();
+  } catch (e) {
+    toast("판독 폴더 지정 실패: " + e.message, "err");
   }
 }
 

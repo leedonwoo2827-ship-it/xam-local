@@ -26,10 +26,16 @@ def setup_question_routes() -> APIRouter:
         if not paths.exists():
             raise HTTPException(
                 status_code=503,
-                detail=(f"이 작업 폴더에는 아직 문항이 없습니다: {paths.book_dir()}\n"
-                        + ("01/ 기출은 있습니다 — '구조화 MD로 정리' 로 02/ 를 먼저 만드세요."
+                # ★ 02/ 를 만드는 것은 이 앱이 아니라 도구 #2(Claude Desktop 스킬)다.
+                #   예전 문구는 '구조화 MD로 정리' 화면으로 보냈는데, 그 화면은 01/ 을
+                #   손보는 곳이라 따라가도 02/ 가 생기지 않는다.
+                detail=(f"이 작업 폴더는 아직 01/ 단계입니다: {paths.book_dir()}\n"
+                        + ("_rounds/ 와 02/ 는 도구 #2(Claude Desktop 스킬)가 01/ 을 "
+                           "읽어 만듭니다. 그때까지 'OCR 검수' 와 '구조화 MD로 정리' 를 "
+                           "쓰세요."
                            if paths.scan_exists()
-                           else "_rounds/ 와 02/ 가 있는 폴더로 전환하세요.")),
+                           else "00/ 에 원본 PDF 를 넣고 'OCR 검수' 의 [PDF 렌더] 부터 "
+                                "시작하세요.")),
             )
 
     def _guarded(fn):

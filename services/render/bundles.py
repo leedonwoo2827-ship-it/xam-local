@@ -15,7 +15,7 @@ import json
 import os
 import re
 
-from core.constants import CHODANGI_DIR
+from core.constants import ENGINE_DIR
 from services.book import paths
 
 # 옛 번들(review.json 에 timebase 가 없는 것)을 보정할 때 쓰는 기본값.
@@ -33,7 +33,7 @@ def chapter_id(bundle: str) -> str:
 
 
 def scratch_dir(bundle: str) -> str:
-    return os.path.join(CHODANGI_DIR, "munje", chapter_id(bundle))
+    return os.path.join(ENGINE_DIR, "munje", chapter_id(bundle))
 
 
 def _count(dir_path: str, suffix: str) -> int:

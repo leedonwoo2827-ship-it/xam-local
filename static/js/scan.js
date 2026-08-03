@@ -11,7 +11,7 @@
  */
 "use strict";
 
-import { $, $$, api, el, escapeHtml, toast, confirmModal } from "./util.js";
+import { $, $$, api, el, escapeHtml, toast, confirmModal, stateClass } from "./util.js";
 import { getPref, setPref } from "./store.js";
 import { icon, hydrateIcons } from "./icons.js";
 import { actionBtn } from "./panel.js";
@@ -116,7 +116,9 @@ function renderList(ctx) {
     return;
   }
   S.list.items.forEach((it) => {
-    const row = el("div", "sc-row");
+    // 상태 3색 규칙(util.stateClass) — 확정된 문항만 색이 있다. 미확정은 하얗게
+    // 남아서 '할 일' 로 보인다. 목록마다 색을 새로 정하지 않는다.
+    const row = el("div", "sc-row " + stateClass(1, it.confirmed ? 1 : 0));
     row.dataset.id = it.id;
     row.setAttribute("role", "button");
     row.tabIndex = 0;

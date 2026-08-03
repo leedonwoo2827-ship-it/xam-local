@@ -12,7 +12,6 @@ import os
 
 from fastapi import APIRouter, HTTPException, Request
 
-from core.constants import SUMMARY_KEYS
 from core.atomic_io import atomic_write_text, backup_sibling
 from services.book import paths
 
@@ -44,7 +43,7 @@ def setup_summary_routes() -> APIRouter:
     @router.get("/")
     async def list_all():
         items = []
-        for key in SUMMARY_KEYS:
+        for key in paths.summary_keys():
             html, md = paths.summary_html(key), paths.summary_md(key)
             items.append({
                 "key": key,
@@ -64,7 +63,7 @@ def setup_summary_routes() -> APIRouter:
 
     @router.get("/{key}")
     async def get_one(key: str):
-        if key not in SUMMARY_KEYS:
+        if key not in paths.summary_keys():
             raise HTTPException(status_code=404, detail=f"알 수 없는 요약노트: {key!r}")
         md_path = paths.summary_md(key)
         text = _read(md_path)
@@ -77,7 +76,7 @@ def setup_summary_routes() -> APIRouter:
 
     @router.put("/{key}")
     async def put_one(key: str, request: Request):
-        if key not in SUMMARY_KEYS:
+        if key not in paths.summary_keys():
             raise HTTPException(status_code=404, detail=f"알 수 없는 요약노트: {key!r}")
         body = await request.json()
         text = body.get("md")

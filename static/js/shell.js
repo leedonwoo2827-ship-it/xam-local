@@ -23,6 +23,8 @@ const view = $("#view");
 const routes = [
   // 바탕(아래층) — 실제로 일하는 화면
   { re: /^\/home$/,             nav: "",   layer: "base",  load: () => import("./home.js") },
+  // OCR 검수(도구 #1) — 페이지 단위. 좌 OCR 원문 / 우 문제 카드 / 스캔 드래그.
+  { re: /^\/ocr\/([^/]+)\/(\d+)$/, nav: "oc", layer: "base", load: () => import("./ocr.js") },
   { re: /^\/scan\/(.+)$/,       nav: "sc", layer: "base",  load: () => import("./scan.js") },
   { re: /^\/questions\/(.+)$/,  nav: "q",  layer: "base",  load: () => import("./questions.js") },
   { re: /^\/video\/(.+)$/,      nav: "v",  layer: "base",  load: () => import("./video.js") },
@@ -34,6 +36,7 @@ const routes = [
 
   // 부유 패널(위층) — 고르는 곳
   { re: /^\/books$/,     nav: "",   layer: "panel", group: "books",     load: () => import("./books.js") },
+  { re: /^\/ocr$/,       nav: "oc", layer: "panel", group: "ocr",       load: () => import("./ocr.js") },
   { re: /^\/scan$/,      nav: "sc", layer: "panel", group: "scan",      load: () => import("./scan.js") },
   { re: /^\/questions$/, nav: "q",  layer: "panel", group: "questions", load: () => import("./questions.js") },
   { re: /^\/video$/,     nav: "v",  layer: "panel", group: "video",     load: () => import("./video.js") },
@@ -180,14 +183,28 @@ applyRail(localStorage.getItem(RAIL_KEY) === "collapsed" ? "collapsed" : "expand
  * 있어도 보이도록 레일에 박아 둔다. */
 export async function renderBrandStatus() {
   const [v, book] = await Promise.all([getVersion(), getBook(true)]);
-  $("#su-name").textContent = v.pd_label || v.pd || "품목 미설정";
+
+  // ★ 칩은 **활성 폴더의 표시 이름**을 보여야 한다.
+  //   예전에는 `v.pd_label`(= .env 의 XAM_PD_LABEL 상수)을 썼다. 그래서
+  //   작업 폴더 카드에서 이름을 "빅분기" 로 고쳐도 칩은 계속 상수를 보여 주고,
+  //   폴더를 아직 지정하지 않은 첫 실행에도 이미 어느 품목이 정해진 것처럼 보였다.
+  //   book.pd_label 은 /api/book/info 가 활성 폴더의 books.json 에서 읽어 준다.
+  $("#su-name").textContent = book.first_run
+    ? "폴더를 지정하세요"
+    : (book.pd_label || book.pd || "품목 미설정");
   const team = $("#su-team");
   if (!book.exists) {
-    team.textContent = "BOOK 경로 오류";
-    team.classList.add("bad");
+    // ★ "경로 오류" 로 뭉개면 안 된다. 경로가 정상인데 아직 01/ 단계인 경우와
+    //   폴더 자체가 없는 경우는 사람이 할 일이 완전히 다르다.
+    //   01/ 만 있는 폴더는 **정상 작업 상태**다(#2 가 02/ 를 만들기 전).
+    const scanOnly = (book.stages && (book.stages["01"] || {}).md) || 0;
+    team.textContent = scanOnly ? `01/ 단계 · 기출 ${scanOnly}개` : "폴더를 지정하세요";
+    team.classList.toggle("bad", !scanOnly);
+    team.title = book.error || "";
     return;
   }
   team.classList.remove("bad");
+  team.title = "";
   team.textContent = `검수 ${book.reviewed} / ${book.total}`;
 }
 
@@ -249,7 +266,13 @@ document.addEventListener("keydown", (e) => {
 
 window.addEventListener("hashchange", render);
 
-if (!location.hash) location.hash = "#/scan";
+/* ★ 첫 화면은 **바탕**이다. 부유 패널을 열어 두고 시작하지 않는다.
+ *
+ *   예전에는 `#/scan` 이 기본이라, 앱을 켜자마자 "이미 스캔된 80문항 목록" 이 담긴
+ *   부유 창이 떠 있었다. 작업 폴더를 아직 고르지도 않았는데 어느 폴더의 결과인지
+ *   모를 목록이 먼저 보이고, 그 창을 닫아야 바탕이 나온다 — 순서가 거꾸로다.
+ *   패널은 "고르는 곳" 이므로 사람이 열어야 뜬다. */
+if (!location.hash) location.hash = "#/home";
 render();
 renderBrandStatus();
 renderRecent();

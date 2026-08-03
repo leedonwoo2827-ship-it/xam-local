@@ -39,6 +39,7 @@ FM_ORDER = (
 FM_FLOW_LIST = ("tags",)
 
 SECTION_QUESTION = "## 문제"
+SECTION_PASSAGE = "## 지문"
 SECTION_CHOICES = "## 보기"
 SECTION_EXPLAIN = "## 해설"
 
@@ -106,6 +107,62 @@ def build_front_matter(question: dict, round_meta: dict, flags: dict) -> dict:
     }
 
 
+def table_md(table) -> str:
+    """_rounds 의 `table` 필드 → 마크다운 표. 실측(260723 m04) 형식.
+
+        {"columns": ["담당","출고량"], "rows": [["도현",90], …]}
+          | 담당 | 출고량 |
+          | --- | --- |
+          | 도현 | 90 |
+    """
+    if not isinstance(table, dict):
+        return ""
+    cols = [str(c) for c in (table.get("columns") or [])]
+    if not cols:
+        return ""
+    lines = ["| " + " | ".join(cols) + " |",
+             "| " + " | ".join("---" for _ in cols) + " |"]
+    for row in table.get("rows") or []:
+        # ★ null 셀은 문자열 "None" 으로 나간다 — 원 생성기가 str(cell) 을 그대로
+        #   썼고, 실측 파일에 `| P02 | D2 | None |` 로 박혀 있다. 빈칸으로
+        #   '고쳐 주면' 5문항이 어긋난다. 여기서 예쁘게 만들 자리가 아니다.
+        lines.append("| " + " | ".join(str(c) for c in row) + " |")
+    return "\n".join(lines)
+
+
+def passage_parts(question: dict) -> list[str]:
+    """`## 지문` 을 이루는 조각들. 없으면 빈 목록(섹션 자체를 내지 않는다).
+
+    ★ 두 책이 지문을 서로 **다른 필드**에 담는다. 어느 한쪽만 보면 다른 책이 깨진다.
+      · 260730(빅분기) — `passage` 에 그림 줄 하나. `sql`·`table` 필드가 없다.
+      · 260723(SQLD)   — `passage` 는 null 이고 `table`·`sql` 필드에 자료가 있다.
+        그림은 `question` 본문에 인라인돼 있다. 실측 순서는 **표 → SQL** 이고
+        둘 사이에 빈 줄이 없다(m04-12).
+    """
+    parts = []
+    p = (question.get("passage") or "").strip()
+    if p:
+        parts.append(p)
+    t = table_md(question.get("table"))
+    if t:
+        parts.append(t)
+    sql = (question.get("sql") or "").strip()
+    if sql:
+        parts.append("```sql\n" + sql + "\n```")
+    return parts
+
+
+def is_block_choice(text: str) -> bool:
+    """이 보기를 `①` 단독 줄 + 빈 줄 + 본문 형태로 써야 하는가.
+
+    도구 #1 의 `qmodel._body_tokens` 가 쓰는 판정과 같아야 한다 — 두 단계(01/·02/)가
+    같은 문항을 다르게 쓰면 대조가 무의미해진다.
+    """
+    ex = (text or "").lstrip()
+    return bool(ex) and ("\n" in ex or ex[:2] in ("**", "| ", "``", "![")
+                         or ex.startswith("|"))
+
+
 def render(question: dict, round_meta: dict, flags: dict) -> str:
     """문항 하나 → 02/mNN-KK.md 전문."""
     fm = build_front_matter(question, round_meta, flags)
@@ -117,9 +174,24 @@ def render(question: dict, round_meta: dict, flags: dict) -> str:
     out = ["---\n", front_matter(fm), "---\n"]
     out.append("\n" + SECTION_QUESTION + "\n")
     out.append((question.get("question") or "").strip() + "\n")
+    # ★ `## 지문` — 업로드본에는 이 섹션이 아예 없었다(02/ 에는 지문이 없다고 본 것).
+    #   그래서 260730 은 240개 중 15개, 260723 은 300개 중 26개가 통째로 빠졌다.
+    #   조각 구성은 passage_parts() 참고 — 책마다 담는 필드가 다르다.
+    parts = passage_parts(question)
+    if parts:
+        out.append("\n" + SECTION_PASSAGE + "\n")
+        out.append("\n".join(parts) + "\n")
     out.append("\n" + SECTION_CHOICES + "\n")
     for i, c in enumerate(choices):
-        out.append(f"{ANSWER_GLYPHS[i]} {(c or '').strip()}\n")
+        ex = (c or "").strip()
+        if is_block_choice(ex):
+            # ★ 블록형 보기 — 글리프만 한 줄, 빈 줄, 그리고 블록. 뒤에 빈 줄 하나.
+            #   실측(260723 SQLD, 38문항): 보기가 SQL 코드블록·표·그림인 문항이
+            #   이 형식이다. 업로드본은 항상 `① {text}` 한 줄로 봤고 그래서
+            #   300문항 중 38개가 어긋났다. 도구 #1 의 `_body_tokens` 와 같은 규칙이다.
+            out.append(f"{ANSWER_GLYPHS[i]}\n\n{ex}\n\n")
+        else:
+            out.append(f"{ANSWER_GLYPHS[i]} {ex}\n")
     out.append("\n" + SECTION_EXPLAIN + "\n")
     # ★ 그림 줄을 여기서 붙이지 않는다.
     #   실측: _rounds 의 explanation 자체가 이미 `\n\n![{name} 참고 그림](assets/…)` 로
@@ -148,7 +220,8 @@ def parse(text: str) -> dict:
     fm = yaml.safe_load(parts[1]) or {}
     body = parts[2]
 
-    out = {"fm": fm, "question": "", "choices": [], "explanation": "", "assets": []}
+    out = {"fm": fm, "question": "", "passage": "", "choices": [],
+           "explanation": "", "assets": []}
 
     def section(name: str, nxt: str | None) -> str:
         i = body.find(name)
@@ -160,24 +233,36 @@ def parse(text: str) -> dict:
             end = len(body)
         return body[start:end].strip()
 
-    out["question"] = section(SECTION_QUESTION, SECTION_CHOICES)
+    # 문제는 지문이 있으면 거기서 끊긴다 — 없으면 보기까지.
+    out["question"] = section(SECTION_QUESTION,
+                              SECTION_PASSAGE if SECTION_PASSAGE in body
+                              else SECTION_CHOICES)
+    out["passage"] = section(SECTION_PASSAGE, SECTION_CHOICES)
     raw_choices = section(SECTION_CHOICES, SECTION_EXPLAIN)
+    # ★ 블록형 보기(코드블록·표·그림)는 여러 줄에 걸친다. 글리프로 시작하지 않는
+    #   줄은 **앞 보기에 이어 붙인다** — 새 보기로 세면 SQLD 의 한 문항이 보기
+    #   20개로 읽히고, 정답 번호 검증이 통과해 버린다.
+    #   빈 줄도 블록 안에서는 의미가 있어서 보존한다.
     for line in raw_choices.split("\n"):
-        line = line.strip()
-        if not line:
-            continue
-        if line[0] in ANSWER_GLYPHS:
-            out["choices"].append(line[1:].strip())
-        else:
-            out["choices"].append(line)
+        stripped = line.strip()
+        if stripped and stripped[0] in ANSWER_GLYPHS:
+            out["choices"].append(stripped[1:].strip())
+        elif out["choices"]:
+            out["choices"][-1] = (out["choices"][-1] + "\n" + line).strip("\n")
+        elif stripped:
+            out["choices"].append(stripped)
+    out["choices"] = [c.strip("\n") for c in out["choices"]]
 
     # ★ 해설은 그림 줄을 **포함한 채로** 둔다. _rounds 의 explanation 이 그렇게
     #   생겼고, 여기서 떼어내면 왕복이 깨진다. 인라인된 파일명만 따로 보고한다.
     expl = section(SECTION_EXPLAIN, None)
     img_re = re.compile(r"!\[(?P<alt>[^\]]*)\]\(assets/(?P<file>[^)]+)\)")
-    for m in img_re.finditer(expl):
+    # 지문과 해설 양쪽을 본다 — 그림 줄은 두 곳 다에 온다(실측: 지문 15건).
+    for m in img_re.finditer(out["passage"] + "\n" + expl):
         f = m.group("file")
-        out["assets"].append(f[:-4] if f.endswith(".svg") else f)
+        name = f[:-4] if f.endswith(".svg") else f
+        if name not in out["assets"]:
+            out["assets"].append(name)
     out["explanation"] = expl
     return out
 
