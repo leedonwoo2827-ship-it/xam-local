@@ -20,8 +20,10 @@ if (!defined('_GNUBOARD_')) exit;
 $menu['menu600'] = array(
     array('600000', '문제은행',      G5_ADMIN_URL.'/exam_import.php',       'exam'),
     array('600200', '질문 검수',     G5_ADMIN_URL.'/exam_qna_list.php',     'exam_qna'),
+    array('600250', '답변 초안 설정', G5_ADMIN_URL.'/exam_llm.php',          'exam_llm'),
     array('600300', '과목게시판',    G5_ADMIN_URL.'/exam_board_sync.php',   'exam_board'),
     array('600400', '문제 임포트',   G5_ADMIN_URL.'/exam_import.php',       'exam_import'),
+    array('600450', '문제 목록',     G5_ADMIN_URL.'/exam_problem_list.php', 'exam_problem'),
     array('600500', '포인트 지급',   G5_ADMIN_URL.'/exam_credit_grant.php', 'exam_credit'),
     array('600600', '수강 신청',     G5_ADMIN_URL.'/exam_orders.php',       'exam_orders'),
 
@@ -31,6 +33,6 @@ $menu['menu600'] = array(
 
     // ↓ 아직 만들지 않았다. 해당 단계에서 주석을 푼다.
     //   메뉴에 먼저 올리면 404 링크가 되어 혼란스럽다.
-    // array('600100', '대시보드',    G5_ADMIN_URL.'/exam_index.php',        'exam_index'),
-    // array('600300', '문제 목록',   G5_ADMIN_URL.'/exam_problem_list.php', 'exam_problem'),
+    // array('600100', '대시보드',      G5_ADMIN_URL.'/exam_index.php',        'exam_index'),
+    // array('600460', '문제 편집',     G5_ADMIN_URL.'/exam_problem_form.php', 'exam_problem_form'),
 );
