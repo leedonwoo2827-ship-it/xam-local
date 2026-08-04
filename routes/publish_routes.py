@@ -169,6 +169,33 @@ def setup_publish_routes() -> APIRouter:
             raise HTTPException(status_code=500, detail=f"열지 못했습니다: {e}") from e
         return {"ok": True, "path": p}
 
+    @router.get("/partial")
+    async def get_partial():
+        """problems.json 을 무엇으로 쪼갤 수 있는지 (회차·번들 목록)."""
+        from services.publish import partial
+        try:
+            return partial.summary()
+        except ValueError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+
+    @router.post("/partial")
+    async def make_partial(request: Request):
+        """회차·번들·문항만 담은 부분 임포트 파일을 만든다.
+
+        임포트가 DELETE 를 하지 않으므로(problem.php:13) 여기 없는 문항은 서버에 그대로
+        남는다. 전체 714KB 를 다시 올리는 대신 회차 92KB · 문항 2.6KB 만 올린다.
+        용량보다 **확인**이 이득이다 — 리포트가 '갱신 1' 만 찍으면 끝난다.
+        """
+        from services.publish import partial
+        b = await request.json() if await request.body() else {}
+        try:
+            return partial.write(rounds=b.get("rounds") or None,
+                                 bundles=b.get("bundles") or None,
+                                 keys=b.get("keys") or None,
+                                 label=(b.get("label") or "").strip())
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
     @router.get("/checklist")
     async def get_checklist():
         return {"pd": PD_CODE, "items": ftplist.server_checklist(),

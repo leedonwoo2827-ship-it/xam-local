@@ -453,6 +453,7 @@ function renderBuildProgress(job) {
 function renderProblems() {
   const box = $("#pb-problems");
   box.innerHTML = "";
+  renderPartial(box);
   const d = P.problems;
   if (!d) { box.appendChild(el("div", "empty", "확인할 수 없습니다.")); return; }
 
@@ -504,6 +505,76 @@ function renderProblems() {
     + `변경없음 ${exp.unchanged} · 건너뜀 ${exp.skipped_edited} · 실패 ${exp.failed} · `
     + `회차 ${exp.rounds}행`;
   box.appendChild(note);
+}
+
+/* ── ④-b 부분 임포트 ─────────────────────────────────
+ *
+ * ★ 임포트는 DELETE 를 하지 않는다(problem.php:13) — 기존 행은 UPDATE 만 한다.
+ *   그래서 고친 문항만 담아 올려도 나머지는 서버에 그대로 남는다.
+ *
+ *   용량(714KB → 2.6KB)보다 **확인**이 이득이다. 전체를 올리면 리포트가
+ *   "갱신 1 · 변경없음 719" 로 나와서 내가 고친 것이 들어갔는지 알기 어렵다.
+ */
+async function renderPartial(box) {
+  let d = null;
+  try { d = await api("/api/publish/partial"); } catch (e) { return; }
+
+  const wrap = el("details", "pb-partial");
+  wrap.appendChild(el("summary", null,
+    `부분 임포트 — 고친 것만 올리기 (전체 ${d.total}문항 · ${Math.round(d.bytes / 1024)}KB)`));
+  wrap.appendChild(el("div", "field-hint",
+    "임포트는 없는 문항을 지우지 않습니다 — 고친 회차·번들·문항만 담아 올리면 "
+    + "나머지는 서버에 그대로 남습니다. 리포트가 '갱신 N' 만 찍혀 확인이 쉬워집니다."));
+
+  const row = el("div", "qz-foot");
+  const sel = el("select");
+  Object.entries(d.rounds || {}).forEach(([rd, n]) => {
+    const o = el("option", null, `${rd}회 (${n}문항)`);
+    o.value = "r:" + rd;
+    sel.appendChild(o);
+  });
+  Object.keys(d.bundles || {}).forEach((b) => {
+    const o = el("option", null, `${b} (${d.bundles[b]}문항 · 영상 1편)`);
+    o.value = "b:" + b;
+    sel.appendChild(o);
+  });
+  row.appendChild(sel);
+
+  const key = el("input");
+  key.placeholder = "또는 문항 키 — m04-2#12 (쉼표로 여러 개)";
+  key.style.minWidth = "250px";
+  row.appendChild(key);
+
+  const out = el("pre", "pb-cmd");
+  out.hidden = true;
+
+  const mk = el("button", "btn", "부분 파일 만들기");
+  mk.type = "button";
+  mk.addEventListener("click", async () => {
+    const body = {};
+    const ks = key.value.split(",").map((x) => x.trim()).filter(Boolean);
+    if (ks.length) body.keys = ks;
+    else if (sel.value.startsWith("r:")) body.rounds = [Number(sel.value.slice(2))];
+    else if (sel.value.startsWith("b:")) body.bundles = [sel.value.slice(2)];
+    try {
+      const r = await api("/api/publish/partial", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      toast(`${r.picked}문항 · ${Math.round(r.bytes / 1024)}KB`);
+      out.textContent = r.path + "
+기대 리포트: " + r.expect
+        + "
+★ skip_edited 가 0 인지 확인하세요 — 0 이 아니면 그 문항을 전에 웹에서 "
+        + "고친 것입니다(problem.php:18). 관리자 화면에서 '원본 복원' 을 누른 뒤 "
+        + "다시 임포트해야 로컬 수정이 들어갑니다.";
+      out.hidden = false;
+    } catch (e) { toast(e.message, "err"); }
+  });
+  row.appendChild(mk);
+  wrap.appendChild(row);
+  wrap.appendChild(out);
+  box.appendChild(wrap);
 }
 
 /* ── ④ FTP ────────────────────────────────────────── */

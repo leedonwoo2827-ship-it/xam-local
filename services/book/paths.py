@@ -301,7 +301,31 @@ def out_dir() -> str:
 
 
 def problems_json() -> str:
-    return os.path.join(out_dir(), "problems.json")
+    """임포트할 problems.json — **`06/pd/<pd>/` 아래다.**
+
+    ★ 예전에는 `06/problems.json`(평면)이었다. 빌더가 품목별로 갈라 두면서 자리가
+      바뀌었는데 이 함수만 옛 자리를 보고 있었다. 그래서 사전점검의 problems.json
+      검증과 FTP 목록의 '올리지 않을 것' 이 **없는 파일**을 가리켰다 — 조용히
+      "검증할 것이 없음" 으로 지나간다(오류가 아니라 침묵이라 더 나쁘다).
+
+      옛 평면 파일이 남아 있으면 그것도 인정한다 — 예전 빌드로 만든 폴더를 열었을 때
+      화면이 갑자기 "없다" 고 하지 않게.
+    """
+    pd = ""
+    try:
+        from services.book import books
+        pd = (books.active_meta().get("pd") or "").strip()
+    except Exception:
+        pd = ""
+    if pd:
+        per = os.path.join(out_dir(), "pd", pd, "problems.json")
+        if os.path.isfile(per):
+            return per
+    flat = os.path.join(out_dir(), "problems.json")
+    if os.path.isfile(flat):
+        return flat
+    # 아직 없을 때는 **지금 규약의 자리**를 돌려준다(빌드 후 여기 생긴다).
+    return os.path.join(out_dir(), "pd", pd or "unknown", "problems.json")
 
 
 # ── 파일 상태 ───────────────────────────────────────────────────────────────

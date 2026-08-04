@@ -1816,3 +1816,13 @@ table.data tr.on b { color: var(--brand); }
 .term-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--idle); flex: none; }
 .term-bar.on .term-dot { background: #6ee7a8; animation: term-pulse 1.4s var(--ease) infinite; }
 @keyframes term-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+/* 발행 화면의 접히는 상자 (부분 임포트 · 링크 붙여넣기) */
+.pb-partial, .pb-paste {
+  border: 1px solid var(--hairline); border-radius: var(--r-sm);
+  background: var(--bone); padding: 9px 11px; margin: 10px 0;
+}
+.pb-partial > summary, .pb-paste > summary {
+  cursor: pointer; font-weight: 650; font-size: var(--t-sm);
+}
+.pb-partial .qz-foot, .pb-paste .qz-foot { flex-wrap: wrap; }
