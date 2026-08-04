@@ -225,91 +225,140 @@ def server_checklist() -> list[dict]:
     n_s = sh["subject_count"]
     ymap = f"axexam/data/youtube_map.{PD_CODE}.json"
     bo = _board_table(PD_CODE)
+    site = SITE_BASE.rstrip("/")
+    book = paths.book_dir()
+    # ★ 순서는 **실제로 하는 순서**다. 번호와 순서가 다르면 처음 보는 사람이 그대로
+    #   따라가다 막힌다(seed_pd.php 는 FTP 로 올라간 뒤에야 열린다).
     return [
-        # ★ 카페24 호스팅에는 phpMyAdmin 이 없다(실측). 그래서 그누보드의 DB 접속·관리자
-        #   인증을 빌려 쓰는 1회용 화면을 두었다 — FTP 로 올라가므로 업로드 뒤에 한다.
-        {"key": "ex_product", "label": f"품목 등록 — ex_product 에 pd_id='{PD_CODE}'",
-         "where": "/adm/seed_pd.php   (FTP 업로드 후에 열린다)",
-         "detail": ("임포트가 이 행을 먼저 확인한다. 없으면 "
-                    f"\"ex_product 에 pd_id='{PD_CODE}' 가 없습니다\" 로 중단된다. "
-                    "★ 카페24에는 phpMyAdmin 이 없다 — 이 화면이 그 자리다. 최고관리자로 "
-                    "로그인한 브라우저에서 열고 [등록]. "
-                    "★ 끝나면 /www/adm/seed_pd.php 를 FTP 로 지운다(1회용)."),
-         "sql": ("INSERT INTO ex_product\n"
-                 "  (pd_id, pd_name, pd_open, tier, model_id, provider, cost_units, cost_cap, pd_sort)\n"
+        {"key": "start", "label": "앱: run.bat → 좌하단 칩에서 품목·작업 폴더 확인",
+         "where": f"run.bat  →  {SITE_BASE and 'http://127.0.0.1:8870/'}",
+         "detail": (f"좌하단 칩에 품목({PD_CODE})과 작업 폴더가 맞는지 본다: {book}\n"
+                    "다른 품목을 발행하려면 칩 → 작업 폴더 패널에서 폴더를 바꾼다. "
+                    "폴더가 곧 품목이라, 여기가 틀리면 그 뒤 전부가 틀린다.")},
+
+        {"key": "youtube", "label": f"0. 영상 {n_b}편을 올려 둔다 (구글 드라이브 또는 유튜브) — 미리 해두는 단계",
+         "where": "drive.google.com / youtube.com",
+         "detail": (f"올릴 파일: {book}\\05\\<번들>\\draft\\*.static.mp4 ({n_b}개)\n"
+                    "탐색기 검색창에 *.static.mp4 를 넣으면 한 번에 잡힌다.\n"
+                    "★ 드라이브면 **폴더를 '링크가 있는 모든 사용자' 로 공유**해야 재생된다.\n"
+                    "★ 지웠다 다시 올리면 ID 가 바뀐다 — 내리지 말고, 교체할 때는 드라이브의 "
+                    "'버전 관리' 로 덮어쓰면 ID 가 유지된다.\n"
+                    "유튜브면 '미등록(unlisted)' 으로 올리고 확인 후 공개로 바꾼다.")},
+
+        {"key": "youtube_map", "label": f"1. 영상 링크 {n_b}개를 매핑에 넣는다",
+         "where": f"발행 화면 ②  →  {ymap}",
+         "detail": ("[영상 매핑 만들기] → [링크 붙여넣기] 에 '파일명 + 링크' 목록을 그대로 "
+                    "붙여넣는다. URL 이든 ID 든 잡고, 형식이 느슨해도 된다.\n"
+                    "드라이브 링크를 한 번에 뽑으려면 script.google.com 에서 폴더의 "
+                    "(파일명, 파일ID) 를 출력해 붙여넣는다.\n"
+                    "★ 드라이브·link·file 은 min_level 이 5 로 들어간다(앱이 자동). 1 이면 "
+                    "링크가 videos.js(정적 파일)에 구워져 누구나 내려받는다 — 링크 자체가 "
+                    "접근 권한이다.\n"
+                    f"끝나면 칩이 '링크 {n_b} / {n_b}' 가 되어야 한다.")},
+
+        {"key": "build", "label": "2. 빌드 — 06/ 산출물을 만든다",
+         "where": "발행 화면 ③  →  [빌드 실행]",
+         "detail": ("사전점검 **오류가 0** 이어야 시작한다. 경고는 한 번 더 누르면 진행한다.\n"
+                    f"로그에서 확인: '영상 {n_b}개 매핑 ({n_b}/{n_b} 유튜브 ID 입력됨)' 과 "
+                    f"'{n_q}문제 · {n_r}회'.\n"
+                    "★ --book 과 --pd 는 항상 명시된다. 둘 다 기본값이 SQLD 라서 하나라도 "
+                    "빠지면 라이브 SQLD 문제은행을 덮어쓰고 되돌릴 수 없다.")},
+
+        {"key": "ftp", "label": "3. 업로드 폴더를 만들어 /www/ 로 FTP",
+         "where": f"발행 화면 ⑤  →  {book}\\_upload  →  /www/",
+         "detail": ("[업로드 폴더 만들기] 를 누르면 서버와 같은 모양(exam/ adm/ theme/ "
+                    "extend/ index.php .htaccess)으로 한 폴더에 모인다. FileZilla 왼쪽에 그 "
+                    "폴더, 오른쪽에 /www/ 를 놓고 통째로 끌어놓는다 — 경로를 맞출 일이 없다.\n"
+                    "★ **빌드한 뒤에는 폴더를 다시 만든다.** 안 하면 옛 산출물이 올라간다"
+                    "(화면이 빨간 배너로 알려준다).\n"
+                    "FileZilla 설정(한 번만): 전송 유형 **바이너리** · 동시 전송 2 · "
+                    "문자셋 **UTF-8 강제**(요약노트 파일명이 한글이다).\n"
+                    "problems.json 과 mp4 는 이 폴더에 없다 — 올리지 않는다.\n"
+                    "다 올리면 [다 올렸습니다 — 지우기].")},
+
+        # ★ FTP 뒤에 온다 — 이 파일이 서버에 올라가야 열린다.
+        {"key": "ex_product", "label": f"4. 품목 등록 — ex_product 에 pd_id='{PD_CODE}'",
+         "where": f"{site}/adm/seed_pd.php",
+         "detail": ("**최고관리자로 로그인한 브라우저**에서 연다(부관리자는 안 된다).\n"
+                    f"pd_id={PD_CODE} · 이름 확인 → [등록]. 표에 그 품목이 추가되면 성공.\n"
+                    "★ 이게 없으면 다음 단계가 "
+                    f"\"ex_product 에 pd_id='{PD_CODE}' 가 없습니다\" 로 중단된다.\n"
+                    "★ 카페24에는 phpMyAdmin 이 없다 — 이 화면이 그 자리다.\n"
+                    "★ 끝나면 /www/adm/seed_pd.php 를 FTP 로 **지운다**(1회용).\n"
+                    "404 가 뜨면 3번 업로드가 안 된 것이다."),
+         "sql": ("-- 직접 SQL 을 쓸 수 있는 환경이라면 이것과 같다\n"
+                 "INSERT INTO ex_product\n"
+                 "  (pd_id, pd_name, pd_open, tier, model_id, provider,\n"
+                 "   cost_units, cost_cap, pd_sort)\n"
                  f"VALUES ('{PD_CODE}', '{PD_LABEL}', 1, 'T1', 'deepseek-v4-flash',\n"
                  "        'openai_compat', 10, 3.0000, 20)\n"
                  "ON DUPLICATE KEY UPDATE pd_name = VALUES(pd_name);")},
-        {"key": "youtube", "label": f"영상 {n_b}편을 올린다 (구글 드라이브 또는 유튜브)",
-         "where": "drive.google.com / youtube.com",
-         "detail": ("★ 지웠다 다시 올리면 ID 가 바뀐다 — 내리지 말고 비공개로 둔다. "
-                    "유튜브면 '미등록(unlisted)' 으로 올리고 확인 후 공개로 바꾼다 "
-                    "(ID 가 그대로라 매핑을 다시 고칠 필요가 없다). "
-                    "드라이브면 '링크가 있는 모든 사용자' 로 공유해야 재생된다.")},
-        {"key": "youtube_map", "label": f"영상 매핑에 링크 {n_b}개 입력",
-         "where": ymap,
-         "detail": ("발행 화면의 [영상 매핑 만들기] 로 골격을 만들고, 공유 URL 을 각 항목의 "
-                    "id 에 붙여넣는다 — URL 그대로 넣어도 된다(빌더가 ID 만 뽑는다). "
-                    "★ 드라이브·link·file 은 min_level 을 5 로 둔다. 1 이면 링크가 "
-                    "videos.js(정적 파일)에 구워져 누구나 내려받는다 — 링크 자체가 권한이다. "
-                    "입력 후 다시 빌드한다.")},
-        # ★ 업로드는 **폴더 하나**다. 06/ 과 axexam/web/ 을 서버 모양으로 합쳐 둔다.
-        {"key": "ftp", "label": "업로드 폴더를 /www/ 로 FTP",
-         "where": "발행 화면 ⑤ → <BOOK>/_upload  →  /www/",
-         "detail": ("[업로드 폴더 만들기] 를 누르면 서버와 같은 모양(exam/ adm/ theme/ "
-                    "extend/ index.php .htaccess)으로 한 폴더에 모인다. 왼쪽에 그 폴더, "
-                    "오른쪽에 /www/ 를 놓고 통째로 끌어놓는다 — 경로를 맞출 일이 없다. "
-                    "★ 빌드한 뒤에는 폴더를 **다시 만든다**. 안 하면 옛 산출물이 올라간다"
-                    "(화면이 빨간 배너로 알려준다). "
-                    "FileZilla: 전송 유형 바이너리 · 동시 전송 2 · 문자셋 UTF-8 강제"
-                    "(요약노트 파일명이 한글이다). "
-                    "problems.json 과 mp4 는 이 폴더에 없다 — 올리지 않는다. "
-                    "다 올리면 [다 올렸습니다 — 지우기].")},
-        {"key": "import", "label": "problems.json 을 관리자 화면에서 업로드",
-         "where": "/adm/exam_import.php",
-         "detail": ("파일 선택 필드 이름은 jsonfile. 그누보드 최고관리자로 로그인해야 한다. "
+
+        {"key": "import", "label": "5. problems.json 을 관리자 화면에서 올린다",
+         "where": f"{site}/adm/exam_import.php",
+         "detail": (f"올릴 파일: {book}\\06\\pd\\{PD_CODE}\\problems.json\n"
+                    "파일 선택 필드 이름은 jsonfile. 그누보드 관리자 권한(600400)이 필요하다 "
+                    "— 부관리자에게 위임할 수 있다.\n"
                     "1회용 관리자 토큰 때문에 스크립트로는 못 부른다 — 브라우저 단계다. "
-                    "서버는 처리 후 업로드 파일을 즉시 지운다.")},
-        {"key": "report", "label": "임포트 리포트 확인",
-         "where": "/adm/exam_import.php",
-         "detail": (f"첫 발행이면 신규 {n_q} · 갱신 0 · 회차 {n_r}행. "
-                    f"두 번째부터는 신규 0 · 갱신(고친 수) · 변경없음(나머지) 로 나온다. "
-                    "실패·건너뜀은 항상 0 이어야 한다. "
+                    "서버는 처리 후 업로드 파일을 즉시 지운다.\n"
+                    "★ 고친 문항만 올릴 때는 발행 화면 ④ [부분 임포트] 로 잘라 "
+                    "'또는 붙여넣기' 에 붙여넣는다(문항 하나 2.6KB · 회차 하나 92KB).\n"
+                    "★ FTP 로는 올려도 읽히지 않는다 — .htaccess 가 .json 을 403 으로 막는다.")},
+
+        {"key": "report", "label": "6. 임포트 리포트를 읽는다",
+         "where": f"{site}/adm/exam_import.php",
+         "detail": (f"첫 발행이면 **신규 {n_q} · 갱신 0 · 회차 {n_r}행**.\n"
+                    "두 번째부터는 신규 0 · 갱신(고친 수) · 변경없음(나머지).\n"
+                    "★ **실패·건너뜀은 항상 0** 이어야 한다.\n"
                     "★ skip_edited 가 0 이 아니면 그 문항을 전에 웹에서 고친 것이다 — "
-                    "/adm/exam_problem_form.php 에서 [원본 복원] 후 다시 임포트한다. "
-                    "회차는 rd_free 기본값 1(무료)로 들어온다 — 재임포트가 그 값을 "
-                    "건드리지 않으므로 나중에 바꾼 정책은 유지된다.")},
-        {"key": "board", "label": f"[선택] 과목게시판 만들기 — bo_table = {bo}",
+                    f"{site}/adm/exam_problem_form.php 에서 [원본 복원] 후 다시 임포트한다.\n"
+                    "회차는 rd_free 기본값 1(무료)로 들어온다. 재임포트가 그 값을 건드리지 "
+                    "않으므로 나중에 바꾼 공개 정책은 유지된다.")},
+
+        {"key": "verify", "label": "7. 웹에서 확인한다",
+         "where": SITE_BASE + SITE_PATH,
+         "detail": (f"① {site}{SITE_PATH}api/products.php — {PD_CODE} 가 "
+                    f"open:1 · problems:{n_q} · rounds:{n_r} 로 보이고 "
+                    "**다른 품목도 그대로** 있어야 한다.\n"
+                    f"② {site}{SITE_PATH}check.php?pd={PD_CODE} — "
+                    f"{n_q}문항 · {n_s}과목 필터 · 회차 1~{n_r}.\n"
+                    f"③ {site}{SITE_PATH} — 품목 카드에 이 품목과 기존 품목이 함께.\n"
+                    "④ 영상 — **로그인 레벨이 min_level 이상일 때만** 보인다(드라이브는 5). "
+                    "강사 계정으로 하나 재생해 보면 링크·공유·레벨이 한 번에 확인된다. "
+                    "일반 회원에게 안 보이는 것이 정상이다.\n"
+                    "자동 확인: axexam/scripts/deploy_check.py --pd <품목> --build <06 경로>")},
+
+        {"key": "board", "label": f"8. [선택] 과목게시판 만들기 — bo_table = {bo}",
          "where": "그누보드 관리자 → 게시판 관리 → 추가",
-         "detail": ("게시판은 **문제집당 1개**이고 과목은 말머리로 구분한다 — 4과목이라고 "
-                    f"게시판 4개를 만들지 않는다. bo_table 은 반드시 `{bo}` 다. 이름이 틀리면 "
-                    "게시판을 못 찾아 **에러 없이 빈 목록**이 된다. "
-                    "'분류 사용' 을 켜고 분류는 비워 둔다(다음 단계가 채운다). "
-                    "문제풀이·성적표·영상과 무관하므로 나중에 해도 된다.")},
-        {"key": "board_sync", "label": "[선택] 과목 말머리 동기화",
-         "where": "/adm/exam_board_sync.php",
+         "detail": ("게시판은 **문제집당 1개**이고 과목은 말머리로 구분한다 — 과목이 4개라고 "
+                    f"게시판 4개를 만들지 않는다.\n"
+                    f"테이블 이름은 반드시 `{bo}` 다. 틀리면 게시판을 못 찾아 **에러 없이 "
+                    "빈 목록**이 된다.\n"
+                    "'분류 사용' 을 켜고 분류는 비워 둔다(다음 단계가 채운다).\n"
+                    "문제풀이·성적표·영상과 무관하다 — 질문 게시판만 이게 없으면 비어 보인다.")},
+
+        {"key": "board_sync", "label": "9. [선택] 과목 말머리 동기화",
+         "where": f"{site}/adm/exam_board_sync.php",
          "detail": ("ex_problem 의 과목 목록을 게시판 말머리로 맞춘다. 과목명 오타 하나로 "
                     "api/board.php 의 필터가 에러 없이 빈 목록을 돌려주기 때문에 이것만 "
-                    "자동화했다. 과목이 늘면 다시 돌린다.")},
-        {"key": "verify", "label": "웹에서 최종 확인",
-         "where": SITE_BASE + SITE_PATH,
-         "detail": (f"api/products.php 에 {PD_CODE} 가 open:1 · problems:{n_q} · rounds:{n_r} 로 "
-                    f"보이고 **다른 품목도 그대로** 있어야 한다. "
-                    f"check.php?pd={PD_CODE} 가 {n_q}문항·{n_s}과목 필터로 떠야 한다. "
-                    "★ 영상은 로그인 레벨이 min_level 이상일 때만 보인다(드라이브는 5). "
-                    "강사 계정으로 하나 재생해 보면 링크·공유·레벨이 한 번에 확인된다. "
-                    "자동 확인: axexam/scripts/deploy_check.py --pd <품목> --build <06 경로>")},
-        # ★ 여기부터는 '나중에 고칠 때' 절차다. 초기 세팅보다 이쪽이 훨씬 자주 일어난다.
+                    "자동화했다. 과목이 늘거나 이름이 바뀌면 다시 돌린다.")},
+
+        # ── 여기부터는 '나중에 고칠 때'. 초기 세팅보다 훨씬 자주 일어난다.
         {"key": "revise_video", "label": "[나중] 영상만 바꿀 때 — 파일 1개",
-         "where": f"{ymap} → 빌드 → FTP",
+         "where": f"{ymap}  →  빌드  →  업로드 폴더  →  FTP",
          "detail": ("영상 교체·삭제·추가는 **가장 싼 변경**이다. 매핑의 id 를 고치고 빌드한 뒤 "
-                    f"`pd/{PD_CODE}/videos.private.json` **한 파일만** 올리면 끝난다 "
-                    "(api/videos.php 가 그 파일을 요청마다 다시 읽는다 — 캐시도 DB도 없다). "
-                    "problems.json 재임포트도, 관리자 화면도 필요 없다. "
-                    "min_level 이 1 이면 대신 `videos.js` 를 올린다.")},
+                    f"`pd/{PD_CODE}/videos.private.json` **한 파일만** 올리면 끝난다 — "
+                    "api/videos.php 가 그 파일을 요청마다 다시 읽는다(캐시도 DB도 없다).\n"
+                    "problems.json 재임포트도, 관리자 화면도 필요 없다.\n"
+                    "min_level 이 1 이면 대신 videos.js 를 올린다.")},
+
         {"key": "revise_question", "label": "[나중] 문항을 고칠 때 — 임포트까지",
-         "where": "#/questions → 빌드 → FTP → 관리자 화면",
-         "detail": ("문항은 서버 DB 에 들어가 있으므로 problems.json 재임포트가 필요하다. "
-                    "리포트의 '갱신' 수가 고친 문항 수와 같은지 확인한다. "
+         "where": "#/questions  →  빌드  →  ④ 부분 임포트  →  관리자 화면",
+         "detail": ("문항은 서버 DB 에 있으므로 재임포트가 필요하다. 고친 문항만 잘라 올리면 "
+                    "리포트가 '갱신 1' 만 찍어 확인이 쉽다.\n"
+                    "★ 임포트는 DELETE 를 하지 않는다 — 로컬에서 문항을 빼도 서버에 남는다. "
+                    f"숨기려면 {site}/adm/exam_problem_list.php 의 [숨기기](pr_open=0).\n"
+                    "해설·보기가 영상에 나오면 #/video 에 '재렌더' 로 뜬다 — 그 번들만 다시 "
+                    "만들고 드라이브에서 그 mp4 만 교체한다(버전 관리로 ID 유지).\n"
                     "pr_key 가 같은 행을 UPDATE 하므로 회차·번호를 바꾸면 새 행이 생긴다.")},
     ]
