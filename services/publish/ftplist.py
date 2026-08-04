@@ -304,7 +304,9 @@ def server_checklist() -> list[dict]:
                  "        'openai_compat', 10, 3.0000, 20)\n"
                  "ON DUPLICATE KEY UPDATE pd_name = VALUES(pd_name);")},
 
-        {"key": "import", "label": "3.  problems.json 을 관리자 화면에서 올린다",
+        # 라벨을 관리자 화면의 제목과 같게 둔다 — 화면을 열었을 때 "여기가 맞나" 를
+        # 다시 묻지 않게 된다(실제로 그 질문이 나왔다).
+        {"key": "import", "label": "3.  문제 임포트",
          "where": f"{site}/adm/exam_import.php",
          "detail": (f"올릴 파일: {book}\\06\\pd\\{PD_CODE}\\problems.json\n"
                     "파일 선택 필드 이름은 jsonfile. 그누보드 관리자 권한(600400)이 필요하다 "
