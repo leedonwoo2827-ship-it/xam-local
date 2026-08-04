@@ -353,6 +353,10 @@ $VIEWS = array('low' => '정답률 낮은 순', 'review' => '검수 필요', 'hi
             <?php if ((int)$r['verified'] === 1) { ?><span class="pill vf">확인</span><?php } ?>
           </td>
           <td class="act">
+            <!-- 정답률이 낮은 문항을 발견한 직후에 필요한 것은 '숨기기' 와 '고치기' 둘이다.
+                 고치는 화면(exam_problem_form.php)이 없어서 숨기기만 있었다. -->
+            <a class="btn_submit" style="display:inline-block;margin-bottom:4px;text-decoration:none"
+               href="exam_problem_form.php?pr_id=<?php echo (int)$r['pr_id'] ?>">보기·고치기</a>
             <form method="post" action="exam_problem_list.php?<?php echo exp_h($_SERVER['QUERY_STRING']) ?>"
                   onsubmit="return confirm('<?php echo (int)$r['pr_open'] ? '이 문제를 이용자 화면에서 숨깁니다.' : '다시 공개합니다.' ?>')">
               <?php echo isset($token) ? '<input type="hidden" name="token" value="'.$token.'">' : '' ?>

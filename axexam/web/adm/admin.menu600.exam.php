@@ -31,8 +31,12 @@ $menu['menu600'] = array(
      * 메뉴에 올리면 qa_id 없이 열려 "질문을 찾을 수 없습니다"만 보인다.
      * $sub_menu = '600200' 을 공유하므로 권한은 '질문 검수'와 같이 움직인다. */
 
+    /* 문항 DB 뷰어·편집 (2026-08-04). 카페24에 phpMyAdmin 이 없어서 "서버에 실제로
+     * 무엇이 들어 있나" 를 볼 곳이 없었다. 정답 오류 신고가 오면 여기서 즉시 고친다.
+     * ★ 고치면 edited_by 가 남아 재임포트가 그 행을 건너뛴다 — 로컬과 갈리므로
+     *   화면이 보여주는 '로컬 반영용 JSON' 을 #/questions 에 반영할 것. */
+    array('600460', '문항 DB 뷰어',  G5_ADMIN_URL.'/exam_problem_form.php', 'exam_problem_form'),
+
     // ↓ 아직 만들지 않았다. 해당 단계에서 주석을 푼다.
-    //   메뉴에 먼저 올리면 404 링크가 되어 혼란스럽다.
     // array('600100', '대시보드',      G5_ADMIN_URL.'/exam_index.php',        'exam_index'),
-    // array('600460', '문제 편집',     G5_ADMIN_URL.'/exam_problem_form.php', 'exam_problem_form'),
 );

@@ -42,9 +42,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         check_token();   // 아주 구버전 대비
     }
 
+    /* ── 붙여넣기 임포트 ───────────────────────────────────────────────────
+     * ★ 왜 파일 업로드 말고 붙여넣기도 두는가
+     *
+     *   문항 하나를 고치면 XAM LOCAL 이 그 문항만 담은 JSON 을 만든다(2.6KB).
+     *   회차 하나도 92KB 다. 그 정도를 파일로 저장해 업로드하는 것은 번거롭다 —
+     *   화면에서 붙여넣고 실행하면 끝난다. 처리 경로는 파일 업로드와 **완전히 같다**
+     *   (같은 ex_import_problems()). 그래서 동작 차이가 생길 여지가 없다.
+     *
+     *   임포트는 DELETE 를 하지 않으므로(이 파일 머리 주석 ①) JSON 에 없는 문항은
+     *   서버에 그대로 남는다. 부분 임포트가 안전한 근거다.
+     */
+    $pasted = isset($_POST['jsontext']) ? trim((string)$_POST['jsontext']) : '';
     $f = isset($_FILES['jsonfile']) ? $_FILES['jsonfile'] : null;
+    $has_upload = $f && $f['error'] === UPLOAD_ERR_OK;
 
-    if (!$f || $f['error'] !== UPLOAD_ERR_OK) {
+    if ($pasted !== '' && !$has_upload) {
+        $doc = json_decode($pasted, true);
+        unset($pasted);
+        if ($doc === null && json_last_error() !== JSON_ERROR_NONE) {
+            $fatal = '붙여넣은 내용의 JSON 파싱 실패: ' . json_last_error_msg()
+                   . ' — 중간이 잘렸는지 확인하십시오(복사가 끊기는 것이 가장 흔합니다).';
+        } elseif (!is_array($doc) || !isset($doc['problems'])) {
+            $fatal = "problems 키가 없습니다. XAM LOCAL 의 발행 화면 → "
+                   . "'부분 임포트' 로 만든 파일 내용을 그대로 붙여넣으십시오.";
+        } else {
+            $report = ex_import_problems($doc, $member['mb_id']);
+            unset($doc);
+        }
+    }
+    elseif (!$has_upload) {
         $codes = array(
             UPLOAD_ERR_INI_SIZE   => 'php.ini 의 upload_max_filesize 를 초과했습니다.',
             UPLOAD_ERR_FORM_SIZE  => '폼 지정 크기를 초과했습니다.',
@@ -173,7 +200,18 @@ require_once './admin.head.php';
                adm/board_form.php …)이 전부 value="" 인 이유다.
                서버에서 미리 채워 넣으면 어차피 덮어써진다. */ ?>
       <input type="hidden" name="token" value="">
-      <p><input type="file" name="jsonfile" accept=".json,application/json" required></p>
+      <p><input type="file" name="jsonfile" accept=".json,application/json"></p>
+
+      <!-- ★ 붙여넣기 — 문항 하나(2.6KB)·회차 하나(92KB)는 파일로 저장할 이유가 없다.
+           처리 경로는 파일 업로드와 완전히 같다(같은 ex_import_problems()). -->
+      <p style="margin-top:14px">
+        <b>또는 붙여넣기</b>
+        <span class="hint" style="display:inline">— XAM LOCAL 발행 화면의
+        <b>부분 임포트</b>로 만든 내용을 그대로. 파일을 고르면 파일이 먼저입니다.</span>
+      </p>
+      <p><textarea name="jsontext" rows="8" style="width:100%;font:12px ui-monospace,Consolas,monospace"
+            placeholder='{"pd_id":"bigdata","rounds":[...],"problems":[{...}]}'></textarea></p>
+
       <p><input type="submit" value="임포트 실행" class="btn_submit"></p>
     </form>
     <div class="hint">
