@@ -13,13 +13,15 @@ from __future__ import annotations
 import hashlib
 import os
 
-from core.constants import SITE_BASE, SITE_PATH
+from core.constants import BASE_DIR, SITE_BASE, SITE_PATH
 from services.book import paths
 
 # 올릴 것 — 06/ 안의 파일·폴더
 # 공용(품목 무관) — 06/ 바로 아래.
-UPLOAD_FILES = ("check.html", "index.html", "problems.js", "videos.js",
-                "theory.js", "theory_content.js")
+# `detail.html`·`brand.php` 가 빠져 있었다 — 상세 페이지와 브랜드 조각이라
+# 없으면 문제집 상세가 404 다. 빌드 산출물을 실측해 채웠다.
+UPLOAD_FILES = ("index.html", "detail.html", "check.html", "brand.php",
+                "problems.js", "videos.js", "theory.js", "theory_content.js")
 UPLOAD_DIRS = ("assets", "figs", "theory")
 
 # ★ 품목별 데이터는 `06/pd/<pd>/` 에 있다 — 이 트리를 빠뜨리면 **문항도 영상도 안 올라간다.**
@@ -62,12 +64,16 @@ def build(*, with_hash: bool = False) -> dict:
 
     upload, skip = [], []
 
-    def add_file(rel: str, abs_path: str) -> None:
+    def add_file(rel: str, abs_path: str, *, server: str = "", source: str = "06/") -> None:
+        r = rel.replace("\\", "/")
+        sp = server or (SITE_PATH + r)
         rec = {
-            "path": rel.replace("\\", "/"),
-            "server_path": SITE_PATH + rel.replace("\\", "/"),
-            "url": SITE_BASE + SITE_PATH + rel.replace("\\", "/"),
+            "path": r,
+            "server_path": sp,
+            "url": SITE_BASE + sp,
             "bytes": os.path.getsize(abs_path),
+            "source": source,        # 어느 로컬 트리에서 오는지 (06/ 인가 axexam/web/ 인가)
+            "local": abs_path,
         }
         if with_hash:
             rec["sha256"] = _sha256(abs_path)
@@ -131,6 +137,36 @@ def build(*, with_hash: bool = False) -> dict:
             skip.append({"path": f"{UPLOAD_PD_DIR}/{other}/", "bytes": 0,
                          "reason": f"다른 품목({other})입니다. 이번 발행 대상이 아니므로 "
                                    "올리지 않습니다 — 올리면 그 품목을 덮어씁니다."})
+
+    # ── ② axexam/web/ — 사이트를 실제로 돌리는 PHP ─────────────────────────
+    #
+    # ★ 06/ 만 올리면 사이트가 돌지 않는다. 빌드는 **데이터와 랜딩**만 만든다 —
+    #   빌드 로그가 직접 말한다: "문제풀이 화면은 web/exam/check.php 다 — 이 빌드가
+    #   굽지 않는다. 06/check.html 은 check.php 로 보내는 리다이렉트만 남는다."
+    #   성적표·마이페이지·오답노트·api/*.php·관리자 화면도 전부 이쪽이다.
+    #
+    #   서버 경로는 SITE_PATH 아래가 아니다. `web/` 를 벗겨 웹루트에 그대로 얹는다:
+    #     web/exam/check.php      → /exam/check.php
+    #     web/adm/exam_import.php → /adm/exam_import.php     (SITE_PATH 밖)
+    #     web/theme/axexam/…      → /theme/axexam/…
+    web_root = os.path.join(BASE_DIR, "axexam", "web")
+    if os.path.isdir(web_root):
+        for root, dirs, files in os.walk(web_root):
+            dirs[:] = [d for d in dirs if d not in ("__pycache__",)]
+            for f in sorted(files):
+                # 비밀은 저장소에 없어야 하지만, 있어도 올리지 않는다(방어).
+                low = f.lower()
+                if "secret" in low or low.endswith("dbconfig.php"):
+                    skip.append({"path": f, "bytes": 0,
+                                 "reason": "비밀 파일입니다. 서버의 것을 그대로 둡니다."})
+                    continue
+                p_abs = os.path.join(root, f)
+                rel = os.path.relpath(p_abs, web_root).replace("\\", "/")
+                add_file(rel, p_abs, server="/" + rel, source="axexam/web/")
+    else:
+        skip.append({"path": "axexam/web/", "bytes": 0,
+                     "reason": ("axexam 트리가 없습니다. git subtree 로 합쳐져 있어야 "
+                                "합니다 — 없으면 사이트의 PHP 를 올릴 수 없습니다.")})
 
     # 올리지 않을 것
     pj = paths.problems_json()

@@ -44,7 +44,8 @@ ENGINE_DIR = os.path.join(BASE_DIR, "vendor", "chodangi")
 # AXBUILD: 발행 빌더 — **이 저장소 안에 있다** (2026-08-03 내장).
 #   axexam 의 scripts/{build_check,exam_meta}.py + 템플릿을 들여왔다.
 #   06/ (정적 페이지 + problems.json) 을 만드는 것이 이 빌더다.
-AXBUILD_DIR = os.path.join(BASE_DIR, "services", "publish", "axbuild")
+# axexam 을 git subtree 로 합쳤다(2026-08-04) — 빌더 사본을 두지 않고 상류를 그대로 쓴다.
+AXBUILD_DIR = os.path.join(BASE_DIR, "axexam", "scripts")
 
 # AXEXAM: 웹(그누보드5) 저장소. PHP·web/ 의 원본이다.
 #   ★ 발행 빌드에는 **필요하지 않다**(빌더가 위 AXBUILD_DIR 에 있다).

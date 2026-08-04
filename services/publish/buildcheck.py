@@ -26,8 +26,18 @@ _PR_KEY_RE = re.compile(r"^m\d{2}-\d{1,2}#\d{1,3}$")
 
 
 def builder_dir() -> str:
-    """내장한 빌더 폴더. 서브프로세스의 cwd 이자 exam_meta import 뿌리다."""
-    return AXBUILD_DIR
+    """빌더가 있는 곳 — **axexam 저장소의 scripts/**.
+
+    ★ 2026-08-04: axexam 을 git subtree 로 이 저장소 안(`axexam/`)에 합쳤다.
+      그전에는 `services/publish/axbuild/` 에 **사본**을 두고 `ROOT` 한 줄만 고쳐
+      썼는데, 사본이 있으면 어느 쪽을 고쳤는지 몰라 서버와 갈린다(원천이 둘).
+      이제 상류 파일을 그대로 부른다 — `subtree pull` 로 갱신해도 충돌이 없다.
+
+      그래서 빌더의 `ROOT`(= `parents[1]`)는 `axexam/` 을 가리키고,
+      `data/youtube_map.<pd>.json` · `data/brand.json` 도 그 아래다.
+      youtube_map_path() 가 같은 곳을 보게 맞춰 두었다.
+    """
+    return os.path.join(BASE_DIR, "axexam", "scripts")
 
 
 def builder_script() -> str:
@@ -77,10 +87,11 @@ def require_pd() -> str:
 def youtube_map_path() -> str:
     """품목 전용 매핑. 공용 youtube_map.json 은 SQLD 와 번들 키가 겹친다.
 
-    ★ 빌더가 안으로 들어와 `ROOT` 가 이 저장소 루트다. 그래서 매핑도 이 앱의
-      `data/` 에 둔다 — 빌더의 `youtube_map_path(pd_id)` 가 같은 곳을 본다.
+    ★ 빌더의 `ROOT` 아래 `data/` 다 — 즉 `axexam/data/`. 빌더가 `--pd` 로 이 파일을
+      스스로 고르므로(`youtube_map_path(pd_id)`), 우리가 다른 곳을 보면 화면은
+      "매핑 있음" 인데 빌드는 "영상 없음" 으로 조용히 지나간다. 한 곳만 본다.
     """
-    return os.path.join(DATA_DIR, f"youtube_map.{active_pd()}.json")
+    return os.path.join(BASE_DIR, "axexam", "data", f"youtube_map.{active_pd()}.json")
 
 
 def supports_youtube_map_flag() -> bool:
@@ -180,7 +191,8 @@ def start() -> dict:
         # 빌더는 이 저장소 안에 있다 — 없다면 파일이 지워진 것이다(클론 문제가 아니다).
         raise FileNotFoundError(
             f"발행 빌더를 찾을 수 없습니다: {env['script']}\n"
-            "services/publish/axbuild/ 가 저장소에 들어 있어야 합니다.")
+            "axexam/scripts/ 가 저장소에 들어 있어야 합니다 "
+            "(git subtree 로 합쳐져 있습니다).")
 
     job = registry.create("build", f"발행 빌드 · pd={active_pd()}", [],
                           steps=["build", "assert", "problems"])
