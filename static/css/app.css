@@ -1832,3 +1832,15 @@ table.data tr.on b { color: var(--brand); }
   cursor: pointer; font-weight: 650; font-size: var(--t-sm);
 }
 .pb-partial .qz-foot, .pb-paste .qz-foot { flex-wrap: wrap; }
+
+/* 사내망 보기 전용 띠 — shell.js 의 renderShareBanner() 가 넣는다.
+   position:fixed 라 스크롤해도 남는다. 동료가 아래로 내려간 뒤 [저장] 을 누르는
+   상황을 막으려면 계속 보여야 한다. */
+.share-banner {
+  position: fixed; inset: 0 0 auto 0; z-index: 200;
+  padding: 7px 14px; text-align: center;
+  background: var(--warn-bg, #f8f6e6); color: var(--warn, #6f6112);
+  border-bottom: 1px solid var(--warn, #6f6112);
+  font-size: var(--t-xs); line-height: 1.5;
+}
+.share-banner b { margin-right: 2px; }

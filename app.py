@@ -40,6 +40,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from core import lan
 from core.constants import (
     APP_NAME, APP_VERSION, AXEXAM_DIR, BASE_DIR, BOOK_DIR, ENGINE_DIR,
     DATA_DIR, JOBS_DIR, PD_CODE, PD_LABEL, PORT, PUBLISH_DIR, STATIC_DIR,
@@ -56,6 +57,42 @@ app = FastAPI(
     description="문제은행 로컬 운영 콘솔 — 문항 교정 · 영상 검수 · 발행",
     version=APP_VERSION,
 )
+
+
+# ========= 사내망 공유 — 보기 전용 게이트 =========
+# 규칙과 그 근거는 core/lan.py 의 모듈 주석에 있다. 요약:
+#   루프백 → 전부 허용 (내 화면은 지금과 똑같다)
+#   그 밖  → GET/HEAD 만. 나머지는 403.
+#
+# ★ 미들웨어를 조건부로 달지 않는다. `if 사내망모드:` 로 감싸면 `--host 0.0.0.0`
+#   으로 직접 띄웠을 때(lan.bat 을 안 쓰고) 게이트가 없는 채로 열린다.
+#   항상 달아 둔다 — 루프백만 열려 있으면 이 미들웨어는 아무 일도 하지 않는다.
+@app.middleware("http")
+async def _readonly_for_lan(request: Request, call_next):
+    if request.method not in lan.READ_METHODS:
+        host = request.client.host if request.client else None
+        if not lan.is_local(host):
+            # 화면에 그대로 뜨는 문구다. 왜 막혔는지·누가 풀 수 있는지를 담는다 —
+            # "403" 만 보면 앱이 고장난 줄 안다.
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "보기 전용으로 공유된 화면입니다. "
+                                   "저장·빌드·렌더는 이 PC(운영자 화면)에서만 됩니다."},
+            )
+    return await call_next(request)
+
+
+@app.get("/api/mode")
+async def api_mode(request: Request):
+    """이 요청자가 쓰기를 할 수 있는가. 화면 상단 배너가 이걸 보고 결정한다.
+
+    ★ 서버가 판정해야 한다. 브라우저가 자기 주소로 추측하면 틀린다 —
+      운영자도 사내망 IP 로 접속할 수 있고(북마크·다른 기기), 그때는 실제로
+      보기 전용이 맞다. 판정 기준을 게이트와 **같은 함수**로 둬서 갈리지 않게 한다.
+    """
+    host = request.client.host if request.client else None
+    local = lan.is_local(host)
+    return {"readonly": not local, "client": host or "", "pd": PD_CODE, "book": PD_LABEL}
 
 # ========= 라우터 =========
 # 각 계층은 독립적으로 미탑재일 수 있다. 하나가 없어도 앱은 뜬다 —

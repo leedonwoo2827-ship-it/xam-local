@@ -276,6 +276,33 @@ if (!location.hash) location.hash = "#/home";
 render();
 renderBrandStatus();
 renderRecent();
+renderShareBanner();
+
+/* 사내망에서 열었을 때 상단에 띄우는 띠.
+ *
+ * ★ 서버에 물어본다. 브라우저가 location.hostname 으로 추측하면 틀린다 —
+ *   운영자도 사내망 IP 로 접속할 수 있고(다른 기기·북마크) 그때는 실제로 보기
+ *   전용이 맞다. 판정은 게이트와 같은 함수(core/lan.is_local)가 한다.
+ *
+ * 이 띠가 없으면 동료가 [저장] 을 눌러 403 을 보고 "앱이 고장났다" 고 여긴다.
+ * 실패를 설명하는 것보다 **누르기 전에 알리는 것**이 낫다.
+ */
+async function renderShareBanner() {
+  let m;
+  try {
+    m = await (await fetch("/api/mode")).json();
+  } catch { return; }               // 못 물어봤으면 아무것도 하지 않는다
+  if (!m || !m.readonly) return;
+
+  const b = el("div", "share-banner");
+  b.appendChild(el("b", null, "보기 전용"));
+  b.appendChild(el("span", null,
+    " — 사내망으로 공유된 화면입니다. 둘러보실 수 있고, 저장·빌드·렌더는 "
+    + "운영자 PC 에서만 됩니다."));
+  document.body.insertAdjacentElement("afterbegin", b);
+  // 띠가 헤더를 덮지 않게 본문을 그만큼 내린다(높이를 CSS 에 박지 않는다).
+  document.body.style.paddingTop = b.offsetHeight + "px";
+}
 
 window.addEventListener("xam:job-changed", renderRecent);
 window.addEventListener("xam:review-changed", renderBrandStatus);
