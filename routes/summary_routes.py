@@ -36,6 +36,24 @@ def _drift(key: str) -> bool:
     return paths.mtime(html) < paths.mtime(md)
 
 
+def _edit_target(key: str) -> tuple[str, str]:
+    """편집할 파일과 그 형식을 고른다 — (경로, "md" | "html").
+
+    ★ 왜 필요한가
+      이 화면은 원래 `03/summary_*.md` 를 고치는 곳이었다. 그런데 **발행되는 것은
+      `.html`** 이고(빌더 `build_theory()` 가 `summary_*.html` 만 읽는다), 도구 #2 가
+      회차에 따라 `.md` 를 만들지 않는 경우가 있다. 실제로 9회차 재생성에서 `.html` 4개만
+      나왔고, 그러면 이 화면이 404 로 죽어 **요약노트를 아예 못 고쳤다.**
+
+      그래서 `.md` 가 있으면 그것을, 없으면 `.html` 을 직접 고친다. `.html` 이 원천이라
+      오히려 갈림(drift)이 없다 — 고친 것이 그대로 발행된다.
+    """
+    md = paths.summary_md(key)
+    if os.path.isfile(md):
+        return md, "md"
+    return paths.summary_html(key), "html"
+
+
 def setup_summary_routes() -> APIRouter:
     router = APIRouter(prefix="/api/summary", tags=["summary"])
 
@@ -65,12 +83,17 @@ def setup_summary_routes() -> APIRouter:
     async def get_one(key: str):
         if key not in paths.summary_keys():
             raise HTTPException(status_code=404, detail=f"알 수 없는 요약노트: {key!r}")
-        md_path = paths.summary_md(key)
+        md_path, kind = _edit_target(key)
         text = _read(md_path)
         if text is None:
-            raise HTTPException(status_code=404,
-                                detail=f"{paths.rel(md_path)} 가 없습니다.")
+            raise HTTPException(
+                status_code=404,
+                detail=(f"{paths.rel(md_path)} 가 없습니다. "
+                        "03/ 에 summary_*.html 또는 summary_*.md 가 있어야 합니다 — "
+                        "도구 #2 가 요약노트를 만들었는지 확인하세요."))
         return {"key": key, "md": text, "etag": paths.etag(md_path),
+                # 어느 파일을 고치고 있는지 화면이 알아야 한다(문구가 달라진다).
+                "kind": kind, "edit_path": paths.rel(md_path),
                 "html_url": paths.book_url(paths.summary_html(key)),
                 "drift": _drift(key), "drift_text": DRIFT_TEXT}
 
@@ -83,7 +106,7 @@ def setup_summary_routes() -> APIRouter:
         if not isinstance(text, str) or not text.strip():
             raise HTTPException(status_code=400, detail="본문이 비어 있습니다.")
 
-        md_path = paths.summary_md(key)
+        md_path, _kind = _edit_target(key)
         etag = body.get("etag")
         if etag is not None and etag != paths.etag(md_path):
             raise HTTPException(

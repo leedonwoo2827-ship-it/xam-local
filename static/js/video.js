@@ -319,6 +319,8 @@ async function openBundle(code) {
 function renderWork() {
   const d = V.data, info = d.info;
   const box = $("#vd-work");
+  // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
+  if (!box) return;
   box.innerHTML = `
     <div class="card">
       <div class="card-title">${escapeHtml(d.bundle)} — 씬 ${d.count}개
@@ -367,6 +369,8 @@ function renderWork() {
 
 function renderSceneList() {
   const box = $("#vd-scenes");
+  // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
+  if (!box) return;
   box.innerHTML = "";
   V.data.scenes.forEach((s) => {
     const row = el("div", "vd-scene" + (V.scene && V.scene.scene === s.scene ? " on" : "")

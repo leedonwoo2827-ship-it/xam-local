@@ -35,7 +35,7 @@ export async function mount(root, ctx) {
     <div id="sm-drift"></div>
     <div class="sm-split">
       <div>
-        <div class="qz-label">03/summary_*.md — 편집</div>
+        <div class="qz-label" id="sm-label">03/summary_* — 편집</div>
         <textarea class="md-edit" id="sm-md"></textarea>
         <div class="qz-foot">
           <button class="btn primary" id="sm-save" type="button">저장 (Ctrl+S)</button>
@@ -78,12 +78,21 @@ export async function mount(root, ctx) {
 
 function renderTabs() {
   const box = $("#sm-tabs");
+  // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
+  if (!box) return;
   box.innerHTML = "";
   S.list.items.forEach((it) => {
     const b = el("button", "chip" + (S.key === it.key ? " on" : ""), it.key);
     b.type = "button";
     b.title = `${it.md_path} · ${fmtBytes(it.md_bytes)}`;
-    if (!it.md_exists) { b.disabled = true; b.title = ".md 가 없습니다."; }
+    // ★ .md 가 없어도 막지 않는다 — .html 을 직접 고친다(그게 발행되는 파일이다).
+    //   예전에는 여기서 disabled 라서, #2 가 .html 만 만든 회차는 요약노트를 아예
+    //   고칠 수 없었다.
+    if (!it.md_exists && !it.html_exists) {
+      b.disabled = true; b.title = "03/ 에 이 과목 파일이 없습니다.";
+    } else if (!it.md_exists) {
+      b.title = ".md 가 없어 .html 을 직접 고칩니다 (발행되는 파일입니다).";
+    }
     b.addEventListener("click", () => open(it.key));
     box.appendChild(b);
   });
@@ -121,6 +130,8 @@ async function open(key) {
 
 function renderDrift() {
   const box = $("#sm-drift");
+  // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
+  if (!box) return;
   box.innerHTML = "";
   const it = S.list.items.find((i) => i.key === S.key);
   if (!it) return;

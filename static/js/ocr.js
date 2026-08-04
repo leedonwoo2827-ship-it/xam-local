@@ -333,6 +333,8 @@ async function open(src, page, ctx) {
 
   S.cur = { src, page };
   const box = $("#oc-qlist");
+  // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
+  if (!box) return;
   box.innerHTML = '<div class="empty">불러오는 중…</div>';
   try {
     S.draft = await api(`/api/ocr/draft/${encodeURIComponent(src)}/${page}`);

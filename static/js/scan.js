@@ -221,6 +221,8 @@ async function open(qid, ctx) {
   }))) return;
 
   const box = $("#sc-editor");
+  // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
+  if (!box) return;
   box.innerHTML = '<div class="empty">불러오는 중…</div>';
   try {
     S.rec = await api("/api/scan/" + encodeURIComponent(qid));
@@ -255,6 +257,8 @@ function snapshot(r) {
 function renderEditor() {
   const r = S.rec, d = S.draft;
   const box = $("#sc-editor");
+  // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
+  if (!box) return;
   box.innerHTML = "";
   const card = el("div", "card qz-editor");
 

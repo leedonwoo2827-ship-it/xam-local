@@ -54,6 +54,8 @@ export async function mount(root, ctx) {
 /** 첫 실행 — 작업 폴더 지정. 바탕에 카드 하나로 둔다. */
 async function renderFirstRun(ctx, state) {
   const box = $("#hm-head");
+  // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
+  if (!box) return;
   box.innerHTML = "";
   box.classList.add("hm-first");
 
@@ -144,6 +146,8 @@ async function pickFolder(ctx) {
 
 function renderSteps(ctx) {
   const box = $("#hm-steps");
+  // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
+  if (!box) return;
   box.innerHTML = "";
   STEPS.forEach((s) => {
     const card = el("div", "card hm-step");
@@ -168,6 +172,8 @@ function renderSteps(ctx) {
 
 async function renderHead() {
   const box = $("#hm-head");
+  // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
+  if (!box) return;
   box.innerHTML = "";
   let v, book, scan;
   try {

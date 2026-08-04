@@ -214,6 +214,8 @@ function renderCount() {
 
 function renderList() {
   const box = $("#qz-list");
+  // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
+  if (!box) return;
   box.innerHTML = "";
   if (!S.list.items.length) {
     box.appendChild(el("div", "empty", "조건에 맞는 문항이 없습니다."));
@@ -245,6 +247,8 @@ async function openQuestion(qid) {
   if (S.dirty && !(await confirmDiscard())) return;
 
   const box = $("#qz-editor");
+  // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
+  if (!box) return;
   box.innerHTML = '<div class="empty">불러오는 중…</div>';
   try {
     S.rec = await api("/api/questions/" + encodeURIComponent(qid));
@@ -282,6 +286,8 @@ function snapshot(rec) {
 function renderEditor() {
   const r = S.rec, d = S.draft;
   const box = $("#qz-editor");
+  // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
+  if (!box) return;
   box.innerHTML = "";
 
   const card = el("div", "card qz-editor");

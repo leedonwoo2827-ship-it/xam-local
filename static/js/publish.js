@@ -48,34 +48,41 @@ export async function mount(root, ctx) {
 
 async function refresh() {
   const set = (id, msg) => { const b = $(id); if (b) b.innerHTML = `<div class="empty">${msg}</div>`; };
-  set("#pb-pre", "점검 중…");
-  const results = await Promise.allSettled([
-    api("/api/publish/preflight"),
-    api("/api/publish/env"),
-    api("/api/publish/problems"),
-    api("/api/publish/ftplist"),
-    api("/api/publish/checklist"),
-    api("/api/publish/ytmap"),
-  ]);
-  const [pre, env, problems, ftp, checklist, ytmap] = results;
-  P.pre = pre.status === "fulfilled" ? pre.value : { error: pre.reason?.message };
-  P.env = env.status === "fulfilled" ? env.value : null;
-  P.problems = problems.status === "fulfilled" ? problems.value : null;
-  P.ftp = ftp.status === "fulfilled" ? ftp.value : { error: ftp.reason?.message };
-  P.checklist = checklist.status === "fulfilled" ? checklist.value : null;
-  P.ytmap = ytmap.status === "fulfilled" ? ytmap.value : { error: ytmap.reason?.message };
 
-  renderPre();
-  renderYtmap();
-  renderBuild();
-  renderProblems();
-  renderStage();
-  renderServer();
+  /* ★ 도착하는 대로 그린다 — 전부 기다리지 않는다.
+   *
+   *   사전점검은 720문항을 훑어 6초가 걸리고 나머지는 0.1초 안이다. 예전에는
+   *   Promise.allSettled 로 여섯 개를 묶어 기다린 뒤 한 번에 그려서, **6초 동안
+   *   화면이 통째로 비어 있었다.** 업로드 카드(0.0초)까지 사전점검을 기다린 것이다.
+   *   빈 화면은 "고장" 처럼 보이고, 실제로 그렇게 오해했다.
+   */
+  const one = (url, key, render, msg) => {
+    if (msg) set(msg[0], msg[1]);
+    return api(url)
+      .then((v) => { P[key] = v; })
+      .catch((e) => { P[key] = { error: e.message }; })
+      .then(() => { try { render(); } catch (err) { console.error(err); } });
+  };
+
+  await Promise.all([
+    one("/api/publish/env", "env", renderBuild, ["#pb-build", "빌드 환경 확인 중…"]),
+    one("/api/publish/ytmap", "ytmap", renderYtmap, ["#pb-ytmap", "매핑 확인 중…"]),
+    one("/api/publish/problems", "problems", renderProblems,
+        ["#pb-problems", "problems.json 확인 중…"]),
+    one("/api/publish/checklist", "checklist", renderServer, null),
+    // 업로드 카드는 사전점검과 무관하다 — 먼저 뜬다.
+    Promise.resolve().then(() => renderStage()),
+    // 가장 느린 것을 마지막에 둔다(순서는 무관하지만 읽는 사람에게 의도가 보인다).
+    one("/api/publish/preflight", "pre", renderPre, ["#pb-pre", "점검 중… (720문항)"]),
+  ]);
 }
 
 /* ── ① 사전점검 ────────────────────────────────────── */
 function renderPre() {
   const box = $("#pb-pre");
+  // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
+  //   가드가 없으면 "Cannot set properties of null" 이 콘솔을 덮는다.
+  if (!box) return;
   box.innerHTML = "";
   const d = P.pre;
   if (d.error) {
@@ -145,6 +152,9 @@ function fmtSec(n) {
 
 function renderYtmap() {
   const box = $("#pb-ytmap");
+  // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
+  //   가드가 없으면 "Cannot set properties of null" 이 콘솔을 덮는다.
+  if (!box) return;
   box.innerHTML = "";
   const d = P.ytmap;
   if (!d || d.error) {
@@ -238,8 +248,7 @@ function renderYtmap() {
     + "예: m01-1.static.mp4  https://drive.google.com/file/d/1AbC.../view"));
   const ta = el("textarea");
   ta.rows = 8;
-  ta.placeholder = "m01-1.static.mp4	https://drive.google.com/file/d/1AbC.../view
-m01-2.static.mp4	…";
+  ta.placeholder = "m01-1.static.mp4  https://drive.google.com/file/d/1AbC.../view";
   ta.style.width = "100%";
   pd.appendChild(ta);
   const pb = el("button", "btn primary", "붙여넣은 링크 채우기");
@@ -285,6 +294,9 @@ async function syncYtmap() {
 /* ── ③ 빌드 ────────────────────────────────────────── */
 function renderBuild() {
   const box = $("#pb-build");
+  // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
+  //   가드가 없으면 "Cannot set properties of null" 이 콘솔을 덮는다.
+  if (!box) return;
   box.innerHTML = "";
   const e = P.env;
   if (!e) { box.appendChild(el("div", "empty", "빌드 환경을 확인할 수 없습니다.")); return; }
@@ -453,6 +465,9 @@ function renderBuildProgress(job) {
 /* ── ③ problems.json ──────────────────────────────── */
 function renderProblems() {
   const box = $("#pb-problems");
+  // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
+  //   가드가 없으면 "Cannot set properties of null" 이 콘솔을 덮는다.
+  if (!box) return;
   box.innerHTML = "";
   renderPartial(box);
   const d = P.problems;
@@ -517,6 +532,7 @@ function renderProblems() {
  *   "갱신 1 · 변경없음 719" 로 나와서 내가 고친 것이 들어갔는지 알기 어렵다.
  */
 async function renderPartial(box) {
+  if (!box) return;
   let d = null;
   try { d = await api("/api/publish/partial"); } catch (e) { return; }
 
@@ -563,10 +579,8 @@ async function renderPartial(box) {
         body: JSON.stringify(body),
       });
       toast(`${r.picked}문항 · ${Math.round(r.bytes / 1024)}KB`);
-      out.textContent = r.path + "
-기대 리포트: " + r.expect
-        + "
-★ skip_edited 가 0 인지 확인하세요 — 0 이 아니면 그 문항을 전에 웹에서 "
+      out.textContent = r.path + "\n기대 리포트: " + r.expect
+        + "\n★ skip_edited 가 0 인지 확인하세요 — 0 이 아니면 그 문항을 전에 웹에서 "
         + "고친 것입니다(problem.php:18). 관리자 화면에서 '원본 복원' 을 누른 뒤 "
         + "다시 임포트해야 로컬 수정이 들어갑니다.";
       out.hidden = false;
@@ -583,9 +597,9 @@ async function renderPartial(box) {
  * ★ 왜 파일 목록이 아니라 폴더를 만드는가
  *
  *   올릴 것이 로컬 두 곳에서 서버 세 곳으로 간다:
- *     06\              → /www/exam/
- *     axexam\web\exam\ → /www/exam/   (같은 자리에 섞인다)
- *     axexam\webdm\  → /www/adm/    (/exam/ 밖!)
+ *     06/              → /www/exam/
+ *     axexam/web/exam/ → /www/exam/   (같은 자리에 섞인다)
+ *     axexam/web/adm/  → /www/adm/    (/exam/ 밖!)
  *   이 매핑을 머릿속으로 하면서 FileZilla 를 쓰면 반드시 틀리고, **틀려도 업로드는
  *   성공한 것처럼 보인다** — 웹에서 증상이 엉뚱한 얼굴로 나타날 뿐이다.
  *
@@ -594,6 +608,9 @@ async function renderPartial(box) {
  */
 async function renderStage() {
   const box = $("#pb-ftp");
+  // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
+  //   가드가 없으면 "Cannot set properties of null" 이 콘솔을 덮는다.
+  if (!box) return;
   box.innerHTML = "";
   let st = null;
   try { st = await api("/api/publish/stage"); } catch (e) { /* 아래에서 처리 */ }
@@ -664,6 +681,9 @@ async function renderStage() {
 /* ── ④ FTP ────────────────────────────────────────── */
 function renderFtp() {
   const box = $("#pb-ftp");
+  // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
+  //   가드가 없으면 "Cannot set properties of null" 이 콘솔을 덮는다.
+  if (!box) return;
   box.innerHTML = "";
   const d = P.ftp;
   if (d.error) {
@@ -732,6 +752,9 @@ async function openOut() {
 /* ── ⑤ 서버 단계 ──────────────────────────────────── */
 function renderServer() {
   const box = $("#pb-server");
+  // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
+  //   가드가 없으면 "Cannot set properties of null" 이 콘솔을 덮는다.
+  if (!box) return;
   box.innerHTML = "";
   const d = P.checklist;
   if (!d) { box.appendChild(el("div", "empty", "체크리스트를 불러올 수 없습니다.")); return; }
