@@ -89,14 +89,17 @@ $ex_url = G5_URL . '/exam';
                      같은 푸터 안에서 두 열의 리듬이 어긋난다.
                      `.ft_txt` 는 `#ft .ft_cnt a` 와 같은 블록·행간을 쓴다(gnuboard-skin.css).
 
-                     ⚠ 답변 초안 일괄 생성은 아직 안 붙었다(DeepSeek 키 발급 전).
-                       qa_draft 컬럼·상태·검수 화면은 준비됐지만 모델을 태우지 않는다.
-                       되는 것처럼 적지 않는다 — 랜딩 푸터와 같은 기준이다. */ ?>
+                     2026-08-04: 답변 초안 일괄 생성의 `준비 중` 을 뗐다. 그때까지 붙어
+                       있던 이유는 컬럼·상태·검수 화면은 다 있는데 ex_draft_one() 을 부르는
+                       버튼이 없어 큐가 영원히 비어 있었기 때문이다. 게시판 가져오기와
+                       일괄 요청을 붙여 흐름이 이어졌다.
+                     ★ 여기 문구를 바꿀 때는 exam/features.php 의 같은 항목도 같이 본다.
+                       두 곳이 갈리면 푸터는 '준비 중' 인데 상세는 '됩니다' 가 된다. */ ?>
             <?php /* 착지점은 features.php(자료화면)다. 관리자 화면으로 직접 보내면
                      방문자가 관리자 로그인으로 튕겨 '링크가 죽었다'로 읽힌다.
                      features.php 는 관리자로 로그인했을 때만 실제 화면 링크를 덧붙인다. */ ?>
             <a href="<?php echo $ex_url ?>/features.php#review">질문 검수 큐 — 답변 전 관리자 승인</a>
-            <a href="<?php echo $ex_url ?>/features.php#draft" class="ft_soon">답변 초안 일괄 생성 <em>준비 중</em></a>
+            <a href="<?php echo $ex_url ?>/features.php#draft">답변 초안 일괄 생성 — 승인 시 게시판 자동 답변</a>
             <a href="<?php echo $ex_url ?>/features.php#import">문제 일괄 등록 · 변경분만 갱신</a>
             <a href="<?php echo $ex_url ?>/features.php#quality">실 정답률로 문제 오류 자동 발견</a>
             <a href="<?php echo $ex_url ?>/features.php#credit">수강·포인트 문제집 단위 분리</a>

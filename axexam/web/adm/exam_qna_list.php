@@ -20,6 +20,95 @@ require_once './_common.php';
 
 auth_check_menu($auth, $sub_menu, 'r');
 
+require_once './exam_lib/board_qna.php';   // 게시판 ↔ ex_qna 다리
+require_once './exam_lib/prompt.php';      // ex_draft_one()
+
+$msg = ''; $err = ''; $warns = array();
+
+/* ── 처리 ──────────────────────────────────────────────────────────────────
+ *
+ * ★ 필터는 계속 $_GET 에서 읽는다. 아래 폼들이 `action="<?= $qs() ?>"` 로 **현재
+ *   쿼리스트링을 그대로 달고** POST 하므로, 처리 후에도 보고 있던 탭·문제집이 유지된다.
+ *   ($_REQUEST 로 바꾸면 필터 파싱 전체의 신뢰 경계가 넓어진다.)
+ *
+ * ★ 처리를 조회보다 먼저 둔다. 뒤에 두면 방금 가져온 질문이 목록에 안 보인다.
+ */
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    auth_check_menu($auth, $sub_menu, 'w');
+    if (function_exists('check_admin_token')) check_admin_token();
+    else                                     check_token();
+
+    $act = isset($_POST['act']) ? $_POST['act'] : '';
+
+    if ($act === 'pull') {
+        /* 게시판 원글 → ex_qna. 문제집이 선택돼 있으면 그것만, 아니면 열린 것 전부. */
+        $targets = array();
+        $pp = isset($_POST['pull_pd']) ? preg_replace('/[^a-z0-9\-]/', '', $_POST['pull_pd']) : '';
+        if ($pp !== '') {
+            $targets[] = $pp;
+        } else {
+            $r2 = sql_query("select pd_id from ex_product where pd_open = 1 order by pd_sort, pd_id", false);
+            while ($r2 && $x = sql_fetch_array($r2)) $targets[] = $x['pd_id'];
+        }
+
+        $tot_new = 0; $lines = array();
+        foreach ($targets as $t) {
+            $r = exbq_pull_board($t, $member['mb_id']);
+            if (empty($r['ok'])) { $warns[] = $t . ' — ' . $r['msg']; continue; }
+            $tot_new += (int)$r['new'];
+            $lines[] = $t . ' ' . (int)$r['new'] . '건';
+            // ★ 상한에 걸려 남은 것은 반드시 알린다. 조용히 잘리면 '다 가져왔다'고 믿는다.
+            if (!empty($r['more'])) $warns[] = $t . ' — 남은 글이 더 있습니다. 한 번 더 누르십시오.';
+            foreach ($r['fail'] as $f) $warns[] = $f;
+        }
+        $msg = $tot_new
+             ? ('게시판에서 ' . $tot_new . '건을 가져왔습니다 (' . implode(' · ', $lines) . '). '
+                . '이제 체크해서 [선택 초안 요청] 을 누르십시오.')
+             : '새로 가져올 글이 없습니다. 이미 다 등록돼 있습니다.';
+
+    } elseif ($act === 'draft') {
+        /* 선택 건 초안 일괄 생성.
+         *
+         * ★ 벽시계 예산으로 끊는다. 초안 1건은 LLM 호출이라 최대 60초까지 걸린다
+         *   (llm.php 의 timeout). 10건을 한 번에 돌리면 PHP max_execution_time 이
+         *   먼저 죽고, **어디까지 처리됐는지 모른 채 화면이 끊긴다.**
+         *   그래서 예산을 넘기면 멈추고 "몇 건 남았다"를 돌려준다. 서버 설정이
+         *   무엇이든 같은 방식으로 동작한다.
+         */
+        @set_time_limit(0);
+        $BUDGET = 100;                       // 초. 카페24 기본 제한(대개 300)보다 넉넉히 안쪽
+        $t0 = microtime(true);
+
+        $ids = isset($_POST['chk']) && is_array($_POST['chk']) ? $_POST['chk'] : array();
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+
+        if (!$ids) {
+            $err = '초안을 만들 질문을 먼저 체크해 주십시오.';
+        } else {
+            $ok = 0; $ng = 0; $left = 0; $cost = 0.0; $over = 0;
+            foreach ($ids as $i => $id) {
+                if (microtime(true) - $t0 > $BUDGET) { $left = count($ids) - $i; break; }
+                $r = ex_draft_one($id, $member['mb_id']);
+                if (!empty($r['ok'])) {
+                    $ok++;
+                    $cost += (float)$r['cost'];
+                    if (!empty($r['over_cap'])) $over++;
+                } else {
+                    $ng++;
+                    $warns[] = $r['msg'];
+                }
+            }
+            $msg = '초안 ' . $ok . '건 생성 · 원가 ' . number_format($cost, 4) . '원';
+            if ($ng)   $msg .= ' · 실패 ' . $ng . '건';
+            if ($over) $msg .= ' · 원가 상한 초과 ' . $over . '건';
+            if ($left) {
+                $msg .= ' · ' . $left . '건은 시간이 부족해 남겼습니다 — 다시 체크해서 눌러 주십시오.';
+            }
+            if ($ok) $msg .= '  이제 한 건씩 열어 초안을 검수·승인하십시오.';
+        }
+    }
+}
+
 /* ── 필터 ──────────────────────────────────────────────────────────────── */
 $st   = isset($_GET['st'])   ? preg_replace('/[^a-z_]/', '', $_GET['st'])       : 'open';
 $pd   = isset($_GET['pd'])   ? preg_replace('/[^a-z0-9\-]/', '', $_GET['pd'])   : '';
@@ -80,6 +169,28 @@ $open_n = (isset($counts['pending']) ? $counts['pending'] : 0)
 $prods = array();
 $res = sql_query("select pd_id, pd_name from ex_product order by pd_sort, pd_id", false);
 while ($r = sql_fetch_array($res)) $prods[] = $r;
+
+/* 초안 1건의 원가 상한 — 확인창에 "N건 · 최대 M원" 을 적기 위한 값이다.
+   문제집마다 다를 수 있으니 **가장 큰 값**을 쓴다. 적게 어림하면 안 된다. */
+$cap1 = sql_fetch("select max(cost_cap) as c from ex_product where pd_open = 1");
+$CAP1 = $cap1 ? (float)$cap1['c'] : 3.0;
+
+/* 아직 ex_qna 로 안 들어온 게시판 글이 몇 건인가 — [가져오기] 버튼 옆에 띄운다.
+   0 이면 버튼을 눌러도 아무 일이 없으므로, 누르기 전에 알려 준다. */
+$pending_board = 0;
+$board_missing = array();
+$res = sql_query("select pd_id from ex_product where pd_open = 1 order by pd_sort, pd_id", false);
+while ($res && $r = sql_fetch_array($res)) {
+    $bo = exbq_bo($r['pd_id']);
+    if (!exbq_board_exists($bo)) { $board_missing[] = $r['pd_id'] . ' → ' . $bo; continue; }
+    $wt  = exbq_wt($bo);
+    $boq = sql_real_escape_string($bo);
+    $c = sql_fetch("select count(*) as c from `$wt` w
+                     where w.wr_is_comment = 0
+                       and not exists (select 1 from ex_qna q
+                                        where q.bo_table = '$boq' and q.wr_id = w.wr_id)");
+    if ($c) $pending_board += (int)$c['c'];
+}
 
 /* 과목 목록 — 선택된 문제집이 있을 때만. 문제집마다 과목이 달라 섞으면 의미가 없다. */
 $subs = array();
@@ -153,9 +264,71 @@ $qs = function ($over = array()) use ($st, $pd, $kind, $sj, $stx) {
 .exq .pg a,.exq .pg span{padding:4px 10px;border:1px solid #e3e6ec;border-radius:4px;
   text-decoration:none;color:#444;font-size:12.5px}
 .exq .pg span.cur{background:#0f172a;border-color:#0f172a;color:#fff;font-weight:700}
+.exq .note{border-radius:6px;padding:10px 13px;margin:0 0 14px;font-size:13px;line-height:1.7}
+.exq .note.ok{background:#e9f7ef;border:1px solid #0f7355;color:#0a5c3c}
+.exq .note.er{background:#fdeced;border:1px solid #c22638;color:#8e1524}
+.exq .note.wa{background:#fff8e5;border:1px solid #a5820a;color:#6f5600}
+.exq .note ul{margin:6px 0 0;padding-left:20px}
+/* 일괄 처리 바 — 표 위·아래에 같은 것을 둔다. 30건을 스크롤한 뒤 위로 돌아가지
+   않아도 되게. 아래쪽이 실제로 더 많이 쓰인다. */
+.exq .bulk{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:0 0 10px}
+.exq .bulk.bot{margin:12px 0 0}
+.exq .bulk .n{font-weight:700}
+.exq td.ck,.exq th.ck{width:34px;text-align:center}
 </style>
 
 <div class="exq">
+
+<?php if ($msg): ?><div class="note ok"><?php echo exq_h($msg) ?></div><?php endif; ?>
+<?php if ($err): ?><div class="note er"><?php echo exq_h($err) ?></div><?php endif; ?>
+<?php if ($warns): ?>
+  <div class="note wa">
+    <b>확인하실 것 <?php echo count($warns) ?>건</b>
+    <ul><?php foreach (array_slice($warns, 0, 12) as $w0): ?>
+      <li><?php echo exq_h($w0) ?></li>
+    <?php endforeach; ?></ul>
+    <?php if (count($warns) > 12): ?><div>… 외 <?php echo count($warns) - 12 ?>건</div><?php endif; ?>
+  </div>
+<?php endif; ?>
+
+  <!-- ── 게시판에서 가져오기 ──────────────────────────────────────────────
+       질문은 그누보드 과목게시판으로 들어온다. 이 버튼이 그것을 ex_qna 로 옮긴다.
+       ★ 이게 없으면 초안·검수·승인 흐름 전체가 빈 큐 위에서 돌아간다. -->
+  <div class="box">
+    <h2>게시판에서 가져오기
+      <span class="hint">— 과목게시판 글을 검수 큐로 옮깁니다</span></h2>
+    <form method="post" action="<?php echo $qs() ?>" class="srch">
+      <input type="hidden" name="token" value="">
+      <input type="hidden" name="act" value="pull">
+      <select name="pull_pd" style="padding:6px 9px;border:1px solid #dde1e8;border-radius:5px;font-size:13px">
+        <option value="">열린 문제집 전부</option>
+        <?php foreach ($prods as $p): ?>
+          <option value="<?php echo exq_h($p['pd_id']) ?>"<?php echo $pd === $p['pd_id'] ? ' selected' : '' ?>>
+            <?php echo exq_h($p['pd_name']) ?></option>
+        <?php endforeach; ?>
+      </select>
+      <button type="submit" class="btn_submit">가져오기</button>
+      <span class="hint">
+        <?php if ($pending_board): ?>
+          아직 안 가져온 게시판 글 <b><?php echo number_format($pending_board) ?>건</b>
+        <?php else: ?>
+          가져올 새 글이 없습니다.
+        <?php endif; ?>
+      </span>
+    </form>
+    <?php if ($board_missing): ?>
+      <div class="hint" style="margin-top:8px;color:#c22638">
+        과목게시판이 없는 문제집: <?php echo exq_h(implode(' · ', $board_missing)) ?>
+        — 그누보드 관리자 → 게시판 관리에서 <b>그 이름 그대로</b> 만드십시오.
+      </div>
+    <?php endif; ?>
+    <div class="hint" style="margin-top:8px">
+      같은 글을 두 번 가져오지 않습니다(<code>bo_table</code> + <code>wr_id</code> 로 판정).
+      제목의 <code>1회 61번</code> 같은 표식에서 문항을 자동으로 찾아 붙입니다 —
+      <b>문항이 붙으면 초안 품질이 크게 올라갑니다</b>(발문·보기·정답·해설이 프롬프트에 들어갑니다).
+      제목에 '오류·신고·틀린·잘못'이 있으면 <span class="tag red">오류 신고</span>로 분류합니다.
+    </div>
+  </div>
 
   <div class="box">
     <div class="tabs">
@@ -213,14 +386,48 @@ $qs = function ($over = array()) use ($st, $pd, $kind, $sj, $stx) {
       <p class="hint">해당하는 질문이 없습니다.
         <?php if ($st === 'open'): ?><b>미처리가 0건입니다 — 다 답변했습니다.</b><?php endif; ?></p>
     <?php else: ?>
+    <form method="post" action="<?php echo $qs() ?>" id="bulkForm">
+    <input type="hidden" name="token" value="">
+    <input type="hidden" name="act" value="draft">
+
+    <?php
+    /* 일괄 바를 표 위·아래에 같은 내용으로 둔다. 30건을 훑고 내려온 뒤 위로 다시
+       올라가지 않아도 되게. `$bulkbar` 로 한 번만 쓰고 두 번 출력한다 —
+       두 벌을 손으로 유지하면 반드시 갈린다. */
+    $bulkbar = function ($cls) use ($CAP1) { ?>
+      <div class="bulk <?php echo $cls ?>">
+        <button type="submit" class="btn_submit" id="draftBtn<?php echo $cls ?>">
+          선택 초안 요청</button>
+        <span class="hint">
+          체크한 <b class="n" id="selN<?php echo $cls ?>">0</b>건에 LLM 초안을 만듭니다 ·
+          건당 최대 <?php echo number_format($CAP1, 2) ?>원
+        </span>
+      </div>
+    <?php };
+    $bulkbar('top');
+    ?>
+
     <table>
       <tr>
+        <th class="ck"><input type="checkbox" id="ckAll" title="전체 선택"></th>
         <th>#</th><th>상태</th><th>문제집 · 과목</th><th>질문</th>
         <th>회원</th><th>포인트</th><th>등록</th><th>처리</th>
       </tr>
       <?php foreach ($rows as $q):
         $s = isset($ST[$q['qa_status']]) ? $ST[$q['qa_status']] : array('', $q['qa_status']); ?>
       <tr>
+        <?php
+        /* 초안을 만들 수 있는 상태만 체크할 수 있게 한다.
+           ex_draft_one() 이 pending|draft_ready 만 집으므로(원자적 잠금), 완료·반려를
+           체크해 보내면 그쪽에서 "대상이 아닙니다" 로 떨어진다. 눌러도 안 되는 것을
+           체크하게 두면 실패 목록만 길어진다 — 여기서 막는다. */
+        $ckable = in_array($q['qa_status'], array('pending', 'draft_ready'), true);
+        ?>
+        <td class="ck">
+          <?php if ($ckable): ?>
+            <input type="checkbox" class="ck1" name="chk[]" value="<?php echo (int)$q['qa_id'] ?>">
+          <?php endif; ?>
+        </td>
         <td><?php echo (int)$q['qa_id'] ?></td>
         <td>
           <span class="pill <?php echo $s[0] ?>"><?php echo exq_h($s[1]) ?></span>
@@ -272,6 +479,51 @@ $qs = function ($over = array()) use ($st, $pd, $kind, $sj, $stx) {
       <?php endforeach; ?>
     </table>
 
+    <?php $bulkbar('bot'); ?>
+    </form>
+
+    <script>
+    /* 선택 개수 표시 + 확인창. 인라인으로 두는 이유: 이 화면 하나에만 쓰이고,
+       adm/ 에 별도 js 파일을 늘리면 캐시 무효화까지 따라온다. */
+    (function () {
+      var caps = <?php echo json_encode(number_format($CAP1, 2)) ?>;
+      var boxes = function () { return document.querySelectorAll('#bulkForm .ck1'); };
+      var all   = document.getElementById('ckAll');
+
+      function sel() {
+        var n = 0, b = boxes();
+        for (var i = 0; i < b.length; i++) if (b[i].checked) n++;
+        return n;
+      }
+      function paint() {
+        var n = sel();
+        ['top', 'bot'].forEach(function (k) {
+          var e = document.getElementById('selN' + k);
+          if (e) e.textContent = n;
+        });
+      }
+      if (all) all.onclick = function () {
+        var b = boxes();
+        for (var i = 0; i < b.length; i++) b[i].checked = all.checked;
+        paint();
+      };
+      var b = boxes();
+      for (var i = 0; i < b.length; i++) b[i].onclick = paint;
+      paint();
+
+      /* ★ 확인창은 **건수와 돈**을 말한다. "진행할까요?" 만 묻는 창은 아무 정보가 없어서
+         사람이 습관적으로 확인을 누르게 되고, 그때 원가가 나간다. */
+      document.getElementById('bulkForm').onsubmit = function () {
+        var n = sel();
+        if (!n) { alert('초안을 만들 질문을 먼저 체크해 주십시오.'); return false; }
+        return confirm(n + '건에 LLM 초안을 만듭니다.\n'
+          + '예상 원가 최대 ' + caps + '원 × ' + n + '건\n\n'
+          + '초안은 이용자에게 보이지 않습니다. 검수·승인한 답변만 공개됩니다.\n'
+          + '시간이 오래 걸리면 일부만 처리하고 남은 건수를 알려 드립니다.');
+      };
+    })();
+    </script>
+
     <?php
     $pages = (int)ceil($total / $per);
     if ($pages > 1):
@@ -290,9 +542,31 @@ $qs = function ($over = array()) use ($st, $pd, $kind, $sj, $stx) {
   </div>
 
   <div class="box">
+    <h2>아침에 하는 일</h2>
+    <div class="hint">
+      <b>①</b> 위 <b>[가져오기]</b> — 과목게시판 새 질문을 이 큐로 옮긴다.<br>
+      <b>②</b> 체크 → <b>[선택 초안 요청]</b> — 건수와 예상 원가를 확인하고 진행한다.
+        전체 선택은 표 머리의 체크박스다.<br>
+      <b>③</b> 한 건씩 <b>[답변]</b> → 초안을 읽고 <b>[초안을 답변란으로 복사]</b> → 고쳐서 <b>[승인 · 공개]</b>.<br>
+      <b>④</b> 승인하면 <b>게시판 원글에 답변 댓글이 자동으로 달린다.</b> 질문자는 게시판에서
+        답을 본다 — 우리 DB 에만 넣으면 그 사람 입장에서는 아무 일도 안 일어난 것이다.
+        오타를 고쳐 다시 승인하면 그 댓글이 갱신된다(새로 달지 않는다).<br>
+      <br>
+      ★ <b>초안은 공짜가 아니다.</b> 1건 = LLM 호출 1건이다. 그래서 [초안 요청] 은 반드시
+        건수와 예상 원가를 먼저 보여준다. 모델·상한은 <a href="./exam_llm.php">답변 초안 설정</a>에서
+        문제집별로 바꾼다(<code>ex_product</code> 한 행 — PHP 를 고치지 않는다).<br>
+      ★ 초안이 오래 걸려 <b>일부만 처리</b>되면 남은 건수를 알려 준다. 다시 체크해서 누르면 이어진다.
+        조용히 끊기지 않게 벽시계 예산으로 끊는다.
+    </div>
+  </div>
+
+  <div class="box">
     <h2>읽는 법</h2>
     <div class="hint">
       <b>정렬</b> — 검수 대기가 맨 위, 그 다음 <b>오래된 질문 순</b>이다. 오래 기다린 사람이 먼저 답을 받아야 한다.<br>
+      <b>문항 연결</b> — 질문 밑에 <code>m01-7#61</code> 처럼 뜨면 그 문항의 발문·보기·정답·해설이
+      초안 프롬프트에 들어간다. <b>초안 품질을 가장 크게 좌우한다.</b> 게시판 제목의
+      <code>1회 61번</code> 표식에서 자동으로 찾는다 — 표식이 없으면 과목만으로 초안을 쓴다.<br>
       <span class="tag red">차감 미확정</span> — 포인트는 빠졌는데 <code>qa_credit_ok</code> 가 0 이다.
       질문 등록 3단계 중 마지막이 실패한 경우다. 원장에는 차감이 남아 회계는 맞지만 <b>수동 확인 대상</b>이다.<br>
       <span class="tag blue">초안 있음</span> — LLM 초안(<code>qa_draft</code>)이 있다.

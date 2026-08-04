@@ -20,6 +20,8 @@ require_once './_common.php';
 auth_check_menu($auth, $sub_menu, 'r');
 
 require_once G5_PATH . '/exam/api/lib/credit.php';
+require_once './exam_lib/prompt.php';      // ex_draft_one()
+require_once './exam_lib/board_qna.php';   // exbq_answer_to_board()
 
 $qa_id = (int)(isset($_REQUEST['qa_id']) ? $_REQUEST['qa_id'] : 0);
 $msg = ''; $err = '';
@@ -55,6 +57,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $msg = ($act === 'approve')
                  ? '승인했습니다. 이용자에게 공개됩니다.'
                  : '저장했습니다. (상태는 그대로 — 승인해야 공개됩니다)';
+
+            /* ★ 게시판에서 온 질문이면 게시판에도 답을 달아야 한다.
+             *
+             *   질문자는 게시판에 글을 썼고 알림·목록을 거기서 본다. 우리 DB 에만
+             *   답이 들어가면 그 사람 입장에서는 **아무 일도 일어나지 않은 것**이다.
+             *   (문제풀이 화면 넷째 탭의 '답변완료' 뱃지도 ex_qna 를 보므로 켜지지만,
+             *    정작 글을 열면 댓글이 없다 — 그게 더 나쁘다.)
+             *
+             *   재승인(오타 수정)이면 기존 댓글 내용을 갈아 끼운다. qa_reply_wr_id 를
+             *   들고 있어서 가능하다 — 없으면 답이 두 개 붙는다.
+             *
+             *   실패는 삼키지 않는다. 승인은 이미 됐으므로 되돌리지 않고, 대신 화면에
+             *   그대로 알려 수동으로 처리하게 한다.
+             */
+            if ($act === 'approve') {
+                $rb = exbq_answer_to_board($qa_id, $member['mb_id']);
+                if (!empty($rb['ok'])) {
+                    $msg .= !empty($rb['updated'])
+                          ? ' 게시판 답변 댓글도 갱신했습니다.'
+                          : ' 게시판에 답변 댓글을 달았습니다.';
+                } elseif (empty($rb['skip'])) {
+                    $err = '승인은 됐지만 게시판 댓글에 실패했습니다 — ' . $rb['msg']
+                         . ' 게시판에서 직접 답글을 달아 주십시오.';
+                }
+            }
+        }
+
+    } elseif ($act === 'draft') {
+        /* 단건 초안 생성. 목록의 일괄과 같은 함수를 쓴다 — 두 경로가 갈리면
+           한쪽만 고쳐지는 일이 생긴다. */
+        @set_time_limit(0);
+        $r = ex_draft_one($qa_id, $member['mb_id']);
+        if (!empty($r['ok'])) {
+            $msg = '초안을 만들었습니다 · 원가 ' . number_format((float)$r['cost'], 4) . '원'
+                 . (!empty($r['over_cap']) ? ' (원가 상한 초과 — 모델·프롬프트를 확인하십시오)' : '')
+                 . '. 아래 초안을 읽고 [초안을 답변란으로 복사] 하십시오.';
+        } else {
+            $err = $r['msg'];
         }
 
     } elseif ($act === 'reject') {
@@ -322,6 +362,39 @@ $ST   = array('pending' => '대기', 'drafting' => '초안 생성 중', 'draft_r
     <div class="box">
       <h2>질문</h2>
       <div class="qbody"><?php echo exf_h($q['qa_question']) ?></div>
+
+      <?php
+      /* ── 초안 생성 버튼 ──
+       * pending·draft_ready 일 때만 낸다. ex_draft_one() 이 그 두 상태만 집으므로
+       * (원자적 잠금) 다른 상태에서 눌러도 "대상이 아닙니다" 로 떨어진다 —
+       * 눌러도 안 되는 버튼을 보여주지 않는다.
+       *
+       * 문항이 연결됐는지를 버튼 옆에 적는다. 이게 초안 품질을 가장 크게 좌우하는데,
+       * 만든 뒤에 알면 원가를 이미 쓴 뒤다. */
+      $can_draft = in_array($q['qa_status'], array('pending', 'draft_ready'), true);
+      $has_draft = ($q['qa_draft'] !== null && $q['qa_draft'] !== '');
+      if ($can_draft):
+      ?>
+      <form method="post" style="margin-top:14px;padding-top:12px;border-top:1px solid #eceff3">
+        <input type="hidden" name="token" value="">
+        <input type="hidden" name="qa_id" value="<?php echo (int)$q['qa_id'] ?>">
+        <input type="hidden" name="act" value="draft">
+        <div class="acts">
+          <button type="submit" class="btn_b01"
+                  onclick="return confirm('LLM 초안을 만듭니다. 원가가 발생합니다.\n초안은 이용자에게 보이지 않습니다.');">
+            <?php echo $has_draft ? '초안 다시 만들기' : '초안 생성' ?></button>
+          <span class="hint">
+            <?php if ($q['pr_key'] !== ''): ?>
+              문항 <code><?php echo exf_h($q['pr_key']) ?></code> 연결됨 —
+              발문·보기·정답·해설이 프롬프트에 들어갑니다.
+            <?php else: ?>
+              <b>문항이 연결되지 않았습니다.</b> 과목 정보만으로 초안을 만들어 품질이 떨어집니다 —
+              게시판 제목에 <code>1회 61번</code> 같은 표식이 있으면 자동으로 붙습니다.
+            <?php endif; ?>
+          </span>
+        </div>
+      </form>
+      <?php endif; ?>
 
       <?php if ($q['qa_draft'] !== null && $q['qa_draft'] !== ''): ?>
         <h2 style="margin-top:16px">LLM 초안

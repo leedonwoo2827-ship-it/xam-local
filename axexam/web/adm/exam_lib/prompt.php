@@ -21,6 +21,13 @@
  */
 if (!defined('_GNUBOARD_')) exit;
 
+/* ★ ex_draft_one() 이 ex_llm_call() 을 부른다 — 그 함수는 llm.php 에 있다.
+ *   이 require 가 없으면 "Call to undefined function ex_llm_call()" 로 죽는다.
+ *   지금까지 안 걸린 이유는 이 파일을 include 하는 화면이 없었기 때문이다
+ *   (exam_llm.php 는 llm.php 를 직접 부른다). 의존은 쓰는 파일이 들고 있어야 한다 —
+ *   부르는 화면이 챙기게 두면 화면을 하나 더 만들 때 또 빠뜨린다. */
+require_once __DIR__ . '/llm.php';
+
 /** 보기 배열 → "① …\n② …" */
 function ex_pr_choices_text($choices_json)
 {
