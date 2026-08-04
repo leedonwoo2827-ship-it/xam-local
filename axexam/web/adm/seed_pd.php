@@ -296,7 +296,7 @@ $f_name = $edit ? $edit['pd_name'] : '빅데이터분석기사 필기';
 $f_sort = $edit ? (int)$edit['pd_sort'] : 20;
 ?><!DOCTYPE html>
 <html lang="ko"><head><meta charset="utf-8">
-<title>품목 관리 (1회용)</title>
+<title>품목·수강과정 관리 (1회용)</title>
 <style>
  body{font:14px/1.7 -apple-system,"Malgun Gothic",sans-serif;max-width:940px;margin:32px auto;padding:0 16px;color:#1b1f19}
  h1{font-size:19px;margin:0 0 4px} h3{font-size:15px;margin:22px 0 6px}
@@ -319,8 +319,11 @@ $f_sort = $edit ? (int)$edit['pd_sort'] : 20;
  a{color:#cd240e}
 </style></head><body>
 
-<h1>품목 관리 <span class="m">(ex_product · 1회용)</span></h1>
-<p class="m">임포트는 이 행이 없으면 중단됩니다. 카페24에 phpMyAdmin 이 없어 이 화면으로 대신합니다.</p>
+<h1>품목·수강과정 관리 <span class="m">(ex_product + ex_plan · 1회용)</span></h1>
+<p class="m">
+  임포트는 <code>ex_product</code> 행이 없으면 중단되고, 신청서는 <code>ex_plan</code> 행이
+  없으면 비어 있습니다. 카페24에 phpMyAdmin 이 없어 이 화면으로 둘을 대신합니다.
+</p>
 
 <?php if ($msg): ?><div class="ok"><?php echo htmlspecialchars($msg) ?></div><?php endif; ?>
 <?php if ($err): ?><div class="er"><?php echo htmlspecialchars($err) ?></div><?php endif; ?>
