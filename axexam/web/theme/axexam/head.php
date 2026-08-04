@@ -98,9 +98,33 @@ $ex_pd = $ex_books ? $ex_books[0]['pd_id'] : '';
               return $ex_url . '/' . $page . $ex_q . $extra;
           };
           ?>
-          <a class="axnav-item" href="<?php echo $ex_url ?>/"><svg class="ic"><use href="#i-clipboard"></use></svg>문제집</a>
-          <a class="axnav-item<?php echo $on('check.php') ?>" href="<?php echo $ex_go('check.php') ?>"><svg class="ic"><use href="#i-edit"></use></svg>문제 풀기</a>
-          <a class="axnav-item" href="<?php echo $ex_go('check.php', '&amp;m=theory') ?>"><svg class="ic"><use href="#i-book"></use></svg>이론</a>
+          <?php
+          /* ★ 내비는 **문제집 이름**을 직접 띄운다.
+           *
+           *   예전에는 `문제집` · `문제 풀기` · `이론` 세 개였다. 기능 이름이라 어느
+           *   자격증인지 알 수 없고, `문제 풀기` 는 $ex_books[0](정렬 첫 품목) 하나로만
+           *   갔다. 품목이 둘이 되자 "다른 자격증은 어디로 들어가나" 가 됐다.
+           *
+           *   → 문제집을 이름으로 나열한다. 누르면 그 문제집 문제풀이로 간다.
+           *     목록은 위에서 DB 로 뽑은 $ex_books 라 품목이 늘어도 이 파일을 안 고친다.
+           *     이론은 그 화면 안의 탭(&m=theory)이므로 내비에서 뺀다 — 문제집을 고르기
+           *     전에는 어느 이론인지 정할 수 없다.
+           */
+          foreach ($ex_books as $ex_b) {
+              $bid  = $ex_b['pd_id'];
+              $bq   = '?pd=' . urlencode($bid);
+              $bon  = (strpos($_SERVER['REQUEST_URI'], 'pd=' . $bid) !== false
+                       && strpos($_SERVER['REQUEST_URI'], 'check.php') !== false) ? ' on' : '';
+              echo '<a class="axnav-item' . $bon . '" href="' . $ex_url . '/check.php' . $bq . '">'
+                 . '<svg class="ic"><use href="#i-edit"></use></svg>'
+                 . htmlspecialchars($ex_b['pd_name']) . '</a>';
+          }
+          if (!$ex_books) {
+              // 문제 임포트 전 — 링크할 곳이 없다. 목록으로 보낸다.
+              echo '<a class="axnav-item" href="' . $ex_url . '/">'
+                 . '<svg class="ic"><use href="#i-clipboard"></use></svg>문제집</a>';
+          }
+          ?>
           <a class="axnav-item<?php echo $on('buy.php') ?>" href="<?php echo $ex_go('buy.php') ?>"><svg class="ic"><use href="#i-cap"></use></svg>수강 신청</a>
           <?php /* 성적표 샘플 — 로그인·응시 없이 열린다(api/lib/sample.php).
                    채점 뒤에 무엇이 나오는지 보여주는 유일한 경로다. */ ?>

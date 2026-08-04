@@ -119,12 +119,33 @@ $res = sql_query("select * from ex_plan
                    order by pl_sort, pl_id", false);
 while ($r = sql_fetch_array($res)) $plans[] = $r;
 
-/* 다른 문제집으로 갈아타는 링크용. 노출 중인 것만. */
-$others = array();
+/* ★ 문제집 **전체**를 뽑는다(현재 것 포함).
+ *
+ *   예전에는 `pd_id <> 현재` 로 '다른 문제집' 만 띄웠다. 품목이 둘이면 칩이 하나만 보여서
+ *   "고를 수 있다" 는 것이 드러나지 않았다 — 내비의 [수강 신청] 은 정렬 첫 품목으로
+ *   자동 이동하므로, 두 번째 자격증을 신청하려는 사람은 그 칩 하나를 찾아야 했다.
+ *   전체를 띄우고 현재 것을 표시하면 **선택 화면**이 된다.
+ *
+ *   문항·회차 수를 함께 센다 — 아래 '포함되는 것' 이 예전에 300제·6회차로 하드코딩돼
+ *   있어서 ?pd=bigdata 로 열어도 SQLD 숫자가 나왔다.
+ */
+$books = array();
 $res = sql_query("select pd_id, pd_name from ex_product
-                   where pd_open = 1 and pd_id <> '" . sql_real_escape_string($pd) . "'
-                   order by pd_sort, pd_id", false);
-while ($r = sql_fetch_array($res)) $others[] = $r;
+                   where pd_open = 1 order by pd_sort, pd_id", false);
+while ($r = sql_fetch_array($res)) {
+    $bq = sql_real_escape_string($r['pd_id']);
+    $c = sql_fetch("select count(*) as n, count(distinct rd_no) as rd
+                      from ex_problem where pd_id = '$bq' and pr_open = 1");
+    $r['n_prob']  = (int)$c['n'];
+    $r['n_round'] = (int)$c['rd'];
+    $r['on']      = ($r['pd_id'] === $pd);
+    $books[] = $r;
+}
+// 지금 품목의 숫자 — '포함되는 것' 이 쓴다.
+$cur_prob = 0; $cur_round = 0;
+foreach ($books as $b) {
+    if ($b['on']) { $cur_prob = $b['n_prob']; $cur_round = $b['n_round']; }
+}
 
 // 0 이면 아래 floor($quota / $unit) 이 0으로 나누기가 된다
 $unit = ($prod && (int)$prod['cost_units'] > 0) ? (int)$prod['cost_units'] : 10;
@@ -160,13 +181,17 @@ include_once(G5_PATH . '/head.php');
     </div>
   </div>
 
-  <?php if ($others) { ?>
-  <?php /* 문제집별로 따로 수강하는 구조라, 지금 보고 있는 것이 무엇이고 다른 무엇이 있는지
-           같은 자리에서 보여준다. 없으면 이용자가 URL 을 고쳐야 다른 문제집을 신청할 수 있다. */ ?>
+  <?php if (count($books) > 1) { ?>
+  <?php /* 문제집별로 따로 수강하는 구조라, **무엇을 신청하는지 고르는 자리**가 필요하다.
+           전체를 띄우고 지금 것을 표시한다 — 예전에는 '다른 문제집' 만 띄워서 품목이
+           둘일 때 칩이 하나만 보였고, 고를 수 있다는 것이 드러나지 않았다. */ ?>
   <div class="ap-pdbar">
-    <span class="ap-pdbar-l">다른 문제집</span>
-    <?php foreach ($others as $o) { ?>
-      <a class="ap-pdchip" href="?pd=<?php echo urlencode($o['pd_id']) ?>"><?php echo htmlspecialchars($o['pd_name']) ?></a>
+    <span class="ap-pdbar-l">문제집 고르기</span>
+    <?php foreach ($books as $b) { ?>
+      <a class="ap-pdchip<?php echo $b['on'] ? ' on' : '' ?>"
+         href="?pd=<?php echo urlencode($b['pd_id']) ?>"
+         title="<?php echo number_format($b['n_prob']) ?>문제 · <?php echo $b['n_round'] ?>회차"><?php
+        echo htmlspecialchars($b['pd_name']) ?></a>
     <?php } ?>
   </div>
   <?php } ?>
@@ -186,10 +211,13 @@ include_once(G5_PATH . '/head.php');
     <div class="ap-info">
       <h3>포함되는 것</h3>
       <ul class="ap-list">
-        <li><b>문제 <?php echo $prod ? '300' : '—' ?>제 · 6회차</b><br>정답과 해설 전문. 회원가입 없이도 볼 수 있습니다.</li>
+        <?php /* ★ 숫자는 DB 에서 읽는다. 예전에는 '300제 · 6회차' 가 하드코딩이라
+                 ?pd=bigdata 로 열어도 SQLD 숫자(300제)가 나왔다. */ ?>
+        <li><b>문제 <?php echo $cur_prob ? number_format($cur_prob) . '제 · ' . $cur_round . '회차'
+                                         : '준비 중' ?></b><br>정답과 해설 전문. 회원가입 없이도 볼 수 있습니다.</li>
         <li><b>서버 채점 · 오답노트</b><br>틀린 문제가 쌓이고 몇 번 틀렸는지 남습니다.</li>
         <li><b>1:1 질문</b><br>문제를 풀다 막히면 그 자리에서 질문합니다. <u>여기가 수강 신청으로 열리는 부분입니다.</u></li>
-        <li><b>해설 영상 · 이론 요약노트</b></li>
+        <li><b>해설 영상 MOOC · 이론 요약노트</b><br>회차·문항별 해설 영상과 과목별 요약노트가 함께 있습니다.</li>
       </ul>
 
       <h3>질문권</h3>

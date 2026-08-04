@@ -53,6 +53,40 @@ while ($r = sql_fetch_array($res)) {
     $n  = (int)$c['n'];
     $rd = (int)$c['rd'];
 
+    /* 과목 수 — 랜딩 스탯이 쓴다. 상수로 두면 자격증마다 틀린다(SQLD 2 · 빅분기 4). */
+    $s = sql_fetch("select count(distinct sj_no) as n
+                      from ex_problem where pd_id = '$pdq' and pr_open = 1 and sj_no > 0");
+    $sj = (int)$s['n'];
+
+    /* ★ 해설 영상 수 — DB 에 없다. 영상은 파일 기반이라 여기서 센다.
+     *
+     *   videos.js          공개 영상 (min_level <= 1)
+     *   videos.private.json 레벨 제한 영상 (min_level >= 2) — 브라우저가 못 읽는다
+     *
+     *   둘을 합쳐야 실제 편수가 나온다. 빅분기는 전부 min_level 5 라서
+     *   videos.js 가 `{}` 이고, 브라우저에서 세면 0 편으로 보인다 — 그래서 서버에서 센다.
+     *   구조는 { "1회": [ {...}, ... ], ... } 이므로 값 배열의 길이를 더한다.
+     */
+    $vid = 0;
+    $vbase = G5_PATH . '/exam/pd/' . basename($pd);
+    foreach (array('/videos.private.json', '/videos.js') as $vf) {
+        $vp = $vbase . $vf;
+        if (!is_file($vp)) continue;
+        $raw = (string)file_get_contents($vp);
+        // videos.js 는 `window.VIDEOS = {...};` 이라 앞뒤를 벗긴다.
+        if (substr($vf, -3) === '.js') {
+            $b = strpos($raw, '{');
+            $e = strrpos($raw, '}');
+            $raw = ($b !== false && $e !== false && $e > $b) ? substr($raw, $b, $e - $b + 1) : '';
+        }
+        $vj = json_decode($raw, true);
+        if (is_array($vj)) {
+            foreach ($vj as $arr) {
+                if (is_array($arr)) $vid += count($arr);
+            }
+        }
+    }
+
     // 문제가 0건이면 pd_open 이 1이어도 '준비 중'이다 —
     // 열려 있다고 표시했는데 들어가서 빈 화면을 보는 게 최악이다.
     $open = ((int)$r['pd_open'] === 1 && $n > 0);
@@ -70,6 +104,8 @@ while ($r = sql_fetch_array($res)) {
         'open'     => $open ? 1 : 0,
         'problems' => $n,
         'rounds'   => $rd,
+        'subjects' => $sj,     // 과목 수 — 랜딩 스탯
+        'videos'   => $vid,    // 해설 영상 편수 (공개 + 레벨제한 합계)
         'desc'     => $open
             ? "모의고사 {$rd}회차 · 정답과 해설 전문 포함"
             : '준비 중입니다.',
