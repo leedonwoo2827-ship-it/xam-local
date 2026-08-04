@@ -196,6 +196,49 @@ def setup_publish_routes() -> APIRouter:
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
+    @router.get("/stage")
+    async def get_stage():
+        """업로드 폴더 상태 — 만들지 않고 본다."""
+        from services.publish import stage
+        return stage.summary()
+
+    @router.post("/stage")
+    async def make_stage(request: Request):
+        """`_upload/` 를 **서버와 똑같은 모양**으로 만든다.
+
+        올릴 것이 로컬 두 곳에서 서버 세 곳으로 가는데(06/ → /exam/,
+        web/exam → /exam/, web/adm → /adm/), 그 매핑을 사람이 하면 반드시 틀린다.
+        여기서 한 번 해 두면 폴더 하나를 /www/ 에 통째로 올리는 것으로 끝난다.
+        """
+        from services.publish import stage
+        try:
+            return stage.build()
+        except ValueError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+
+    @router.post("/stage/clear")
+    async def clear_stage():
+        """다 올린 뒤 지운다. 남겨 두면 다음에 무엇이 새것인지 헷갈린다."""
+        import shutil
+        from services.publish import stage
+        d = stage.stage_dir()
+        if os.path.isdir(d):
+            shutil.rmtree(d)
+        return {"ok": True, "dir": d}
+
+    @router.post("/stage/open")
+    async def open_stage():
+        from services.publish import stage
+        d = stage.stage_dir()
+        if not os.path.isdir(d):
+            raise HTTPException(status_code=404,
+                                detail="업로드 폴더가 없습니다 — [업로드 폴더 만들기] 를 먼저 누르세요.")
+        try:
+            os.startfile(d)           # noqa: S606
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return {"ok": True, "dir": d}
+
     @router.get("/checklist")
     async def get_checklist():
         return {"pd": PD_CODE, "items": ftplist.server_checklist(),

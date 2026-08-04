@@ -36,7 +36,8 @@ export async function mount(root, ctx) {
       <div id="pb-build"></div></div>
     <div class="card"><div class="card-title">④ problems.json 검증 (임포트 드라이런)</div>
       <div id="pb-problems"></div></div>
-    <div class="card"><div class="card-title">⑤ FTP 업로드 목록</div><div id="pb-ftp"></div></div>
+    <div class="card"><div class="card-title">⑤ 업로드 — 폴더 하나를 /www/ 로</div>
+      <div id="pb-ftp"></div></div>
     <div class="card"><div class="card-title">⑥ 서버 단계 — 여기서부터는 사람이 합니다</div>
       <div id="pb-server"></div></div>
   `;
@@ -68,7 +69,7 @@ async function refresh() {
   renderYtmap();
   renderBuild();
   renderProblems();
-  renderFtp();
+  renderStage();
   renderServer();
 }
 
@@ -575,6 +576,89 @@ async function renderPartial(box) {
   wrap.appendChild(row);
   wrap.appendChild(out);
   box.appendChild(wrap);
+}
+
+/* ── ⑤ 업로드 — 폴더 하나로 끝낸다 ────────────────────────────
+ *
+ * ★ 왜 파일 목록이 아니라 폴더를 만드는가
+ *
+ *   올릴 것이 로컬 두 곳에서 서버 세 곳으로 간다:
+ *     06\              → /www/exam/
+ *     axexam\web\exam\ → /www/exam/   (같은 자리에 섞인다)
+ *     axexam\webdm\  → /www/adm/    (/exam/ 밖!)
+ *   이 매핑을 머릿속으로 하면서 FileZilla 를 쓰면 반드시 틀리고, **틀려도 업로드는
+ *   성공한 것처럼 보인다** — 웹에서 증상이 엉뚱한 얼굴로 나타날 뿐이다.
+ *
+ *   그래서 앱이 서버와 똑같은 모양의 폴더(`_upload/`)를 만든다. 왼쪽에 그 폴더,
+ *   오른쪽에 /www/ 를 놓고 통째로 끌어놓으면 끝. 다 올리면 [지우기].
+ */
+async function renderStage() {
+  const box = $("#pb-ftp");
+  box.innerHTML = "";
+  let st = null;
+  try { st = await api("/api/publish/stage"); } catch (e) { /* 아래에서 처리 */ }
+
+  const head = el("div", "field-hint");
+  head.innerHTML = "왼쪽(로컬)에 <b>업로드 폴더</b>, 오른쪽(서버)에 <b>/www/</b> 를 놓고 "
+    + "통째로 끌어놓으세요. 폴더 안이 이미 서버와 같은 모양입니다 — "
+    + "<b>어디로 갈지 생각할 것이 없습니다.</b>";
+  box.appendChild(head);
+
+  const acts = el("div", "qz-foot");
+  const mk = el("button", "btn primary", st?.exists ? "업로드 폴더 다시 만들기" : "업로드 폴더 만들기");
+  mk.type = "button";
+  mk.addEventListener("click", async () => {
+    try {
+      const r = await api("/api/publish/stage", { method: "POST" });
+      toast(`${r.files}개 · ${(r.bytes / 1048576).toFixed(2)}MB — ${r.dir}`);
+      await renderStage();
+    } catch (e) { toast(e.message, "err"); }
+  });
+  acts.appendChild(mk);
+
+  if (st?.exists) {
+    const open = el("button", "btn", "폴더 열기");
+    open.type = "button";
+    open.addEventListener("click", async () => {
+      try { await api("/api/publish/stage/open", { method: "POST" }); }
+      catch (e) { toast(e.message, "err"); }
+    });
+    acts.appendChild(open);
+
+    const del = el("button", "btn", "다 올렸습니다 — 지우기");
+    del.type = "button";
+    del.addEventListener("click", async () => {
+      if (!(await confirmModal({
+        title: "업로드 폴더를 지울까요?",
+        body: "서버에 다 올렸다면 지워도 됩니다. 남겨 두면 다음에 무엇이 새것인지 "
+          + "헷갈립니다. 언제든 다시 만들 수 있습니다.",
+        ok: "지우기", cancel: "취소",
+      }))) return;
+      try {
+        await api("/api/publish/stage/clear", { method: "POST" });
+        toast("지웠습니다.");
+        await renderStage();
+      } catch (e) { toast(e.message, "err"); }
+    });
+    acts.appendChild(del);
+  }
+  box.appendChild(acts);
+
+  if (st?.exists) {
+    box.appendChild(el("div", "qz-label", "왼쪽 = 이 폴더"));
+    box.appendChild(el("pre", "pb-cmd", st.dir));
+    box.appendChild(el("div", "qz-label", "오른쪽 = 서버"));
+    box.appendChild(el("pre", "pb-cmd", "/www/"));
+    box.appendChild(el("div", "muted",
+      `${st.files}개 · ${(st.bytes / 1048576).toFixed(2)}MB · 최상위: ${(st.tops || []).join("  ")}`));
+  }
+
+  box.appendChild(el("div", "field-hint",
+    "FileZilla 설정(한 번만): 전송 유형 바이너리 · 동시 전송 2 · 문자셋 UTF-8 강제"
+    + "(요약노트 파일명이 한글입니다)."));
+  box.appendChild(el("div", "field-hint",
+    "★ problems.json 은 이 폴더에 넣지 않았습니다 — 관리자 화면(/adm/exam_import.php)에서 "
+    + "올리거나 붙여넣습니다. .htaccess 가 .json 을 403 으로 막아서 FTP 로는 읽히지 않습니다."));
 }
 
 /* ── ④ FTP ────────────────────────────────────────── */
