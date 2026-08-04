@@ -772,6 +772,37 @@ async function openOut() {
 }
 
 /* ── ⑤ 서버 단계 ──────────────────────────────────── */
+/* `where` 문자열 안의 http(s) 주소를 눌러서 열 수 있는 링크로 바꾼다.
+ *
+ * 정규식으로 URL 조각을 떼어내되, **텍스트는 el() 로만 넣는다** — innerHTML 로 조립하면
+ * 경로에 들어 있는 `&`·`<` 가 깨지거나 주입 통로가 된다.
+ * URL 끝에 붙은 문장부호(`.` `,` `)`)는 주소가 아니라 글이므로 떼어 되돌린다.
+ */
+const URL_RE = /https?:\/\/[^\s]+/g;
+
+function linkify(text, cls) {
+  const box = el("div", cls || "muted");
+  const s = String(text == null ? "" : text);
+  let last = 0;
+  s.replace(URL_RE, (m, at) => {
+    let url = m, tail = "";
+    const trim = url.match(/[.,)\]]+$/);
+    if (trim) { tail = trim[0]; url = url.slice(0, -tail.length); }
+    if (at > last) box.appendChild(document.createTextNode(s.slice(last, at)));
+    const a = el("a", "pb-link", url);
+    a.href = url;
+    a.target = "_blank";
+    // 로컬 앱에서 외부 사이트를 여는 링크다 — 참조 정보를 넘기지 않는다.
+    a.rel = "noopener noreferrer";
+    box.appendChild(a);
+    if (tail) box.appendChild(document.createTextNode(tail));
+    last = at + m.length;
+    return m;
+  });
+  if (last < s.length) box.appendChild(document.createTextNode(s.slice(last)));
+  return box;
+}
+
 function renderServer() {
   const box = $("#pb-server");
   // ★ 화면을 떠난 뒤 비동기 응답이 도착하면 box 가 null 이다.
@@ -815,7 +846,12 @@ function renderServer() {
     //   번호를 라벨에 둔 이유: 0.x(앱) 와 1~(서버) 를 갈라야 하고, [나중] 항목처럼
     //   번호가 없는 것도 있다 — 위치로 매기는 번호로는 표현할 수 없다.
     mid.appendChild(el("b", null, it.label));
-    mid.appendChild(el("div", "muted", `${it.where} — ${it.detail}`));
+    // ★ `where` 는 대개 관리자 화면 주소다. 텍스트로만 두면 사람이 손으로 옮겨 적거나
+    //   주소창에 다시 타이핑한다 — 실제로 그 단계에서 멈췄다. 눌러서 열게 한다.
+    //   detail 은 링크로 만들지 않는다. 안에 파일 경로·SQL·★경고가 섞여 있어서
+    //   링크가 되면 읽는 순서가 흐트러진다.
+    mid.appendChild(linkify(it.where, "pb-where"));
+    mid.appendChild(el("div", "muted", it.detail));
     if (it.sql) {
       const btn = el("button", "btn sm", "SQL 보기");
       btn.type = "button";

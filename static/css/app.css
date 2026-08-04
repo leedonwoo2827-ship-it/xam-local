@@ -1399,6 +1399,12 @@ kbd {
 .pb-step.done .n { background: var(--ok); color: var(--bone); }
 .pb-step.err .n { background: var(--err); color: var(--bone); }
 .pb-cmd { padding: 10px 12px; background: var(--white); border-radius: var(--r); font: 11.5px/1.7 ui-monospace, Consolas, monospace; white-space: pre-wrap; word-break: break-all; }
+/* 체크리스트의 '어디서' 줄 — 관리자 화면 주소가 눌러서 열리는 자리다.
+   detail 보다 위에 오고 살짝 진하게 둔다: 순서를 따라가는 사람이 먼저 보는 것은
+   '무엇을' 이 아니라 '어디서' 다. */
+.pb-where { margin: 2px 0 3px; font-size: var(--t-xs); color: var(--text-2); word-break: break-all; }
+.pb-where .pb-link { color: var(--brand); text-decoration: underline; text-underline-offset: 2px; }
+.pb-where .pb-link:hover { background: var(--idle-bg); }
 .pb-check { display: grid; gap: 3px; }
 .pb-check .item { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 8px; padding: 5px 8px; border-radius: var(--r-sm); font-size: var(--t-xs); }
 .pb-check .item.err { background: var(--err-bg); color: var(--err); }

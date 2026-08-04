@@ -287,15 +287,16 @@ def server_checklist() -> list[dict]:
                     "끝나면 앱에서 [다 올렸습니다 — 지우기].")},
 
         # ★ FTP 뒤에 온다 — 이 파일이 서버에 올라가야 열린다.
-        {"key": "ex_product", "label": f"2.  품목 등록 — ex_product 에 pd_id='{PD_CODE}'",
+        {"key": "ex_product", "label": f"2.1  품목 등록 — ex_product 에 pd_id='{PD_CODE}'",
          "where": f"{site}/adm/seed_pd.php",
          "detail": ("**최고관리자로 로그인한 브라우저**에서 연다(부관리자는 안 된다).\n"
                     f"pd_id={PD_CODE} · 이름 확인 → [등록]. 표에 그 품목이 추가되면 성공.\n"
                     "★ 이게 없으면 다음 단계가 "
                     f"\"ex_product 에 pd_id='{PD_CODE}' 가 없습니다\" 로 중단된다.\n"
                     "★ 카페24에는 phpMyAdmin 이 없다 — 이 화면이 그 자리다.\n"
-                    "★ 끝나면 /www/adm/seed_pd.php 를 FTP 로 **지운다**(1회용).\n"
-                    "404 가 뜨면 1번 업로드가 안 된 것이다."),
+                    "★ 이 화면을 닫지 말고 **2.2 까지 한 다음** /www/adm/seed_pd.php 를 "
+                    "FTP 로 지운다(1회용). 2.2 가 같은 화면이다.\n"
+                    "404 가 뜨면 1번 업로드가 안 된 것이다(지웠다면 다시 올린다)."),
          "sql": ("-- 직접 SQL 을 쓸 수 있는 환경이라면 이것과 같다\n"
                  "INSERT INTO ex_product\n"
                  "  (pd_id, pd_name, pd_open, tier, model_id, provider,\n"
@@ -303,6 +304,39 @@ def server_checklist() -> list[dict]:
                  f"VALUES ('{PD_CODE}', '{PD_LABEL}', 1, 'T1', 'deepseek-v4-flash',\n"
                  "        'openai_compat', 10, 3.0000, 20)\n"
                  "ON DUPLICATE KEY UPDATE pd_name = VALUES(pd_name);")},
+
+        # ★ 이 단계를 빼먹으면 **문제는 다 보이는데 신청서만 없다.** 문항·영상·성적표가
+        #   전부 정상이라 "다 됐다" 고 판단하게 되는 종류의 누락이다. 실제로 그렇게 걸렸다:
+        #   SQLD 는 신청서가 뜨고 빅분기는 "등록된 과정이 없습니다" 만 떴다.
+        #   원인은 마이그레이션이 과정 3종을 옛 pd_id(bdae-w)에 심어 뒀던 것이었다.
+        #   그래서 품목 등록과 **같은 화면·같은 방문**에 두고, 체크박스를 따로 준다.
+        {"key": "ex_plan", "label": "2.2  수강 과정 등록 — [＋과정 3종] 한 번",
+         "where": f"{site}/adm/seed_pd.php",
+         "detail": ("같은 화면 아래쪽 <수강 과정> 이다. 품목 표에서 이 품목 줄의 **과정** 열이 "
+                    "빨간 0 이면 [＋과정 3종] 을 누른다 — 1·3·12개월 × 매월 질문 100개가 "
+                    "SQLD 와 같은 구성으로 들어간다.\n"
+                    f"확인: {site}{SITE_PATH}buy.php?pd={PD_CODE} 에 과정 3개와 [신청하기] 가 "
+                    "보이면 끝이다.\n"
+                    "★ 과정이 0 이면 신청서 자리에 '등록된 과정이 없습니다' 만 나오고 "
+                    "**[신청하기] 버튼이 아예 없다.** 문제풀이·영상·성적표는 다 정상이라 "
+                    "이 누락만 눈에 안 띈다 — 그래서 반드시 buy.php 를 열어 본다.\n"
+                    "★ 과정은 **품목별**이다(ex_plan.pd_id). 다른 품목의 과정이 이 품목에 "
+                    "쓰이지 않는다.\n"
+                    "★ 값을 바꿀 때는 고치지 말고 **새 과정 + 옛것 숨기기**. 가격·기간을 "
+                    "고치면 이미 결제한 주문의 뜻이 달라진다."),
+         "sql": ("-- 직접 SQL 을 쓸 수 있는 환경이라면 이것과 같다\n"
+                 "INSERT INTO ex_plan\n"
+                 "  (pd_id, pl_name, pl_price, pl_months, pl_quota, pl_open, pl_sort)\n"
+                 "VALUES\n"
+                 f"  ('{PD_CODE}', '1개월 · 매월 질문 100개',   1100,  1, 1000, 1, 10),\n"
+                 f"  ('{PD_CODE}', '3개월 · 매월 질문 100개',   3000,  3, 1000, 1, 20),\n"
+                 f"  ('{PD_CODE}', '12개월 · 매월 질문 100개', 11000, 12, 1000, 1, 30);\n"
+                 "\n"
+                 "-- 확인 — 품목마다 과정이 몇 개인가 (0 인 품목이 신청 불가 상태다)\n"
+                 "SELECT d.pd_id, d.pd_name, COUNT(p.pl_id) AS plans\n"
+                 "  FROM ex_product d\n"
+                 "  LEFT JOIN ex_plan p ON p.pd_id = d.pd_id AND p.pl_open = 1\n"
+                 " GROUP BY d.pd_id, d.pd_name ORDER BY d.pd_sort;")},
 
         # 라벨을 관리자 화면의 제목과 같게 둔다 — 화면을 열었을 때 "여기가 맞나" 를
         # 다시 묻지 않게 된다(실제로 그 질문이 나왔다).
@@ -334,7 +368,10 @@ def server_checklist() -> list[dict]:
                     "**다른 품목도 그대로** 있어야 한다.\n"
                     f"② {site}{SITE_PATH}check.php?pd={PD_CODE} — "
                     f"{n_q}문항 · {n_s}과목 필터 · 회차 1~{n_r}.\n"
-                    f"③ {site}{SITE_PATH} — 품목 카드에 이 품목과 기존 품목이 함께.\n"
+                    f"③ {site}{SITE_PATH} — 품목 카드에 이 품목과 기존 품목이 함께. "
+                    "상단 내비에 품목 이름들이 나온다.\n"
+                    f"③' {site}{SITE_PATH}buy.php?pd={PD_CODE} — **수강 과정 3개와 "
+                    "[신청하기]**. '등록된 과정이 없습니다' 면 2.2 를 안 한 것이다.\n"
                     "④ 영상 — **로그인 레벨이 min_level 이상일 때만** 보인다(드라이브는 5). "
                     "강사 계정으로 하나 재생해 보면 링크·공유·레벨이 한 번에 확인된다. "
                     "일반 회원에게 안 보이는 것이 정상이다.\n"
