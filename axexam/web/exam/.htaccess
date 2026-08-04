@@ -17,7 +17,17 @@
 # 정적 자산만 다룬다.
 <IfModule mod_expires.c>
     ExpiresActive On
-    ExpiresByType image/svg+xml            "access plus 7 days"
+    # ★ 7일 → 1시간 (2026-08-04).
+    #
+    #   문항 그림을 **같은 이름으로** 고쳐 올리면 이미 본 사람에게 최대 7일간 옛 그림이
+    #   보였다. 서버에는 새 파일이 있으니 "안 올라갔나?" 하고 다시 올려도 안 바뀐다 —
+    #   원인이 캐시라는 걸 알아채기 어렵다.
+    #   그림 전체가 245개 199KB 라 1시간 캐시로도 비용이 사실상 없다.
+    #   problems.js·theory_content.js 도 같은 1시간이라 배포 후 체감이 한 곳으로 모인다.
+    ExpiresByType image/svg+xml            "access plus 1 hour"
+    ExpiresByType image/png                "access plus 1 hour"
+    ExpiresByType image/jpeg               "access plus 1 hour"
+    ExpiresByType image/webp               "access plus 1 hour"
     ExpiresByType text/css                 "access plus 7 days"
     ExpiresByType application/javascript   "access plus 1 hour"
     ExpiresByType text/javascript          "access plus 1 hour"

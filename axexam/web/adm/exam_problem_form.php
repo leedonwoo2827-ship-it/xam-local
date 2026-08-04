@@ -305,6 +305,34 @@ require_once './admin.head.php';
         JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)) ?></pre>
   <?php endif; ?>
 
+  <?php
+  /* ── 그림 파일명 ─────────────────────────────────────────────────────────
+   * ★ 파일명을 보여 주는 이유: 그림은 캐시(1시간)에 걸린다. 같은 이름으로 덮어쓰면
+   *   이미 본 사람에게 잠시 옛 그림이 보인다. 급할 때는 **다른 이름**으로 만들어야
+   *   하는데, 그러려면 지금 이름이 무엇인지 알아야 한다.
+   *   앱(#/questions)에는 그림 아래에 이름이 보이는데 이 화면에는 없었다. */
+  $figs = epf_json($row['figures_json'], array());
+  if ($figs): ?>
+    <h3 style="font-size:15px;margin:22px 0 4px">그림 <small style="color:#666">(파일명)</small></h3>
+    <p class="hint">
+      바꿀 때는 <b>다른 이름으로 만드는 것을 권합니다</b> — 같은 이름은 캐시(1시간) 때문에
+      잠시 옛 그림이 보입니다. 이름은 로컬 <code>_rounds</code> 의
+      <code>assets[].name</code> 이므로 <b>#2(클로드 데스크탑)</b>에 새 이름으로 요청합니다.
+    </p>
+    <table class="epf-raw">
+      <tr><th>파일명</th><th>서버 경로</th></tr>
+      <?php foreach ($figs as $f):
+          $fn = is_array($f) ? (isset($f['name']) ? $f['name'] : '') : (string)$f;
+          if ($fn === '') continue;
+          if (substr($fn, -4) !== '.svg' && strpos($fn, '.') === false) $fn .= '.svg'; ?>
+        <tr>
+          <th style="width:auto"><code><?php echo epf_h($fn) ?></code></th>
+          <td>/exam/pd/<?php echo epf_h($row['pd_id']) ?>/figs/<?php echo epf_h($fn) ?></td>
+        </tr>
+      <?php endforeach; ?>
+    </table>
+  <?php endif; ?>
+
   <!-- ── DB 뷰어: 이 행의 전 컬럼 ────────────────────────────────── -->
   <h3 style="font-size:15px;margin:24px 0 4px">DB 원본 (ex_problem 한 행 전부)</h3>
   <p class="hint">카페24에 phpMyAdmin 이 없어 서버에 실제로 무엇이 들어 있는지 볼 방법이
