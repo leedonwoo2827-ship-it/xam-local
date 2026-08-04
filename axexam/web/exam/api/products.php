@@ -23,8 +23,24 @@ $SKIN_N = 4;                       // pd-t1 ~ pd-t4
 $ICONS  = array('i-cpu', 'i-chart', 'i-doc', 'i-calculator');
 
 $items = array();
+/* ★ `pd_open = 0` 인 품목은 **목록에서 뺀다.**
+ *
+ *   예전에는 전 행을 돌면서 `open` 플래그만 계산했다. 그래서 관리자가 품목을 숨겨도
+ *   랜딩에 회색 '준비 중' 카드가 그대로 남았다 — 실제로 같은 이름의 옛 품목(bdae-w)을
+ *   숨겼는데 카드가 두 개로 보였다. 숨김의 뜻은 "안 보이게" 다.
+ *
+ *   두 상태를 구분해야 한다:
+ *     pd_open = 0            → 관리자가 감췄다. 목록에 없다.
+ *     pd_open = 1 · 문항 0   → 열어뒀지만 아직 비었다. '준비 중' 으로 **보여준다**
+ *                              (아래 $open 판정). 열려 있다고 해놓고 빈 화면을 보는 것보다 낫다.
+ *
+ *   마이페이지(api/me.php)는 이걸 따르지 않는다 — 거기서는 숨긴 품목도 남아야 한다.
+ *   이미 신청·구독한 회원의 이력이 이름 없이 사라지면 안 되기 때문이다.
+ *   구매(buy.php)는 자체적으로 `pd_open = 1` 을 걸러 이미 막힌다.
+ */
 $res = sql_query("select pd_id, pd_name, pd_open, pd_sort, pd_config from ex_product
-                   order by pd_open desc, pd_sort, pd_id", false);
+                  where pd_open = 1
+                  order by pd_sort, pd_id", false);
 
 $idx = 0;
 while ($r = sql_fetch_array($res)) {
