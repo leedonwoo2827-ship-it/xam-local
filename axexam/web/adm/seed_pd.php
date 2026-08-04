@@ -17,9 +17,18 @@
  * ex_order · ex_qna. 그리고 `ex_problem.pr_id` 는 **회원의 응시기록·오답노트**
  * (`ex_attempt_item.pr_id` · `ex_wrong.pr_id`)가 참조한다(schema.sql:81 의 경고).
  *
- * → 그래서 **문항이 0개일 때만 삭제한다.** 문항이 있으면 삭제 대신 [숨기기] 를 쓴다.
- *   숨기면 이용자 화면에서 사라지고(products.php 가 pd_open 을 본다) 회원 기록은 남는다.
- *   문항까지 지우는 것은 회원 오답노트를 끊는 일이라 이 화면에서 하지 않는다.
+ * → 그래서 **회원 응시·오답 기록이 0건일 때만 삭제한다.** 처음에는 '문항 0개' 로 막았는데,
+ *   그러면 아무도 풀지 않은 찌꺼기 품목(예전 이름으로 잘못 임포트된 것)을 정리할 수 없다.
+ *   막아야 하는 것은 문항의 존재가 아니라 **그 문항을 참조하는 회원 기록**이다.
+ *   기록이 있으면 [숨기기] 를 쓴다 — 이용자 화면에서 사라지고 데이터는 남는다.
+ *
+ * ── 이름과 pd_id ───────────────────────────────────────────────────────────
+ * `pd_id` 는 짧고 안 변해야 한다 — 06/pd/<pd>/ · youtube_map.<pd>.json ·
+ * ?pd=<pd> URL · bo_table=<pd>_sj · ex_problem.pd_id 다섯 곳에 박힌다. 바꾸면 새 품목이
+ * 되어 전부 다시 만들어야 하고 옛 데이터가 고아로 남는다 → [고치기] 에서 readonly 다.
+ * 마케팅 문구는 `pd_name` 에 담는다(예: '2026~2027 시험대비 빅데이터분석기사 필기').
+ * 빌더의 `--pd-name` 은 file:// 미리보기용이고 **서버에서는 이 값이 이긴다**
+ * (build_check.py:792). 재임포트도 이름을 건드리지 않는다.
  *
  * ── 안전 ───────────────────────────────────────────────────────────────────
  * - `adm/` 에 두고 `_common.php` 를 include 한다 → 그누보드 관리자 인증이 그대로 걸린다.
@@ -84,14 +93,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 : "$pd_id 을 숨겼습니다. 랜딩 카드와 목록에서 사라집니다"
                   . ($n_prob ? " (문항 {$n_prob}개는 그대로 남습니다)." : ".");
         } elseif ($act === 'delete') {
-            /* ★ 문항이 있으면 지우지 않는다. 회원 응시기록·오답노트가 pr_id 를 참조한다. */
-            if ($n_prob > 0) {
-                $err = "문항이 {$n_prob}개 있어 삭제할 수 없습니다. 회원의 응시기록·오답노트가 "
-                     . "이 문항들을 참조하므로 지우면 그 기록이 끊깁니다 — [숨기기] 를 쓰세요.";
+            /* ★ 막아야 하는 것은 "문항이 있다" 가 아니라 **"회원이 그 문항으로 풀었다"** 다.
+             *
+             *   처음에는 문항 0개일 때만 지우게 했는데, 그러면 아무도 풀지 않은 찌꺼기
+             *   품목(예: 예전 이름으로 잘못 임포트된 것)을 정리할 수 없다. 실제로
+             *   같은 문제집이 두 이름(bdae-w · bigdata)으로 생긴 상황을 만났다.
+             *
+             *   위험한 것은 `ex_attempt_item.pr_id` · `ex_wrong.pr_id` 다
+             *   (schema.sql:81 — "pr_id 는 절대 바뀌면 안 된다"). 그 참조가 0 이면
+             *   지워도 끊길 기록이 없다. 하나라도 있으면 [숨기기] 를 쓴다.
+             */
+            $u = sql_fetch("select
+                    (select count(*) from ex_attempt_item i
+                       join ex_problem p on p.pr_id = i.pr_id
+                      where p.pd_id = '$pdq') as tries,
+                    (select count(*) from ex_wrong w
+                       join ex_problem p on p.pr_id = w.pr_id
+                      where p.pd_id = '$pdq') as wrongs");
+            $n_try   = (int)$u['tries'];
+            $n_wrong = (int)$u['wrongs'];
+
+            if ($n_try > 0 || $n_wrong > 0) {
+                $err = "회원 기록이 있어 삭제할 수 없습니다 — 응시 {$n_try}건 · 오답노트 "
+                     . "{$n_wrong}건. 지우면 그 기록이 끊깁니다. [숨기기] 를 쓰세요 "
+                     . "(이용자 화면에서 사라지고 기록은 남습니다).";
             } else {
+                // 참조가 없으므로 문항·회차·품목을 함께 지운다.
+                sql_query("delete from ex_problem where pd_id = '$pdq'");
                 sql_query("delete from ex_round   where pd_id = '$pdq'");
                 sql_query("delete from ex_product where pd_id = '$pdq'");
-                $msg = "$pd_id 을 삭제했습니다 (문항 0개였습니다). ex_round 도 함께 지웠습니다.";
+                $msg = "$pd_id 을 삭제했습니다 — 문항 {$n_prob}개 · 회차 · 품목행. "
+                     . "회원 응시기록이 0건이라 끊길 기록이 없었습니다.";
             }
         }
     }
@@ -109,6 +141,14 @@ while ($r = sql_fetch_array($res)) {
     $r['n_round'] = (int)$c['rd'];
     $e = sql_fetch("select count(*) as n from ex_entitlement where pd_id = '$pdq'");
     $r['n_ent'] = (int)$e['n'];
+    /* 회원 기록 — 삭제 가능 여부를 정하는 유일한 기준이다(문항 수가 아니다). */
+    $u = sql_fetch("select
+            (select count(*) from ex_attempt_item i
+               join ex_problem p on p.pr_id = i.pr_id where p.pd_id = '$pdq') as tries,
+            (select count(*) from ex_wrong w
+               join ex_problem p on p.pr_id = w.pr_id where p.pd_id = '$pdq') as wrongs");
+    $r['n_try']  = (int)$u['tries'];
+    $r['n_used'] = (int)$u['tries'] + (int)$u['wrongs'];
     $rows[] = $r;
 }
 
@@ -156,9 +196,9 @@ $f_sort = $edit ? (int)$edit['pd_sort'] : 20;
 <h3>지금 등록된 품목</h3>
 <table>
   <tr><th>pd_id</th><th>이름</th><th>문항</th><th>회차</th><th>구독</th>
-      <th>공개</th><th>정렬</th><th>동작</th></tr>
+      <th>응시</th><th>공개</th><th>정렬</th><th>동작</th></tr>
 <?php if (!$rows): ?>
-  <tr><td colspan="8" class="m">없습니다. 아래에서 등록하세요.</td></tr>
+  <tr><td colspan="9" class="m">없습니다. 아래에서 등록하세요.</td></tr>
 <?php endif; ?>
 <?php foreach ($rows as $r):
     $open = ((int)$r['pd_open'] === 1); ?>
@@ -168,6 +208,7 @@ $f_sort = $edit ? (int)$edit['pd_sort'] : 20;
     <td class="c"><?php echo number_format($r['n_prob']) ?></td>
     <td class="c"><?php echo $r['n_round'] ?></td>
     <td class="c"><?php echo $r['n_ent'] ?></td>
+    <td class="c"><?php echo number_format($r['n_try']) ?></td>
     <td class="c"><?php echo $open ? '공개' : '숨김' ?></td>
     <td class="c"><?php echo (int)$r['pd_sort'] ?></td>
     <td style="white-space:nowrap">
@@ -182,8 +223,9 @@ $f_sort = $edit ? (int)$edit['pd_sort'] : 20;
         <input type="hidden" name="pd_id" value="<?php echo htmlspecialchars($r['pd_id']) ?>">
         <input type="hidden" name="act" value="delete">
         <button type="submit" class="d"
-          <?php echo $r['n_prob']
-            ? 'disabled title="문항이 있어 삭제할 수 없습니다 — 숨기기를 쓰세요"' : '' ?>>삭제</button>
+          <?php echo $r['n_used']
+            ? 'disabled title="회원 응시·오답 기록이 있어 삭제할 수 없습니다 — 숨기기를 쓰세요"'
+            : '' ?>>삭제</button>
       </form>
     </td>
   </tr>
@@ -193,8 +235,10 @@ $f_sort = $edit ? (int)$edit['pd_sort'] : 20;
 <p class="m">
   <b>문항</b>이 0 이면 랜딩 카드가 '준비 중' 으로 뜹니다(<code>products.php</code> 가 그렇게
   판정합니다). <b>구독</b>은 <code>ex_entitlement</code> 행 수 — 그 품목을 수강 중인 회원 수입니다.<br>
-  <b>삭제는 문항이 0개일 때만</b> 됩니다. 회원의 응시기록·오답노트가 문항(<code>pr_id</code>)을
-  참조하므로, 문항이 있으면 <b>[숨기기]</b>를 쓰세요 — 이용자 화면에서 사라지고 기록은 남습니다.
+  <b>응시</b>는 회원이 그 품목 문항을 푼 기록 수입니다 — <b>삭제 가능 여부의 유일한 기준</b>입니다.
+  0 이면 문항이 있어도 지울 수 있고(찌꺼기 품목 정리), 1건이라도 있으면 잠깁니다.<br>
+  ★ <b>웬만하면 [숨기기]</b>를 쓰세요. 이용자 화면에서 사라지고 데이터는 남으니 언제든
+  되돌릴 수 있습니다. 삭제는 되돌릴 수 없습니다 — 확실히 버릴 것만 지웁니다.
 </p>
 
 <h3><?php echo $edit ? '품목 고치기' : '품목 등록' ?></h3>
