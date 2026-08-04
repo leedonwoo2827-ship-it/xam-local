@@ -55,11 +55,11 @@
 <header class="axnav">
   <div class="axnav-in">
     <a class="axnav-logo" href="/exam/">{{BRAND_HTML}}</a>
-    <nav class="axnav-main">
-      <a class="axnav-item on" href="/exam/"><svg class="ic"><use href="#i-clipboard"></use></svg>문제집</a>
-      <a class="axnav-item" href="/exam/check.php?pd={{PD}}"><svg class="ic"><use href="#i-edit"></use></svg>문제 풀기</a>
-      <a class="axnav-item" href="/exam/check.php?pd={{PD}}&amp;m=theory"><svg class="ic"><use href="#i-book"></use></svg>이론</a>
-      <a class="axnav-item" href="/exam/buy.php?pd={{PD}}"><svg class="ic"><use href="#i-cap"></use></svg>수강 신청</a>
+    <!-- ★ 랜딩·상세는 정적 빌드라 PHP 의 theme/axexam/head.php 를 쓰지 않는다.
+         각자 자기 내비를 갖고 있어서, head.php 만 고치면 이 두 화면만 옛 내비가 남는다
+         (실제로 그렇게 걸렸다). 문제집 항목은 아래 fillNav() 가 채운다. -->
+    <nav class="axnav-main" id="navMain">
+      <a class="axnav-item" href="/exam/buy.php"><svg class="ic"><use href="#i-cap"></use></svg>수강 신청</a>
       <a class="axnav-item" href="/exam/report.php?pd={{PD}}&amp;sample=1"><svg class="ic"><use href="#i-chart"></use></svg>성적표 샘플</a>
     </nav>
     <!-- data-authswap: ui.js 가 api/me.php 를 보고 우측을 갈아끼운다 (정적 파일이라 서버가 못 그린다) -->
@@ -152,7 +152,27 @@ function card(r){
 
 function fact(n, l){ return `<div class="dt-fact"><b>${n}</b><span>${esc(l)}</span></div>`; }
 
+/* 상단 내비의 문제집 항목 — api/products.php 로 채운다.
+   ★ 이 화면은 정적 빌드라 서버가 내비를 그리지 못한다. PHP 화면(head.php)과 같은 모습이
+     되어야 이동해도 흔들리지 않는다. 지금 보고 있는 품목은 진하게 표시한다. */
+async function fillNav(){
+  const nav = document.getElementById("navMain");
+  if(!nav || !API) return;
+  try{
+    const j = await (await fetch(API+"products.php", {credentials:"same-origin"})).json();
+    if(!j || !j.ok || !Array.isArray(j.items)) return;
+    const esc = s => String(s==null?"":s).replace(/[&<>"]/g,
+      c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const html = j.items.filter(p => p.open).map(p =>
+      '<a class="axnav-item' + (p.pd_id === PD ? ' on' : '') + '"'
+      + ' href="/exam/check.php?pd=' + encodeURIComponent(p.pd_id) + '">'
+      + '<svg class="ic"><use href="#i-edit"></use></svg>' + esc(p.name) + '</a>').join("");
+    if(html) nav.insertAdjacentHTML("afterbegin", html);
+  }catch(e){ /* 정적 모드 — 수강 신청·성적표 샘플만 남는다 */ }
+}
+
 async function load(){
+  fillNav();
   /* 링크에 pd 를 반영한다 — {{PD}}(빌드 품목)로 구워졌으니 ?pd= 로 들어온 값으로 덮는다.
      이걸 안 하면 detail.html?pd=bdae-w 의 '문제 풀기' 가 SQLD 로 간다. */
   if(PD){
