@@ -20,6 +20,16 @@ add_stylesheet('<link rel="stylesheet" href="'.$board_skin_url.'/style.css">', 0
             <?php
             echo cut_str(get_text($view['wr_subject']), 70); // 글제목 출력
             ?></span>
+            <?php
+            /* ★ XAM 추가 — 제목 옆 답변완료 배지.
+               본문에 [관리자 답변] 댓글이 달려 있어도, 댓글이 접혀 있거나 회원 댓글이
+               섞여 있으면 "답이 온 건가" 를 바로 알 수 없다. 목록과 같은 기준·같은
+               모양으로 여기에도 붙인다(판정은 ex_qna.qa_status). */
+            @include_once G5_PATH.'/exam/lib/qna_badge.php';
+            if (function_exists('ex_qna_answered')) {
+                echo ex_qna_badge(ex_qna_answered($bo_table, array($view['wr_id'])), $view['wr_id']);
+            }
+            ?>
         </h2>
     </header>
 

@@ -93,6 +93,23 @@ add_stylesheet('<link rel="stylesheet" href="'.$board_skin_url.'/style.css">', 0
         </thead>
         <tbody>
         <?php
+        /* ★ XAM 추가 — 글마다 `답변완료` 배지.
+         *
+         *   판정의 정본은 게시판이 아니라 `ex_qna.qa_status = 'approved'` 다.
+         *   여기서 댓글 수(`wr_comment`)로 보면 회원끼리 주고받은 댓글까지 세어
+         *   답변완료가 잘못 켜진다 — 관리자가 확정한 답변만 완료다.
+         *   (exam/api/board.php 의 '답변완료' 도 같은 기준을 쓴다.)
+         *
+         *   루프 **밖**에서 한 번만 부른다. 목록 전체를 `wr_id in (…)` 로 한 방에
+         *   조회하므로 30건이어도 쿼리 1회다. 행마다 부르면 30쿼리가 된다.
+         *
+         *   include 가 실패하거나 쿼리가 깨져도 배지만 없다 — 함수 존재를 확인해
+         *   쓰기 때문에 목록이 흰 화면이 되지 않는다.
+         */
+        $ex_ans = array();
+        @include_once G5_PATH.'/exam/lib/qna_badge.php';
+        if (function_exists('ex_qna_answered')) $ex_ans = ex_qna_answered($bo_table, $list);
+
         for ($i=0; $i<count($list); $i++) {
         	if ($i%2==0) $lt_class = "even";
         	else $lt_class = "";
@@ -138,6 +155,10 @@ add_stylesheet('<link rel="stylesheet" href="'.$board_skin_url.'/style.css">', 0
                     if (isset($list[$i]['icon_hot'])) echo rtrim($list[$i]['icon_hot']);
                     if (isset($list[$i]['icon_file'])) echo rtrim($list[$i]['icon_file']);
                     if (isset($list[$i]['icon_link'])) echo rtrim($list[$i]['icon_link']);
+                    /* ★ XAM 추가 — 답변완료 / 답변 준비 중.
+                       'N' 새글 배지 바로 뒤에 둔다. 질문자가 목록을 훑을 때
+                       제목과 같은 줄에서 보여야 "내 질문에 답이 왔나"를 알 수 있다. */
+                    if (function_exists('ex_qna_badge')) echo ex_qna_badge($ex_ans, $list[$i]['wr_id']);
                     ?>
                     <?php if ($list[$i]['comment_cnt']) { ?><span class="sound_only">댓글</span><span class="cnt_cmt"><?php echo $list[$i]['wr_comment']; ?></span><span class="sound_only">개</span><?php } ?>
                 </div>
