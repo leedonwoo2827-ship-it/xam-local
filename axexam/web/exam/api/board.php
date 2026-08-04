@@ -76,7 +76,19 @@ if (!empty($board['bo_category_list'])) {
 /* 과목 번호 → 말머리 문자열.
  * 말머리를 과목명으로 맞춰뒀으므로(exam_board_sync.php) sj_name 으로 필터한다.
  * 번호가 아니라 이름으로 거는 이유: 그누보드가 wr_1 같은 여분 컬럼이 아니라
- * wr_category 에 **문자열**을 저장하기 때문이다. */
+ * 말머리 컬럼에 **문자열**을 저장하기 때문이다.
+ *
+ * ★ 그 컬럼 이름은 `ca_name` 이다. `wr_category` 가 아니다.
+ *
+ *   여기 `wr_category` 라고 적혀 있었고, 그래서 SELECT 가 "Unknown column" 으로 실패했다.
+ *   그런데 sql_query(..., false) 가 오류를 삼켜 $res = false 가 되고, while 루프가 한 번도
+ *   돌지 않아 items = [] 가 나갔다. 화면은 그것을 빈 게시판으로 읽어
+ *   **"아직 글이 없습니다"** 를 띄웠다 — 게시판에 글이 4건 있는데도.
+ *
+ *   아래에서 $res === false 를 명시적으로 잡는 이유가 이것이다. 빈 목록과 실패한 쿼리는
+ *   다른 사건인데, 화면에서는 똑같이 보인다. 같아 보이면 원인을 찾을 수 없다.
+ *   (g5_write_* 의 말머리는 ca_name, 게시판 설정의 말머리 목록은 g5_board.bo_category_list —
+ *    둘은 다른 테이블이라 chips 는 정상으로 뜨고 목록만 비어 보였다.) */
 $cat = '';
 if ($sj > 0) {
     $s = sql_fetch("select sj_name from ex_problem
@@ -88,17 +100,31 @@ if ($sj > 0) {
 $wt = $g5['write_prefix'] . $bo;      // g5_write_sqld_sj
 
 $w = array('wr_is_comment = 0');
-if ($cat !== '') $w[] = "wr_category = '" . sql_real_escape_string($cat) . "'";
+if ($cat !== '') $w[] = "ca_name = '" . sql_real_escape_string($cat) . "'";
 $where = implode(' and ', $w);
 
 $items = array();
-$res = sql_query("select wr_id, wr_subject, wr_name, wr_category, wr_comment,
+$res = sql_query("select wr_id, wr_subject, wr_name, ca_name, wr_comment,
                          wr_datetime, wr_reply, mb_id
                     from $wt
                    where $where
                    order by wr_num, wr_reply
                    limit " . (int)$n, false);
-while ($res && $r = sql_fetch_array($res)) {
+
+/* ★ 빈 목록과 실패한 쿼리를 구분해서 내보낸다.
+ *   둘을 같이 items = [] 로 내보내면 화면이 "아직 글이 없습니다" 를 띄우고,
+ *   글이 있는데도 없다고 말한다. 실제로 그렇게 걸렸다(위 주석 참조). */
+if ($res === false) {
+    ex_out(array(
+        'ok'       => 0,
+        'err'      => 'board_query_failed',
+        'pd'       => $pd,
+        'bo_table' => $bo,
+        'table'    => $wt,
+    ));
+}
+
+while ($r = sql_fetch_array($res)) {
     /* '답변완료' 판정: 우리 원장(ex_qna)이 approved 인가.
      * 게시판의 댓글 수로 판단하지 않는다 — 회원끼리 주고받은 댓글도 세기 때문이다.
      * 관리자가 확정한 답변만 '완료'다. */
@@ -110,7 +136,7 @@ while ($res && $r = sql_fetch_array($res)) {
         'wr_id'    => (int)$r['wr_id'],
         'subject'  => $r['wr_subject'],
         'name'     => $r['wr_name'],
-        'category' => $r['wr_category'],
+        'category' => $r['ca_name'],
         'replies'  => (int)$r['wr_comment'],
         'date'     => substr($r['wr_datetime'], 2, 8),      // 26-07-30
         'answered' => $done ? 1 : 0,

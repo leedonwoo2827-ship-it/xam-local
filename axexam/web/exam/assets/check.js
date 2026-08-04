@@ -527,8 +527,17 @@ function renderBoard(list){
   if(!d){
     body = '<div class="empty">불러오는 중…</div>';
   }else if(!d.ok){
+    /* ★ 실패 이유를 갈라 보여준다. 전부 "불러오지 못했습니다" 로 뭉치면
+       게시판이 없는 것과 쿼리가 깨진 것을 구분할 수 없다 — 후자는 코드 고장이라
+       운영자가 알아야 할 것이 완전히 다르다. */
+    var hint = "";
+    if (d.err === "no_board")
+      hint = '이 문제집의 게시판이 아직 만들어지지 않았습니다.';
+    else if (d.err === "board_query_failed")
+      hint = '게시판 테이블을 읽지 못했습니다' + (d.table ? ' ('+esc(d.table)+')' : '')
+           + '. 관리자에게 알려 주세요.';
     body = '<div class="empty">게시판을 불러오지 못했습니다.'
-         + (d.err==="no_board" ? '<br><small>이 문제집의 게시판이 아직 만들어지지 않았습니다.</small>' : '')
+         + (hint ? '<br><small>'+hint+'</small>' : '')
          + '</div>';
   }else if(!d.items||!d.items.length){
     body = '<div class="empty">아직 글이 없습니다. 첫 질문을 남겨보세요.</div>';
