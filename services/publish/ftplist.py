@@ -230,13 +230,13 @@ def server_checklist() -> list[dict]:
     # ★ 순서는 **실제로 하는 순서**다. 번호와 순서가 다르면 처음 보는 사람이 그대로
     #   따라가다 막힌다(seed_pd.php 는 FTP 로 올라간 뒤에야 열린다).
     return [
-        {"key": "start", "label": "앱: run.bat → 좌하단 칩에서 품목·작업 폴더 확인",
+        {"key": "start", "label": "0.1  앱을 띄우고 품목·작업 폴더를 확인한다",
          "where": f"run.bat  →  {SITE_BASE and 'http://127.0.0.1:8870/'}",
          "detail": (f"좌하단 칩에 품목({PD_CODE})과 작업 폴더가 맞는지 본다: {book}\n"
                     "다른 품목을 발행하려면 칩 → 작업 폴더 패널에서 폴더를 바꾼다. "
                     "폴더가 곧 품목이라, 여기가 틀리면 그 뒤 전부가 틀린다.")},
 
-        {"key": "youtube", "label": f"0. 영상 {n_b}편을 올려 둔다 (구글 드라이브 또는 유튜브) — 미리 해두는 단계",
+        {"key": "youtube", "label": f"0.2  영상 {n_b}편을 올려 둔다 (구글 드라이브 또는 유튜브)",
          "where": "drive.google.com / youtube.com",
          "detail": (f"올릴 파일: {book}\\05\\<번들>\\draft\\*.static.mp4 ({n_b}개)\n"
                     "탐색기 검색창에 *.static.mp4 를 넣으면 한 번에 잡힌다.\n"
@@ -245,7 +245,7 @@ def server_checklist() -> list[dict]:
                     "'버전 관리' 로 덮어쓰면 ID 가 유지된다.\n"
                     "유튜브면 '미등록(unlisted)' 으로 올리고 확인 후 공개로 바꾼다.")},
 
-        {"key": "youtube_map", "label": f"1. 영상 링크 {n_b}개를 매핑에 넣는다",
+        {"key": "youtube_map", "label": f"0.3  영상 링크 {n_b}개를 매핑에 넣는다",
          "where": f"발행 화면 ②  →  {ymap}",
          "detail": ("[영상 매핑 만들기] → [링크 붙여넣기] 에 '파일명 + 링크' 목록을 그대로 "
                     "붙여넣는다. URL 이든 ID 든 잡고, 형식이 느슨해도 된다.\n"
@@ -256,7 +256,7 @@ def server_checklist() -> list[dict]:
                     "접근 권한이다.\n"
                     f"끝나면 칩이 '링크 {n_b} / {n_b}' 가 되어야 한다.")},
 
-        {"key": "build", "label": "2. 빌드 — 06/ 산출물을 만든다",
+        {"key": "build", "label": "0.4  빌드 — 06/ 산출물을 만든다",
          "where": "발행 화면 ③  →  [빌드 실행]",
          "detail": ("사전점검 **오류가 0** 이어야 시작한다. 경고는 한 번 더 누르면 진행한다.\n"
                     f"로그에서 확인: '영상 {n_b}개 매핑 ({n_b}/{n_b} 유튜브 ID 입력됨)' 과 "
@@ -264,20 +264,30 @@ def server_checklist() -> list[dict]:
                     "★ --book 과 --pd 는 항상 명시된다. 둘 다 기본값이 SQLD 라서 하나라도 "
                     "빠지면 라이브 SQLD 문제은행을 덮어쓰고 되돌릴 수 없다.")},
 
-        {"key": "ftp", "label": "3. 업로드 폴더를 만들어 /www/ 로 FTP",
-         "where": f"발행 화면 ⑤  →  {book}\\_upload  →  /www/",
-         "detail": ("[업로드 폴더 만들기] 를 누르면 서버와 같은 모양(exam/ adm/ theme/ "
-                    "extend/ index.php .htaccess)으로 한 폴더에 모인다. FileZilla 왼쪽에 그 "
-                    "폴더, 오른쪽에 /www/ 를 놓고 통째로 끌어놓는다 — 경로를 맞출 일이 없다.\n"
-                    "★ **빌드한 뒤에는 폴더를 다시 만든다.** 안 하면 옛 산출물이 올라간다"
-                    "(화면이 빨간 배너로 알려준다).\n"
+        {"key": "stage", "label": "0.5  업로드 폴더를 만든다",
+         "where": f"발행 화면 ⑤  →  [업로드 폴더 만들기]",
+         "detail": (f"{book}\\_upload 이 만들어진다. 안이 **서버와 같은 모양**"
+                    "(exam/ adm/ theme/ extend/ index.php .htaccess)이라 어디로 갈지 생각할 "
+                    "것이 없다.\n"
+                    "★ **빌드한 뒤에는 반드시 다시 만든다.** 안 하면 옛 산출물이 올라간다 — "
+                    "화면이 빨간 배너로 알려주지만, 그 배너를 못 보면 문제·영상이 예전 것으로 "
+                    "나간다.\n"
+                    "problems.json 과 mp4 는 이 폴더에 없다(각각 3번·0.2번에서 처리한다).")},
+
+        # ── 여기부터 서버. 앱 밖에서 사람이 한다. ─────────────────────────────
+        {"key": "ftp", "label": "1.  FileZilla 로 /www/ 에 올린다",
+         "where": f"{book}\\_upload   →   /www/",
+         "detail": ("왼쪽(로컬)에 그 폴더, 오른쪽(서버)에 /www/ 를 놓고 **왼쪽 전체 선택 → "
+                    "끌어놓기**. 337개 2.3MB 라 몇 분이다.\n"
                     "FileZilla 설정(한 번만): 전송 유형 **바이너리** · 동시 전송 2 · "
                     "문자셋 **UTF-8 강제**(요약노트 파일명이 한글이다).\n"
-                    "problems.json 과 mp4 는 이 폴더에 없다 — 올리지 않는다.\n"
-                    "다 올리면 [다 올렸습니다 — 지우기].")},
+                    "덮어쓰기를 물으면 [덮어쓰기] + '항상 이 동작 사용' 체크.\n"
+                    "★ FileZilla 는 폴더를 **합친다** — 서버의 기존 파일을 지우지 않고 같은 "
+                    "이름만 덮어쓴다. 다른 품목(pd/sqld 등)은 이 폴더에 없으니 안전하다.\n"
+                    "끝나면 앱에서 [다 올렸습니다 — 지우기].")},
 
         # ★ FTP 뒤에 온다 — 이 파일이 서버에 올라가야 열린다.
-        {"key": "ex_product", "label": f"4. 품목 등록 — ex_product 에 pd_id='{PD_CODE}'",
+        {"key": "ex_product", "label": f"2.  품목 등록 — ex_product 에 pd_id='{PD_CODE}'",
          "where": f"{site}/adm/seed_pd.php",
          "detail": ("**최고관리자로 로그인한 브라우저**에서 연다(부관리자는 안 된다).\n"
                     f"pd_id={PD_CODE} · 이름 확인 → [등록]. 표에 그 품목이 추가되면 성공.\n"
@@ -285,7 +295,7 @@ def server_checklist() -> list[dict]:
                     f"\"ex_product 에 pd_id='{PD_CODE}' 가 없습니다\" 로 중단된다.\n"
                     "★ 카페24에는 phpMyAdmin 이 없다 — 이 화면이 그 자리다.\n"
                     "★ 끝나면 /www/adm/seed_pd.php 를 FTP 로 **지운다**(1회용).\n"
-                    "404 가 뜨면 3번 업로드가 안 된 것이다."),
+                    "404 가 뜨면 1번 업로드가 안 된 것이다."),
          "sql": ("-- 직접 SQL 을 쓸 수 있는 환경이라면 이것과 같다\n"
                  "INSERT INTO ex_product\n"
                  "  (pd_id, pd_name, pd_open, tier, model_id, provider,\n"
@@ -294,7 +304,7 @@ def server_checklist() -> list[dict]:
                  "        'openai_compat', 10, 3.0000, 20)\n"
                  "ON DUPLICATE KEY UPDATE pd_name = VALUES(pd_name);")},
 
-        {"key": "import", "label": "5. problems.json 을 관리자 화면에서 올린다",
+        {"key": "import", "label": "3.  problems.json 을 관리자 화면에서 올린다",
          "where": f"{site}/adm/exam_import.php",
          "detail": (f"올릴 파일: {book}\\06\\pd\\{PD_CODE}\\problems.json\n"
                     "파일 선택 필드 이름은 jsonfile. 그누보드 관리자 권한(600400)이 필요하다 "
@@ -305,7 +315,7 @@ def server_checklist() -> list[dict]:
                     "'또는 붙여넣기' 에 붙여넣는다(문항 하나 2.6KB · 회차 하나 92KB).\n"
                     "★ FTP 로는 올려도 읽히지 않는다 — .htaccess 가 .json 을 403 으로 막는다.")},
 
-        {"key": "report", "label": "6. 임포트 리포트를 읽는다",
+        {"key": "report", "label": "4.  임포트 리포트를 읽는다",
          "where": f"{site}/adm/exam_import.php",
          "detail": (f"첫 발행이면 **신규 {n_q} · 갱신 0 · 회차 {n_r}행**.\n"
                     "두 번째부터는 신규 0 · 갱신(고친 수) · 변경없음(나머지).\n"
@@ -315,7 +325,7 @@ def server_checklist() -> list[dict]:
                     "회차는 rd_free 기본값 1(무료)로 들어온다. 재임포트가 그 값을 건드리지 "
                     "않으므로 나중에 바꾼 공개 정책은 유지된다.")},
 
-        {"key": "verify", "label": "7. 웹에서 확인한다",
+        {"key": "verify", "label": "5.  웹에서 확인한다",
          "where": SITE_BASE + SITE_PATH,
          "detail": (f"① {site}{SITE_PATH}api/products.php — {PD_CODE} 가 "
                     f"open:1 · problems:{n_q} · rounds:{n_r} 로 보이고 "
@@ -328,7 +338,7 @@ def server_checklist() -> list[dict]:
                     "일반 회원에게 안 보이는 것이 정상이다.\n"
                     "자동 확인: axexam/scripts/deploy_check.py --pd <품목> --build <06 경로>")},
 
-        {"key": "board", "label": f"8. [선택] 과목게시판 만들기 — bo_table = {bo}",
+        {"key": "board", "label": f"6.  [선택] 과목게시판 만들기 — bo_table = {bo}",
          "where": "그누보드 관리자 → 게시판 관리 → 추가",
          "detail": ("게시판은 **문제집당 1개**이고 과목은 말머리로 구분한다 — 과목이 4개라고 "
                     f"게시판 4개를 만들지 않는다.\n"
@@ -337,7 +347,7 @@ def server_checklist() -> list[dict]:
                     "'분류 사용' 을 켜고 분류는 비워 둔다(다음 단계가 채운다).\n"
                     "문제풀이·성적표·영상과 무관하다 — 질문 게시판만 이게 없으면 비어 보인다.")},
 
-        {"key": "board_sync", "label": "9. [선택] 과목 말머리 동기화",
+        {"key": "board_sync", "label": "7.  [선택] 과목 말머리 동기화",
          "where": f"{site}/adm/exam_board_sync.php",
          "detail": ("ex_problem 의 과목 목록을 게시판 말머리로 맞춘다. 과목명 오타 하나로 "
                     "api/board.php 의 필터가 에러 없이 빈 목록을 돌려주기 때문에 이것만 "

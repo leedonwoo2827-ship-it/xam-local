@@ -38,7 +38,7 @@ export async function mount(root, ctx) {
       <div id="pb-problems"></div></div>
     <div class="card"><div class="card-title">⑤ 업로드 — 폴더 하나를 /www/ 로</div>
       <div id="pb-ftp"></div></div>
-    <div class="card"><div class="card-title">⑥ 서버 단계 — 여기서부터는 사람이 합니다</div>
+    <div class="card"><div class="card-title">⑥ 전체 순서 — 0.x 는 앱에서, 1번부터는 서버에서</div>
       <div id="pb-server"></div></div>
   `;
   root.appendChild(page);
@@ -782,9 +782,13 @@ function renderServer() {
   if (!d) { box.appendChild(el("div", "empty", "체크리스트를 불러올 수 없습니다.")); return; }
 
   const note = el("div", "field-hint");
-  note.textContent = "임포트는 1회용 관리자 토큰을 쓰기 때문에 스크립트로 부를 수 없습니다 — "
-    + "브라우저 단계입니다. 서버에서는 이력을 되읽을 수 없으므로(.htaccess 가 .json 을 "
-    + "403 으로 막습니다) 이 로컬 기록이 유일한 발행 이력입니다.";
+  // ★ 이 카드는 인수인계 문서다 — 처음 보는 사람이 이것만 읽고 할 수 있어야 한다.
+  //   그래서 번호를 **실제 하는 순서**로 두고, 0.x(앱) 와 1~(서버) 를 갈라 둔다.
+  note.textContent = "이 순서대로 하시면 됩니다. 0.x 는 이 앱에서 버튼으로 끝나고, "
+    + "1번부터는 FileZilla·브라우저에서 사람이 합니다. "
+    + "임포트는 1회용 관리자 토큰을 쓰기 때문에 스크립트로 부를 수 없습니다. "
+    + "서버에서는 이력을 되읽을 수 없으므로(.htaccess 가 .json 을 403 으로 막습니다) "
+    + "여기 체크 기록이 유일한 발행 이력입니다.";
   box.appendChild(note);
 
   d.items.forEach((it, i) => {
@@ -806,7 +810,11 @@ function renderServer() {
     });
     card.appendChild(cb);
     const mid = el("div");
-    mid.appendChild(el("b", null, `${i + 1}. ${it.label}`));
+    // ★ 자동 번호를 붙이지 않는다. 라벨이 이미 번호를 들고 있다(0.1 … 1 … 7).
+    //   붙이면 "1. 0.1 앱을 띄우고…" 가 되어 어느 쪽이 순서인지 알 수 없다.
+    //   번호를 라벨에 둔 이유: 0.x(앱) 와 1~(서버) 를 갈라야 하고, [나중] 항목처럼
+    //   번호가 없는 것도 있다 — 위치로 매기는 번호로는 표현할 수 없다.
+    mid.appendChild(el("b", null, it.label));
     mid.appendChild(el("div", "muted", `${it.where} — ${it.detail}`));
     if (it.sql) {
       const btn = el("button", "btn sm", "SQL 보기");
