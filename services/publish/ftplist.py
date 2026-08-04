@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 
 from core.constants import BASE_DIR, SITE_BASE, SITE_PATH
 from services.book import paths
@@ -192,6 +193,19 @@ def build(*, with_hash: bool = False) -> dict:
     }
 
 
+def _board_table(pd_id: str) -> str:
+    """과목게시판의 `bo_table` — `api/board.php` 의 `ex_board_table()` 과 **같은 규칙**이다.
+
+    소문자·`[a-z0-9_]` 로 바꾸고 `_sj` 를 붙여 20자로 자른다.
+      sqld → sqld_sj · bigdata → bigdata_sj · bdae-w → bdae_w_sj (하이픈은 `_`)
+
+    ★ 이름이 틀리면 게시판을 못 찾아 **에러 없이 빈 목록**이 된다. 사람이 못 잡는 종류의
+      고장이라, 손으로 만들라고 하지 않고 여기서 계산해 보여 준다.
+    """
+    t = re.sub(r"[^a-z0-9_]", "_", (pd_id or "").lower())
+    return (t + "_sj")[:20]
+
+
 def server_checklist() -> list[dict]:
     """서버 쪽 순서 — 우리가 대신 할 수 없는 단계들.
 
@@ -209,12 +223,18 @@ def server_checklist() -> list[dict]:
     n_r = sh["round_count"]
     n_b = sh["total_bundles"]
     n_s = sh["subject_count"]
-    ymap = f"data/youtube_map.{PD_CODE}.json"
+    ymap = f"axexam/data/youtube_map.{PD_CODE}.json"
+    bo = _board_table(PD_CODE)
     return [
-        {"key": "ex_product", "label": f"ex_product 에 pd_id='{PD_CODE}' 행 추가",
-         "where": "phpMyAdmin",
+        # ★ 카페24 호스팅에는 phpMyAdmin 이 없다(실측). 그래서 그누보드의 DB 접속·관리자
+        #   인증을 빌려 쓰는 1회용 화면을 두었다 — FTP 로 올라가므로 업로드 뒤에 한다.
+        {"key": "ex_product", "label": f"품목 등록 — ex_product 에 pd_id='{PD_CODE}'",
+         "where": "/adm/seed_pd.php   (FTP 업로드 후에 열린다)",
          "detail": ("임포트가 이 행을 먼저 확인한다. 없으면 "
-                    f"\"ex_product 에 pd_id='{PD_CODE}' 가 없습니다\" 로 중단된다."),
+                    f"\"ex_product 에 pd_id='{PD_CODE}' 가 없습니다\" 로 중단된다. "
+                    "★ 카페24에는 phpMyAdmin 이 없다 — 이 화면이 그 자리다. 최고관리자로 "
+                    "로그인한 브라우저에서 열고 [등록]. "
+                    "★ 끝나면 /www/adm/seed_pd.php 를 FTP 로 지운다(1회용)."),
          "sql": ("INSERT INTO ex_product\n"
                  "  (pd_id, pd_name, pd_open, tier, model_id, provider, cost_units, cost_cap, pd_sort)\n"
                  f"VALUES ('{PD_CODE}', '{PD_LABEL}', 1, 'T1', 'deepseek-v4-flash',\n"
@@ -233,10 +253,18 @@ def server_checklist() -> list[dict]:
                     "★ 드라이브·link·file 은 min_level 을 5 로 둔다. 1 이면 링크가 "
                     "videos.js(정적 파일)에 구워져 누구나 내려받는다 — 링크 자체가 권한이다. "
                     "입력 후 다시 빌드한다.")},
-        {"key": "ftp", "label": "06/ 산출물을 /www/exam/ 로 FTP 업로드",
-         "where": "FileZilla",
-         "detail": ("전송 유형은 **바이너리**. 동시 전송 2개 이하. 파일명 인코딩 UTF-8 강제"
-                    "(요약노트 파일명이 한글이다). problems.json 과 mp4 는 올리지 않는다.")},
+        # ★ 업로드는 **폴더 하나**다. 06/ 과 axexam/web/ 을 서버 모양으로 합쳐 둔다.
+        {"key": "ftp", "label": "업로드 폴더를 /www/ 로 FTP",
+         "where": "발행 화면 ⑤ → <BOOK>/_upload  →  /www/",
+         "detail": ("[업로드 폴더 만들기] 를 누르면 서버와 같은 모양(exam/ adm/ theme/ "
+                    "extend/ index.php .htaccess)으로 한 폴더에 모인다. 왼쪽에 그 폴더, "
+                    "오른쪽에 /www/ 를 놓고 통째로 끌어놓는다 — 경로를 맞출 일이 없다. "
+                    "★ 빌드한 뒤에는 폴더를 **다시 만든다**. 안 하면 옛 산출물이 올라간다"
+                    "(화면이 빨간 배너로 알려준다). "
+                    "FileZilla: 전송 유형 바이너리 · 동시 전송 2 · 문자셋 UTF-8 강제"
+                    "(요약노트 파일명이 한글이다). "
+                    "problems.json 과 mp4 는 이 폴더에 없다 — 올리지 않는다. "
+                    "다 올리면 [다 올렸습니다 — 지우기].")},
         {"key": "import", "label": "problems.json 을 관리자 화면에서 업로드",
          "where": "/adm/exam_import.php",
          "detail": ("파일 선택 필드 이름은 jsonfile. 그누보드 최고관리자로 로그인해야 한다. "
@@ -246,12 +274,31 @@ def server_checklist() -> list[dict]:
          "where": "/adm/exam_import.php",
          "detail": (f"첫 발행이면 신규 {n_q} · 갱신 0 · 회차 {n_r}행. "
                     f"두 번째부터는 신규 0 · 갱신(고친 수) · 변경없음(나머지) 로 나온다. "
-                    "실패·건너뜀은 항상 0 이어야 한다.")},
+                    "실패·건너뜀은 항상 0 이어야 한다. "
+                    "★ skip_edited 가 0 이 아니면 그 문항을 전에 웹에서 고친 것이다 — "
+                    "/adm/exam_problem_form.php 에서 [원본 복원] 후 다시 임포트한다. "
+                    "회차는 rd_free 기본값 1(무료)로 들어온다 — 재임포트가 그 값을 "
+                    "건드리지 않으므로 나중에 바꾼 정책은 유지된다.")},
+        {"key": "board", "label": f"[선택] 과목게시판 만들기 — bo_table = {bo}",
+         "where": "그누보드 관리자 → 게시판 관리 → 추가",
+         "detail": ("게시판은 **문제집당 1개**이고 과목은 말머리로 구분한다 — 4과목이라고 "
+                    f"게시판 4개를 만들지 않는다. bo_table 은 반드시 `{bo}` 다. 이름이 틀리면 "
+                    "게시판을 못 찾아 **에러 없이 빈 목록**이 된다. "
+                    "'분류 사용' 을 켜고 분류는 비워 둔다(다음 단계가 채운다). "
+                    "문제풀이·성적표·영상과 무관하므로 나중에 해도 된다.")},
+        {"key": "board_sync", "label": "[선택] 과목 말머리 동기화",
+         "where": "/adm/exam_board_sync.php",
+         "detail": ("ex_problem 의 과목 목록을 게시판 말머리로 맞춘다. 과목명 오타 하나로 "
+                    "api/board.php 의 필터가 에러 없이 빈 목록을 돌려주기 때문에 이것만 "
+                    "자동화했다. 과목이 늘면 다시 돌린다.")},
         {"key": "verify", "label": "웹에서 최종 확인",
          "where": SITE_BASE + SITE_PATH,
          "detail": (f"api/products.php 에 {PD_CODE} 가 open:1 · problems:{n_q} · rounds:{n_r} 로 "
-                    f"보이고, check.html?pd={PD_CODE} 가 {n_q}문항·{n_s}과목 필터로 떠야 한다. "
-                    "영상은 로그인 레벨이 min_level 이상일 때만 보인다(드라이브는 5로 두었다).")},
+                    f"보이고 **다른 품목도 그대로** 있어야 한다. "
+                    f"check.php?pd={PD_CODE} 가 {n_q}문항·{n_s}과목 필터로 떠야 한다. "
+                    "★ 영상은 로그인 레벨이 min_level 이상일 때만 보인다(드라이브는 5). "
+                    "강사 계정으로 하나 재생해 보면 링크·공유·레벨이 한 번에 확인된다. "
+                    "자동 확인: axexam/scripts/deploy_check.py --pd <품목> --build <06 경로>")},
         # ★ 여기부터는 '나중에 고칠 때' 절차다. 초기 세팅보다 이쪽이 훨씬 자주 일어난다.
         {"key": "revise_video", "label": "[나중] 영상만 바꿀 때 — 파일 1개",
          "where": f"{ymap} → 빌드 → FTP",
