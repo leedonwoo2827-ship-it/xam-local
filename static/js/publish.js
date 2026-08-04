@@ -629,8 +629,22 @@ async function renderStage() {
     + "<b>어디로 갈지 생각할 것이 없습니다.</b>";
   box.appendChild(head);
 
+  // ★ 빌드보다 낡았으면 크게 알린다. 파일 수만 보면 그럴듯해서 사람이 못 알아챈다 —
+  //   실제로 빌드 10:21 · 폴더 08:58 인 채로 "다 만들어졌다" 로 보였고,
+  //   그대로 올리면 새 videos.private.json 이 빠진다.
+  if (st?.exists && st.stale) {
+    const w = el("div", "qz-warn err");
+    w.appendChild(icon("alert", 15));
+    w.appendChild(el("span", null, st.stale_text
+      || "빌드가 이 폴더보다 새롭습니다 — 다시 만드세요."));
+    box.appendChild(w);
+  }
+
   const acts = el("div", "qz-foot");
-  const mk = el("button", "btn primary", st?.exists ? "업로드 폴더 다시 만들기" : "업로드 폴더 만들기");
+  const mk = el("button", "btn primary",
+    st?.exists ? (st.stale ? "★ 업로드 폴더 다시 만들기 (빌드가 더 새롭습니다)"
+                           : "업로드 폴더 다시 만들기")
+               : "업로드 폴더 만들기");
   mk.type = "button";
   mk.addEventListener("click", async () => {
     try {

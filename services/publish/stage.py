@@ -152,15 +152,38 @@ def build() -> dict:
 
 
 def summary() -> dict:
-    """이미 만들어 둔 폴더의 상태 — 만들지 않고 본다."""
+    """이미 만들어 둔 폴더의 상태 — 만들지 않고 본다.
+
+    ★ `stale` 을 함께 준다: 빌드(06/)가 이 폴더보다 새로우면 **옛 산출물을 올리게 된다.**
+      실제로 그렇게 걸렸다 — 빌드는 10:21 에 돌았는데 업로드 폴더는 08:58 것이라
+      새로 생긴 `videos.private.json` 이 빠진 채 "다 만들어졌다" 로 보였다.
+      화면이 그걸 모르면 사람이 알아챌 방법이 없다(파일 수만 보면 그럴듯하다).
+    """
     d = stage_dir()
     if not os.path.isdir(d):
         return {"dir": d, "exists": False, "server": "/www/"}
     n = 0
     b = 0
+    newest = 0.0
     for root, _dirs, files in os.walk(d):
         for f in files:
+            p_ = os.path.join(root, f)
             n += 1
-            b += os.path.getsize(os.path.join(root, f))
+            b += os.path.getsize(p_)
+            newest = max(newest, os.path.getmtime(p_))
+
+    # 06/ 쪽에서 가장 새로운 파일과 비교한다.
+    out = paths.out_dir()
+    build_newest = 0.0
+    if os.path.isdir(out):
+        for root, dirs, files in os.walk(out):
+            dirs[:] = [x for x in dirs if x not in ("_partial",)]
+            for f in files:
+                build_newest = max(build_newest, os.path.getmtime(os.path.join(root, f)))
+
+    stale = build_newest > newest + 1     # 1초 여유(복사 시각 차)
     return {"dir": d, "exists": True, "server": "/www/", "files": n, "bytes": b,
-            "tops": sorted(x for x in os.listdir(d))}
+            "tops": sorted(x for x in os.listdir(d)),
+            "stale": stale,
+            "stale_text": ("빌드(06/)가 이 폴더보다 새롭습니다 — [업로드 폴더 다시 만들기] 를 "
+                           "누르지 않으면 **옛 산출물을 올립니다.**") if stale else ""}
