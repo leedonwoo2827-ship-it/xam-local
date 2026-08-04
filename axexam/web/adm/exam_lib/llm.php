@@ -204,7 +204,42 @@ function ex_llm_call($pd_id, $msg, $max_tokens = 1200, $timeout = 60)
         if ($tc > 0) $ti = max(0, $ti - $tc);      // 캐시 히트분은 따로 센다
     }
     if (trim($text) === '') {
-        return array('ok' => false, 'msg' => '응답이 비었습니다. 모델명(' . $cfg['model'] . ')을 확인하십시오.');
+        /* ★ "모델명을 확인하십시오" 만 말하면 안 된다.
+         *
+         *   실제로 5건 중 2건은 **같은 모델로 성공**하고 3건이 이 자리로 떨어졌다.
+         *   그 상황에서 모델명을 의심하게 만드는 안내는 사람을 엉뚱한 데로 보낸다.
+         *   HTTP 는 200 이고 content 만 비었다는 뜻이므로, 왜 비었는지를 응답이
+         *   이미 들고 있다 — finish_reason 과 토큰 수다.
+         *
+         *   `length`            max_tokens 에서 잘렸다 → 상한을 올린다
+         *   `content_filter`    공급자가 막았다 → 프롬프트를 손본다
+         *   `stop` 인데 비었다  추론형 모델이 reasoning_content 에만 쓴 경우가 많다.
+         *                       그 값은 **답이 아니라 사고 과정**이라 답변으로 쓰지 않는다.
+         *                       상한을 올려 본문이 나오게 하는 것이 맞다.
+         */
+        $fin = '';
+        if (isset($d['choices'][0]['finish_reason'])) $fin = (string)$d['choices'][0]['finish_reason'];
+        elseif (isset($d['stop_reason']))            $fin = (string)$d['stop_reason'];
+
+        $rz = 0;
+        if (!empty($d['choices'][0]['message']['reasoning_content'])) {
+            $rz = mb_strlen((string)$d['choices'][0]['message']['reasoning_content'], 'UTF-8');
+        }
+
+        $why = '응답 본문이 비었습니다';
+        if ($fin === 'length')              $why = '응답이 최대 길이에서 잘렸습니다';
+        elseif ($fin === 'content_filter')  $why = '공급자가 응답을 차단했습니다';
+        elseif ($rz > 0)                    $why = '모델이 사고 과정만 쓰고 본문을 안 냈습니다';
+
+        return array('ok' => false, 'msg' => $why
+            . ' (HTTP 200 · finish_reason=' . ($fin !== '' ? $fin : '없음')
+            . ' · 요청 max_tokens=' . (int)$max_tokens
+            . ' · 출력 토큰 ' . $to
+            . ($rz > 0 ? ' · 사고과정 ' . $rz . '자' : '')
+            . ' · 모델 ' . $cfg['model'] . ')'
+            . ($fin === 'length' || $rz > 0
+               ? ' — max_tokens 를 올려야 합니다. 모델명 문제가 아닙니다.'
+               : ''));
     }
 
     list($p_in, $p_cache, $p_out) = ex_llm_price($cfg['model']);

@@ -30,6 +30,26 @@
  */
 if (!defined('_GNUBOARD_')) exit;
 
+/**
+ * 답변 댓글을 HTML 로 쓸지.
+ *
+ * 그누보드는 **관리자가 쓴 글에만 HTML 을 허용**한다(회원은 막힌다). 우리 답변 댓글은
+ * 관리자 계정으로 쓰므로 `<b>` 를 써도 회원에게 HTML 이 열리지 않는다.
+ *
+ * ★ 그래도 상수로 둔 이유: **댓글 렌더가 `wr_option` 을 보는지는 그누보드 코어를
+ *   읽어야 확정되고, 그 코어는 우리 저장소에 없다**(스킨만 있다). 추측을 코드에
+ *   묻어두지 않고 밖으로 꺼내 둔다.
+ *
+ *   태그가 글자로 보이면(`<p>` 같은 것이 그대로 뜨면) 이 값을 false 로 바꾼다.
+ *   그다음 그 질문을 [승인] 다시 누르면 **이미 쓴 댓글이 갱신된다**
+ *   (qa_reply_wr_id 를 들고 있다) — 되돌리기가 한 줄 + 클릭 한 번이다.
+ *
+ * `html2` 를 쓴다: HTML 허용 + 자동 줄바꿈 없음. 우리가 `<p>`·`<br>` 를 직접 넣으므로
+ * 코어가 한 번 더 nl2br 하면 줄이 두 배로 벌어진다.
+ */
+if (!defined('EX_BOARD_HTML')) define('EX_BOARD_HTML', true);
+if (!defined('EX_BOARD_HTML_OPT')) define('EX_BOARD_HTML_OPT', 'html2');
+
 /** 문제집 → 게시판 테이블명.
  *
  * ⚠ 이 규칙은 세 곳에 있다: 여기 · `exam/api/board.php` · `adm/exam_board_sync.php`.
@@ -296,16 +316,33 @@ function exbq_answer_to_board($qa_id, $by = '')
     if (!$parent) return array('ok' => false, 'msg' => '원글이 삭제된 것 같습니다.');
 
     /* 답변 앞에 표식을 붙인다. 게시판만 보는 사람이 "관리자 답변"임을 알아야 하고,
-       회원끼리의 댓글과 구분돼야 한다. */
-    $body = "[관리자 답변]\n\n" . $answer;
+       회원끼리의 댓글과 구분돼야 한다.
+
+       ★ 마크다운 기호를 떼어 평문으로 만든다. 초안은 `**굵게**` 를 쓰는데, 게시판
+         댓글은 HTML 허용 여부를 그누보드 코어가 정하고 그 코어는 우리 저장소에 없다.
+         추측으로 html 을 켜면 태그가 글자로 보이거나 의도보다 넓게 허용된다 —
+         둘 다 나쁘다. 평문으로 정리하면 어느 쪽이든 읽힌다. (exam/lib/md.php) */
+    require_once G5_PATH . '/exam/lib/md.php';
+    if (EX_BOARD_HTML) {
+        // 게시판 설정의 'HTML 쓰기 권한' 이 10(최고관리자)이라 회원에게는 열리지 않는다.
+        $body = '<p><b>[관리자 답변]</b></p>' . "\n" . ex_md_html($answer);
+        $opt  = EX_BOARD_HTML_OPT;
+    } else {
+        $body = "[관리자 답변]\n\n" . ex_md_plain($answer);
+        $opt  = '';
+    }
 
     /* ── 이미 쓴 댓글이 있으면 내용만 갈아 끼운다 ── */
     $rid = (int)$q['qa_reply_wr_id'];
     if ($rid > 0) {
         $exists = sql_fetch("select wr_id from `$wt` where wr_id = $rid and wr_is_comment = 1");
         if ($exists) {
-            sql_query("update `$wt`
-                          set wr_content = '" . exbq_s($body) . "'
+            /* ★ wr_option 도 같이 갱신한다. 안 하면 EX_BOARD_HTML 을 바꾼 뒤 재승인해도
+                 옛 옵션이 남아 태그가 글자로 보인다(또는 반대로 평문에 html 옵션이
+                 남는다). 되돌리기가 "상수 한 줄 + 승인 다시" 로 끝나야 한다. */
+            $set_u = "wr_content = '" . exbq_s($body) . "'";
+            if (isset($cols['wr_option'])) $set_u .= ", wr_option = '" . exbq_s($opt) . "'";
+            sql_query("update `$wt` set $set_u
                         where wr_id = $rid and wr_is_comment = 1", false);
             return array('ok' => true, 'wr_id' => $rid, 'updated' => true);
         }
@@ -329,7 +366,7 @@ function exbq_answer_to_board($qa_id, $by = '')
         'wr_comment'       => 0,
         'wr_comment_reply' => '',
         'ca_name'          => '',
-        'wr_option'        => '',
+        'wr_option'        => $opt,      // 'html2' 또는 '' — 위 EX_BOARD_HTML 참조
         'wr_subject'       => '',
         'wr_content'       => $body,
         'wr_link1'         => '',

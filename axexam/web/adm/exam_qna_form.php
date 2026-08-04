@@ -399,7 +399,17 @@ $ST   = array('pending' => '대기', 'drafting' => '초안 생성 중', 'draft_r
       <?php if ($q['qa_draft'] !== null && $q['qa_draft'] !== ''): ?>
         <h2 style="margin-top:16px">LLM 초안
           <span class="hint">— 이용자에게 보이지 않는다. 승인한 답변만 공개된다</span></h2>
-        <div class="draft" id="draftBox"><?php echo exf_h($q['qa_draft']) ?></div>
+        <?php
+        /* ★ 초안을 **렌더해서** 보여준다. 초안이 `**굵게**` 를 쓰는데 그대로 두면
+             별표가 글자로 보여 읽기가 나쁘다(강조가 아니라 noise 다).
+           ★ 그런데 [초안을 답변란으로 복사] 는 **원문**을 넣어야 한다. 렌더된 것을
+             textContent 로 긁으면 별표가 사라져서, 승인 뒤 게시판·마이페이지에서
+             강조가 통째로 빠진다. 그래서 원문을 data-raw 에 따로 실어 둔다. */
+        require_once G5_PATH . '/exam/lib/md.php';
+        ?>
+        <div class="draft" id="draftBox"
+             data-raw="<?php echo exf_h($q['qa_draft']) ?>"><?php
+          echo ex_md_html($q['qa_draft']) ?></div>
         <div class="hint">
           모델 <code><?php echo exf_h($q['qa_model'] ? $q['qa_model'] : '—') ?></code> ·
           토큰 in <?php echo (int)$q['qa_tok_in'] ?> / cache <?php echo (int)$q['qa_tok_cache'] ?>
@@ -412,9 +422,11 @@ $ST   = array('pending' => '대기', 'drafting' => '초안 생성 중', 'draft_r
           <?php endif; ?>
         </div>
         <button type="button" class="btn_b01" style="margin-top:8px"
-                onclick="document.getElementById('ansBox').value=document.getElementById('draftBox').textContent.trim();">
+                onclick="document.getElementById('ansBox').value=(document.getElementById('draftBox').dataset.raw||'').trim();">
           초안을 답변란으로 복사
         </button>
+        <span class="hint">원문(<code>**굵게**</code> 포함)이 그대로 들어갑니다 —
+          위 박스는 렌더된 모습입니다.</span>
       <?php endif; ?>
 
       <form method="post" style="margin-top:16px">
