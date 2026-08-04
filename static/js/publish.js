@@ -310,9 +310,17 @@ function renderBuild() {
     return c;
   };
   chips.appendChild(chip(e.cloned, "axexam 클론됨", e.script));
-  chips.appendChild(chip(e.patch_youtube_map, "--youtube-map 패치",
-    e.patch_youtube_map ? "적용됨"
-      : "미적용 — 공용 youtube_map.json 을 쓰면 SQLD 의 번들 키와 겹칩니다."));
+  // ★ 이 배지는 '없어도 정상' 이다. 경고(빨강)로 두면 매번 뭔가 잘못된 것처럼 보인다.
+  //
+  //   상류 빌더는 `--youtube-map` 플래그가 없고, 대신 `--pd` 로
+  //   `data/youtube_map.<pd>.json` 을 스스로 고른다(더 나은 방식이라 그대로 쓴다).
+  //   그래서 '미적용' 이 맞는 상태다 — 옆의 youtube_map.<pd>.json 배지가 실제 상태다.
+  chips.appendChild(chip(true,
+    e.patch_youtube_map ? "--youtube-map 플래그 있음" : "품목별 매핑 (--pd 로 자동 선택)",
+    e.patch_youtube_map
+      ? "빌더가 그 플래그를 받아 명령에 넣습니다."
+      : "상류 빌더는 --pd 로 data/youtube_map.<pd>.json 을 스스로 고릅니다. "
+        + "플래그가 없는 것이 정상이며, 품목별로 갈려 SQLD 와 겹치지 않습니다."));
   chips.appendChild(chip(e.youtube_map_exists, `youtube_map.${e.pd}.json`, e.youtube_map));
   box.appendChild(chips);
 
