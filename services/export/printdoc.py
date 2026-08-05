@@ -128,18 +128,43 @@ ol.ch li.a::after{content:"  ← 정답";color:var(--ok);font-size:11.5px;font-w
   padding:7px 10px;margin:5px 0 0;white-space:pre-wrap;font-size:13px}
 .ex b{color:var(--ok)}
 
-/* 슬라이드 대본 */
+/* 슬라이드 대본
+   ★ 열 비율의 근거: 화면(heading)은 '3번 문제' 처럼 짧고 읽는 말(narration)은 길다.
+     1:1.25 로 두면 heading 쪽에 빈 공간이 남아 페이지가 늘어난다 → 0.6:1.4.
+     번호 열은 두 자리면 충분하다(22px → 18px). */
 .sc{page-break-inside:avoid;break-inside:avoid;display:grid;
-  grid-template-columns:22px 1fr 1.25fr;gap:10px;padding:8px 0;
+  grid-template-columns:18px minmax(74px,.42fr) 1.58fr;gap:9px;padding:7px 0;
   border-bottom:1px solid var(--line);align-items:start}
-.sc .n{color:var(--mute);font-size:11.5px;text-align:right;padding-top:2px}
+.sc .n{color:var(--mute);font-size:11px;text-align:right;padding-top:2px}
 .sc .hd{font-weight:700}
-.sc .hd .k{display:block;color:var(--mute);font-size:11px;font-weight:400}
+.sc .hd .k{display:block;color:var(--mute);font-size:10.5px;font-weight:400}
 .sc .nr{white-space:pre-wrap}
 .sc.nocap{background:#fbfbf8}
-.sc.nocap .hd::after{content:" (캡처 안 함)";color:var(--mute);font-size:11px;font-weight:400}
-.schead{display:grid;grid-template-columns:22px 1fr 1.25fr;gap:10px;
+.sc.nocap .hd::after{content:" (캡처 안 함)";color:var(--mute);font-size:10.5px;font-weight:400}
+
+/* ★ 읽는 말이 없는 씬(gap·countdown)은 **한 줄로 접는다.**
+   내용이 없는데 정상 행 높이를 먹어서, 번들 하나에 그런 줄이 10개 넘으면 그것만으로
+   페이지가 한 장씩 늘어난다. 접어도 정보는 다 남는다(번호·제목·종류). */
+.sc.thin{grid-template-columns:18px 1fr;padding:3px 0;font-size:11.5px;
+  color:var(--mute);background:transparent}
+.sc.thin .hd{font-weight:400;display:flex;gap:7px;align-items:baseline}
+.sc.thin .hd .k{display:inline;font-size:10.5px}
+.sc.thin .hd::after{content:none}
+
+.schead{display:grid;grid-template-columns:18px minmax(74px,.42fr) 1.58fr;gap:9px;
   border-bottom:2px solid var(--ink);padding:0 0 4px;font-size:11.5px;color:var(--mute)}
+
+/* ★ 조밀 모드 — 한 장에 2쪽 인쇄할 때 쓴다.
+   인쇄 대화상자의 '용지 한 장에 2페이지' 는 페이지를 축소해 얹는 것이므로 글자가
+   작아진다. 그래서 조밀 모드는 글자를 더 줄이지 않고 **여백과 행간만** 줄인다 —
+   축소가 겹치면 읽을 수 없게 된다. */
+body.dense{padding:14px 16px}
+body.dense .sc{padding:4px 0;gap:8px}
+body.dense .sc .nr,body.dense .sc .hd{line-height:1.5}
+body.dense .sc.thin{padding:2px 0}
+body.dense .part{margin:14px 0 8px;padding-top:6px}
+body.dense h1{font-size:17px}
+body.dense .sub{margin:0 0 10px}
 
 @media print{
   body{padding:0;font-size:11.5pt}
@@ -151,7 +176,8 @@ ol.ch li.a::after{content:"  ← 정답";color:var(--ok);font-size:11.5px;font-w
 """
 
 
-def _page(title: str, toolbar: str, body: str, mathjax: bool = True) -> str:
+def _page(title: str, toolbar: str, body: str, mathjax: bool = True,
+          body_cls: str = "") -> str:
     """공통 껍데기.
 
     ★ MathJax 는 `pre`·`code` 를 건드리지 않게 제외한다. SQL 박스 안의 `$` 를
@@ -171,7 +197,8 @@ window.MathJax = {
 """
     return (
         "<!DOCTYPE html>\n<html lang=\"ko\"><head><meta charset=\"utf-8\">\n"
-        f"<title>{_h(title)}</title>\n<style>{_CSS}</style>{mj}</head><body>\n"
+        f"<title>{_h(title)}</title>\n<style>{_CSS}</style>{mj}</head>"
+        f'<body{f" class=\"{body_cls}\"" if body_cls else ""}>\n'
         f"{toolbar}\n{body}\n</body></html>\n"
     )
 
@@ -332,7 +359,7 @@ def _scenes(bundle: str) -> tuple[dict, list[dict]]:
     return d, (d.get("scenes") or [])
 
 
-def lesson_html(bundle: str | None = None) -> str:
+def lesson_html(bundle: str | None = None, dense: bool = False) -> str:
     from core.constants import PD_LABEL
 
     bs = bundles()
@@ -343,9 +370,15 @@ def lesson_html(bundle: str | None = None) -> str:
     else:
         show = bs
 
-    links = [("/print/lesson", "전체", bundle is None)]
+    # 조밀 모드 링크는 지금 보고 있는 범위를 유지한다 — 전체를 보다 누르면 전체가,
+    # 한 번들을 보다 누르면 그 번들이 조밀해져야 한다.
+    keep = f"?b={bundle}&" if bundle else "?"
+    links = [("/print/lesson", "전체", bundle is None and not dense)]
     for b in bs:
-        links.append((f"/print/lesson?b={b}", b, bundle == b))
+        links.append((f"/print/lesson?b={b}", b, bundle == b and not dense))
+    links.append((f"/print/lesson{keep}dense=1" if not dense
+                  else (f"/print/lesson?b={bundle}" if bundle else "/print/lesson"),
+                  "조밀하게 (2쪽 인쇄용)" if not dense else "넉넉하게", dense))
     links.append(("/print/", "← 목록", False))
 
     n_sc = 0
@@ -366,7 +399,16 @@ def lesson_html(bundle: str | None = None) -> str:
                      '<div>읽는 말(나레이션)</div></div>')
         for s in sc:
             cap = bool(s.get("capture", True))
-            nr = s.get("narration_text") or s.get("narration") or ""
+            nr = (s.get("narration_text") or s.get("narration") or "").strip()
+            # ★ 읽는 말이 없는 씬(gap·countdown)은 두 칸으로 접는다. 번들 하나에 그런
+            #   줄이 10개 넘어서, 접기만 해도 페이지가 눈에 띄게 줄어든다.
+            if nr == "":
+                parts.append(
+                    f'<div class="sc thin">'
+                    f'<div class="n">{int(s.get("scene") or 0)}</div>'
+                    f'<div class="hd">{_h(s.get("heading"))}'
+                    f'<span class="k">{_h(s.get("kind"))}</span></div></div>')
+                continue
             parts.append(
                 f'<div class="sc{"" if cap else " nocap"}">'
                 f'<div class="n">{int(s.get("scene") or 0)}</div>'
@@ -374,12 +416,19 @@ def lesson_html(bundle: str | None = None) -> str:
                 f'<span class="k">{_h(s.get("kind"))}</span></div>'
                 f'<div class="nr">{_h(nr)}</div></div>')
 
+    n_thin = sum(1 for b in show for s in _scenes(b)[1]
+                 if not (s.get("narration_text") or s.get("narration") or "").strip())
     body.append(f'<p class="sub">{len(show)}번들 · {n_sc}씬 · '
-                "왼쪽이 화면에 나오는 것, 오른쪽이 읽는 말입니다</p>")
+                "왼쪽이 화면에 나오는 것, 오른쪽이 읽는 말입니다."
+                + (f" 읽는 말이 없는 {n_thin}줄(gap·countdown)은 한 줄로 접었습니다."
+                   if n_thin else "")
+                + "</p>")
     body += parts
 
-    note = "Ctrl+P → 'PDF로 저장' · 용지 A4"
-    return _page(f"{PD_LABEL} 슬라이드 대본", _toolbar(links, note), "".join(body))
+    note = ("2쪽 인쇄: Ctrl+P → 용지 한 장에 2페이지 → 배율 100%"
+            if dense else "Ctrl+P → 'PDF로 저장' · 용지 A4")
+    return _page(f"{PD_LABEL} 슬라이드 대본", _toolbar(links, note), "".join(body),
+                 body_cls="dense" if dense else "")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
