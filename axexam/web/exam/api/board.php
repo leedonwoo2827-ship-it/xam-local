@@ -127,10 +127,19 @@ if ($res === false) {
 while ($r = sql_fetch_array($res)) {
     /* '답변완료' 판정: 우리 원장(ex_qna)이 approved 인가.
      * 게시판의 댓글 수로 판단하지 않는다 — 회원끼리 주고받은 댓글도 세기 때문이다.
-     * 관리자가 확정한 답변만 '완료'다. */
-    $done = sql_fetch("select qa_id from ex_qna
-                        where bo_table = '$boq' and wr_id = " . (int)$r['wr_id'] . "
-                          and qa_status = 'approved' limit 1");
+     * 관리자가 확정한 답변만 '완료'다.
+     *
+     * ★ 그리고 **우리가 쓴 답변 댓글이 살아 있어야** 한다.
+     *   approved 만 보면, 관리자가 게시판에서 그 댓글을 지웠을 때 배지가 초록으로
+     *   남는다 — 회원은 '답변완료' 를 보고 글을 열었는데 답이 없다. 배지가 거짓말을
+     *   하는 상태다(실제로 그렇게 걸렸다). exam/lib/qna_badge.php 와 같은 기준이다. */
+    $done = sql_fetch("select q.qa_id from ex_qna q
+                        where q.bo_table = '$boq' and q.wr_id = " . (int)$r['wr_id'] . "
+                          and q.qa_status = 'approved'
+                          and exists (select 1 from `$wt` c
+                                       where c.wr_id = q.qa_reply_wr_id
+                                         and c.wr_is_comment = 1)
+                        limit 1");
 
     $items[] = array(
         'wr_id'    => (int)$r['wr_id'],

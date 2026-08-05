@@ -51,14 +51,37 @@ function ex_qna_answered($bo_table, $list)
     $bo = preg_replace('/[^a-z0-9_]/', '', strtolower((string)$bo_table));
     if ($bo === '') return array();
 
+    /* ★ `답변완료` 는 **게시판에 답이 실제로 있다**는 뜻이어야 한다.
+     *
+     *   처음에는 `qa_status = 'approved'` 만 봤다. 그런데 관리자가 게시판에서 답변
+     *   댓글을 지우면 우리 DB 는 여전히 approved 라서 **배지가 초록으로 남았다.**
+     *   회원 입장에서는 '답변완료' 를 보고 글을 열었는데 답이 없다 — 배지가 거짓말을
+     *   하는 상태다(실제로 그렇게 걸렸다).
+     *
+     *   그래서 우리가 쓴 답변 댓글(`qa_reply_wr_id`)이 **살아 있는지 같이 본다.**
+     *   서브쿼리 하나라 여전히 페이지당 쿼리 1회다.
+     *
+     *   approved 인데 댓글이 없으면 `wait` 로 둔다 — 배지는 "게시판에 무엇이 있는가"
+     *   를 말하는 것이고, 회원에게는 아직 답이 없는 것이 사실이다.
+     *   운영자는 검수 화면에서 진짜 상태(완료)와 경고 문구를 본다.
+     */
+    global $g5;
+    $wt = $g5['write_prefix'] . $bo;      // $bo 는 위에서 [a-z0-9_] 로 좁혔다
+
     $out = array();
-    $res = sql_query("select wr_id, qa_status from ex_qna
-                       where bo_table = '" . sql_real_escape_string($bo) . "'
-                         and wr_id in (" . implode(',', $ids) . ")", false);
+    $res = sql_query("select q.wr_id, q.qa_status,
+                             (select 1 from `$wt` c
+                               where c.wr_id = q.qa_reply_wr_id
+                                 and c.wr_is_comment = 1) as has_reply
+                        from ex_qna q
+                       where q.bo_table = '" . sql_real_escape_string($bo) . "'
+                         and q.wr_id in (" . implode(',', $ids) . ")", false);
     /* ★ 실패해도 죽지 않는다. 배지는 부가 정보라, 못 읽으면 배지만 없으면 된다 —
-       게시판 목록 자체가 흰 화면이 되는 것이 훨씬 나쁘다. */
+       게시판 목록 자체가 흰 화면이 되는 것이 훨씬 나쁘다.
+       (qa_reply_wr_id 컬럼이 아직 없는 서버에서도 여기가 조용히 빈 배열이 된다.) */
     while ($res && $r = sql_fetch_array($res)) {
-        $out[(int)$r['wr_id']] = ($r['qa_status'] === 'approved') ? 'done' : 'wait';
+        $done = ($r['qa_status'] === 'approved') && !empty($r['has_reply']);
+        $out[(int)$r['wr_id']] = $done ? 'done' : 'wait';
     }
     return $out;
 }
