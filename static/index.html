@@ -53,6 +53,11 @@
         <span data-icon="film"></span><span>영상 제작·검수</span></a></li>
       <li><a href="#/publish" data-nav="p" title="발행 to XAMpass">
         <span data-icon="package"></span><span>발행 <em class="nav-dest">to XAMpass</em></span></a></li>
+      <!-- ★ 해시 라우트가 아니라 **별개 페이지**다(target=_blank). 인쇄본은 브라우저의
+           Ctrl+P 로 뽑는 것이고, 그때 앱 화면이 같이 인쇄되면 안 된다.
+           그래서 셸(rail·패널) 없이 그 문서만 있는 페이지로 연다. -->
+      <li><a href="/print/" target="_blank" rel="noopener" title="문항·대본 인쇄본 (새 탭)">
+        <span data-icon="file"></span><span>인쇄본 <em class="nav-dest">종이 검수</em></span></a></li>
     </ul>
 
     <div class="side-section">

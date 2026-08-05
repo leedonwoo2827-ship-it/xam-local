@@ -43,6 +43,12 @@ $DRAFT_BUDGET = 100;
 $STUCK_MIN = 10;
 $stuck_n = 0;
 
+/** 그누보드 버전에 따라 이름이 갈리는 affected rows. 여기서 한 번만 감싼다. */
+function ex_affected_compat() {
+    if (function_exists('sql_affected_rows')) return (int)sql_affected_rows();
+    return 0;
+}
+
 /* ── 처리 ──────────────────────────────────────────────────────────────────
  *
  * ★ 필터는 계속 $_GET 에서 읽는다. 아래 폼들이 `action="<?= $qs() ?>"` 로 **현재
@@ -84,6 +90,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 . '이제 체크해서 [선택 초안 요청] 을 누르십시오.')
              : '새로 가져올 글이 없습니다. 이미 다 등록돼 있습니다.';
 
+    } elseif ($act === 'unstick') {
+        /* `drafting` 에서 멈춘 것을 대기로 되돌린다. 브라우저를 닫거나 PHP 가 죽으면
+           그 행이 영원히 drafting 에 남아 큐에서 조용히 사라진다. */
+        sql_query("update ex_qna set qa_status = 'pending'
+                    where qa_status = 'drafting'
+                      and qa_draft_at is null
+                      and created_at < date_sub(now(), interval " . (int)$STUCK_MIN . " minute)", false);
+        $n1 = ex_affected_compat();
+        sql_query("update ex_qna set qa_status = 'draft_ready'
+                    where qa_status = 'drafting' and qa_draft is not null", false);
+        $n2 = ex_affected_compat();
+        $msg = '멈춘 초안 ' . ($n1 + $n2) . '건을 되돌렸습니다'
+             . ($n2 ? " (그중 {$n2}건은 초안이 남아 있어 검수 대기로)" : '') . '.';
+
     } elseif ($act === 'draft') {
         /* 선택 건 초안 일괄 생성.
          *
@@ -94,7 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
          *   무엇이든 같은 방식으로 동작한다.
          */
         @set_time_limit(0);
-        $BUDGET = 100;                       // 초. 카페24 기본 제한(대개 300)보다 넉넉히 안쪽
+        $BUDGET = $DRAFT_BUDGET;
         $t0 = microtime(true);
 
         $ids = isset($_POST['chk']) && is_array($_POST['chk']) ? $_POST['chk'] : array();
@@ -190,6 +210,11 @@ while ($r = sql_fetch_array($res)) $prods[] = $r;
 
 /* 초안 1건의 원가 상한 — 확인창에 "N건 · 최대 M원" 을 적기 위한 값이다.
    문제집마다 다를 수 있으니 **가장 큰 값**을 쓴다. 적게 어림하면 안 된다. */
+/* `drafting` 에 머물러 있는 건수 — 살아 있는 요청이면 곧 사라지고, 멈춘 것이면 남는다.
+   그래서 건수만 보여주고 판단은 사람에게 맡긴다(누르면 시간으로 걸러 되돌린다). */
+$sk = sql_fetch("select count(*) as c from ex_qna where qa_status = 'drafting'");
+$stuck_n = $sk ? (int)$sk['c'] : 0;
+
 $cap1 = sql_fetch("select max(cost_cap) as c from ex_product where pd_open = 1");
 $CAP1 = $cap1 ? (float)$cap1['c'] : 3.0;
 
@@ -293,7 +318,35 @@ $qs = function ($over = array()) use ($st, $pd, $kind, $sj, $stx) {
 .exq .bulk.bot{margin:12px 0 0}
 .exq .bulk .n{font-weight:700}
 .exq td.ck,.exq th.ck{width:34px;text-align:center}
+/* ★ 진행 표시. 초안 일괄은 최대 2~3분 걸리는 **동기 요청**이다. 화면이 아무 말도
+   안 하면 사람은 멈춘 줄 알고 새로고침하거나 다시 누른다 — 그때 원가가 두 번 나간다.
+   실시간 진행률은 못 준다(한 요청 안에서 도는 중이라 서버가 중간 보고를 못 한다).
+   대신 **경과 시간과 최대 예상 시간**을 보여준다. 그것만으로 "언제까지 기다리나" 가
+   해결된다. */
+#exqWait{position:fixed;inset:0;z-index:9999;display:none;
+  background:rgba(15,23,42,.62);backdrop-filter:saturate(.7) blur(1px)}
+#exqWait .card{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);
+  width:min(440px,92vw);background:#fff;border-radius:10px;padding:22px 24px;
+  box-shadow:0 18px 50px rgba(0,0,0,.35);text-align:center}
+#exqWait h3{margin:0 0 6px;font-size:16px}
+#exqWait .el{font:700 30px/1.2 ui-monospace,Consolas,monospace;color:#1b3faa;margin:10px 0 2px}
+#exqWait .bar{height:5px;border-radius:3px;background:#e8ecf5;overflow:hidden;margin:12px 0 8px}
+#exqWait .bar i{display:block;height:100%;width:0;background:#1b3faa;transition:width .9s linear}
+#exqWait p{margin:6px 0 0;font-size:12.5px;color:#555;line-height:1.7}
+#exqWait b{color:#c22638}
 </style>
+
+<!-- 초안 만드는 중 — 동기 요청이라 화면이 말을 해야 한다. CSS 는 위 .exq 블록에 있다. -->
+<div id="exqWait"><div class="card">
+  <h3>초안 만드는 중 · <span id="exqN">0</span>건</h3>
+  <div class="el" id="exqEl">0초</div>
+  <div class="bar"><i id="exqBar"></i></div>
+  <p>최대 약 <b id="exqMax">160</b>초 걸립니다.
+     <b>이 창을 닫거나 새로고침하지 마십시오.</b><br>
+     중간에 끊기면 그 질문이 '초안 생성 중' 에 갇힙니다
+     (그때는 아래 [멈춘 초안 풀기] 로 되돌립니다).<br>
+     시간이 부족하면 일부만 처리하고 남은 건수를 알려 드립니다.</p>
+</div></div>
 
 <div class="exq">
 
@@ -340,6 +393,20 @@ $qs = function ($over = array()) use ($st, $pd, $kind, $sj, $stx) {
         — 그누보드 관리자 → 게시판 관리에서 <b>그 이름 그대로</b> 만드십시오.
       </div>
     <?php endif; ?>
+    <?php if ($stuck_n): ?>
+      <form method="post" action="<?php echo $qs() ?>" class="srch" style="margin-top:9px">
+        <input type="hidden" name="token" value="">
+        <input type="hidden" name="act" value="unstick">
+        <button type="submit" class="btn_b01">멈춘 초안 풀기</button>
+        <span class="hint">
+          <b>초안 생성 중</b> 상태가 <b><?php echo $stuck_n ?>건</b> 있습니다.
+          지금 돌고 있는 것이면 곧 사라집니다 — <?php echo (int)$STUCK_MIN ?>분이 지나도
+          남아 있으면 중간에 끊긴 것이니 이 버튼으로 되돌립니다
+          (그 상태는 다시 집히지 않아 큐에서 조용히 사라집니다).
+        </span>
+      </form>
+    <?php endif; ?>
+
     <div class="hint" style="margin-top:8px">
       같은 글을 두 번 가져오지 않습니다(<code>bo_table</code> + <code>wr_id</code> 로 판정).
       제목의 <code>1회 61번</code> 같은 표식에서 문항을 자동으로 찾아 붙입니다 —
@@ -538,11 +605,37 @@ $qs = function ($over = array()) use ($st, $pd, $kind, $sj, $stx) {
       document.getElementById('bulkForm').onsubmit = function () {
         var n = sel();
         if (!n) { alert('초안을 만들 질문을 먼저 체크해 주십시오.'); return false; }
-        return confirm(n + '건에 LLM 초안을 만듭니다.\n'
+        if (!confirm(n + '건에 LLM 초안을 만듭니다.\n'
           + '예상 원가 최대 ' + caps + '원 × ' + n + '건\n\n'
           + '초안은 이용자에게 보이지 않습니다. 검수·승인한 답변만 공개됩니다.\n'
-          + '시간이 오래 걸리면 일부만 처리하고 남은 건수를 알려 드립니다.');
+          + '시간이 오래 걸리면 일부만 처리하고 남은 건수를 알려 드립니다.')) return false;
+        showWait(n);
+        return true;
       };
+
+      /* 진행 표시. 서버가 한 요청 안에서 돌기 때문에 **실시간 진행률은 줄 수 없다** —
+         중간에 보고할 통로가 없다. 그래서 경과 시간과 최대 예상 시간을 보여준다.
+         "언제까지 기다리나" 에 답하는 것이 목적이고, 그것만으로 새로고침·재클릭을 막는다. */
+      var MAXSEC = <?php echo (int)$DRAFT_BUDGET + 60 ?>;   // 예산 + 마지막 1건 최대치
+      function showWait(n) {
+        var w = document.getElementById('exqWait');
+        if (!w) return;
+        document.getElementById('exqN').textContent = n;
+        document.getElementById('exqMax').textContent = MAXSEC;
+        w.style.display = 'block';
+        // 두 번 누르는 것을 막는다 — 두 번 누르면 원가가 두 번 나간다.
+        document.querySelectorAll('#bulkForm button').forEach(function (b) { b.disabled = true; });
+
+        var t = 0, el = document.getElementById('exqEl'), bar = document.getElementById('exqBar');
+        setInterval(function () {
+          t++;
+          el.textContent = t + '초';
+          bar.style.width = Math.min(100, t / MAXSEC * 100) + '%';
+          if (t > MAXSEC) {
+            document.getElementById('exqOver').style.display = 'block';
+          }
+        }, 1000);
+      }
     })();
     </script>
 

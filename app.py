@@ -196,6 +196,46 @@ async def home():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 
+# ── 인쇄본 ────────────────────────────────────────────────────────────────
+# ★ 여기(app.py)에 두는 이유: 이 프로젝트는 **페이지 HTML 을 app.py 만** 낸다
+#   (routes/ 는 JSON·파일전송 전용). 그래서 그리는 일은 services/export 가 하고
+#   app.py 는 그 문자열을 HTML 로 내보내기만 한다.
+#
+# ★ 파일을 굽지 않는다. 열 때마다 지금 데이터로 그린다 — 고친 뒤 다시 굽는 것을
+#   잊고 낡은 종이로 검수하는 사고를 이 프로젝트에서 이미 겪었다(업로드 폴더).
+def _print_page(fn, *a):
+    from fastapi.responses import HTMLResponse
+    try:
+        return HTMLResponse(fn(*a))
+    except (FileNotFoundError, ValueError) as e:
+        # 조용히 빈 문서를 내지 않는다. 왜 못 그렸는지 화면이 말해야 한다.
+        return HTMLResponse(status_code=409, content=(
+            '<!DOCTYPE html><meta charset="utf-8">'
+            '<body style="font:14px/1.8 sans-serif;padding:26px;max-width:680px">'
+            "<h2>인쇄본을 만들 수 없습니다</h2><pre style=\"white-space:pre-wrap;"
+            'background:#f6f7f4;padding:12px;border-radius:6px">'
+            + __import__("html").escape(str(e)) +
+            "</pre><p><a href=\"/print/\">← 인쇄본 목록</a></p></body>"))
+
+
+@app.get("/print/")
+async def print_index():
+    from services.export import printdoc
+    return _print_page(printdoc.index_html)
+
+
+@app.get("/print/questions")
+async def print_questions(rd: int | None = None):
+    from services.export import printdoc
+    return _print_page(printdoc.questions_html, rd)
+
+
+@app.get("/print/lesson")
+async def print_lesson(b: str | None = None):
+    from services.export import printdoc
+    return _print_page(printdoc.lesson_html, b)
+
+
 @app.get("/mock")
 async def mock():
     """UI/UX 확정용 목업 모음. 확정되면 static/_mock/ 과 함께 지운다."""
