@@ -475,7 +475,20 @@ $ST   = array('pending' => '대기', 'drafting' => '초안 생성 중', 'draft_r
             <button type="submit" class="btn_b01 grow" name="act" value="reopen"
                     onclick="return confirm('대기 상태로 되돌립니다. 환불은 되돌리지 않습니다.');">대기로 되돌리기</button>
           <?php endif; ?>
+          <?php if ($q['bo_table'] && $q['wr_id']): ?>
+            <?php /* ★ 승인 **직후**가 게시판을 확인할 순간이다. 링크가 왼쪽 정보표에만
+                     있으면 그때 찾지 못한다(실제로 "게시판으로 가볼 수 없나" 를 물었다).
+                     새 탭으로 연다 — 이 화면의 답변란에 미저장 텍스트가 있을 수 있다. */ ?>
+            <a class="btn_b01" style="text-decoration:none;padding:8px 14px"
+               href="<?php echo G5_BBS_URL ?>/board.php?bo_table=<?php echo exf_h($q['bo_table']) ?>&amp;wr_id=<?php echo (int)$q['wr_id'] ?>"
+               target="_blank" rel="noopener">게시판 글 보기 ↗</a>
+          <?php endif; ?>
         </div>
+        <?php if ($q['bo_table'] && $q['wr_id'] && $q['qa_status'] === 'approved'): ?>
+          <div class="hint">게시판에 <b>[관리자 답변]</b> 댓글이 달려 있어야 합니다.
+            없으면 승인은 됐지만 댓글 쓰기가 실패한 것입니다 — 다시 [승인 · 공개] 를 누르면
+            재시도합니다(중복으로 달리지 않고 기존 댓글을 갱신합니다).</div>
+        <?php endif; ?>
       </form>
 
       <?php if ($q['qa_status'] !== 'rejected'): ?>
