@@ -123,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$ids) {
             $err = '초안을 만들 질문을 먼저 체크해 주십시오.';
         } else {
-            $ok = 0; $ng = 0; $left = 0; $cost = 0.0; $over = 0;
+            $ok = 0; $ng = 0; $left = 0; $cost = 0.0; $over = 0; $waste = 0.0;
             foreach ($ids as $i => $id) {
                 if (microtime(true) - $t0 > $BUDGET) { $left = count($ids) - $i; break; }
                 $r = ex_draft_one($id, $member['mb_id']);
@@ -133,11 +133,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (!empty($r['over_cap'])) $over++;
                 } else {
                     $ng++;
+                    /* ★ 실패해도 돈은 나갔다. 합계에서 빼면 화면의 원가가 실제 청구보다
+                         낮아지고 그 차이를 아무도 모른다. 성공분과 갈라서 둘 다 보여준다 —
+                         뭉치면 "왜 이렇게 비싼가" 를 설명할 수 없다. */
+                    $waste += (float)(isset($r['cost']) ? $r['cost'] : 0);
                     $warns[] = $r['msg'];
                 }
             }
             $msg = '초안 ' . $ok . '건 생성 · 원가 ' . number_format($cost, 4) . '원';
             if ($ng)   $msg .= ' · 실패 ' . $ng . '건';
+            if ($waste > 0) $msg .= ' (실패분에도 ' . number_format($waste, 4) . '원이 나갔습니다)';
             if ($over) $msg .= ' · 원가 상한 초과 ' . $over . '건';
             if ($left) {
                 $msg .= ' · ' . $left . '건은 시간이 부족해 남겼습니다 — 다시 체크해서 눌러 주십시오.';

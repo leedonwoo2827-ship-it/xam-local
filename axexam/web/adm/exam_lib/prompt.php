@@ -221,7 +221,21 @@ function ex_draft_one($qa_id, $admin_id = '')
         /* 실패하면 원래 상태로 되돌린다. drafting 에 남겨두면 큐에서 영구히 사라진다 —
            운영자가 "왜 이 질문은 아무 일도 안 일어나지"로 헤매게 된다. */
         sql_query("update ex_qna set qa_status = 'pending' where qa_id = $qa_id", false);
-        return array('ok' => false, 'msg' => '#' . $qa_id . ' ' . $r['msg']);
+
+        /* ★ 실패해도 **돈은 나갔다.** 응답이 왔고 출력 토큰을 썼는데 본문만 비었을
+             뿐이라, 공급자는 그것을 청구한다.
+             ① 원가를 호출자에게 넘긴다 — 화면이 "실패분에도 N원" 을 말할 수 있어야 한다.
+             ② 감사 로그에도 남긴다 — ex_log 가 "누가 언제 얼마를 썼는가" 의 유일한
+                근거인데, 실패를 빼면 그 근거가 실제 청구보다 낮아진다. */
+        $c0 = (float)(isset($r['cost']) ? $r['cost'] : 0);
+        if ($c0 > 0) {
+            sql_query("insert into ex_log set mb_id = '" . sql_real_escape_string($admin_id) . "',
+                         lo_act = 'draft', lo_ref = 'fail:$qa_id',
+                         lo_ip = '" . sql_real_escape_string(
+                                        isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '') . "',
+                         created_at = '" . G5_TIME_YMDHIS . "'", false);
+        }
+        return array('ok' => false, 'cost' => $c0, 'msg' => '#' . $qa_id . ' ' . $r['msg']);
     }
 
     sql_query("update ex_qna set

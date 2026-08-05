@@ -231,12 +231,23 @@ function ex_llm_call($pd_id, $msg, $max_tokens = 1200, $timeout = 60)
         elseif ($fin === 'content_filter')  $why = '공급자가 응답을 차단했습니다';
         elseif ($rz > 0)                    $why = '모델이 사고 과정만 쓰고 본문을 안 냈습니다';
 
-        return array('ok' => false, 'msg' => $why
+        /* ★ 실패해도 **돈은 나갔다.** 출력 토큰을 다 쓰고 본문만 비었을 뿐이고,
+             공급자는 그것을 청구한다. 이걸 기록하지 않으면 화면의 '원가' 합계가
+             실제 청구보다 낮아지고, 그 차이를 아무도 모른다.
+             성공 경로와 **같은 식**으로 계산해 msg 에 실어 보낸다. */
+        list($p_in0, $p_cache0, $p_out0) = ex_llm_price($cfg['model']);
+        $cost0 = ($ti / 1000 * $p_in0) + ($tc / 1000 * $p_cache0) + ($to / 1000 * $p_out0);
+
+        return array('ok' => false,
+            // 화면이 실패분 원가를 합산할 수 있게 값으로도 돌려준다.
+            'cost' => round($cost0, 4), 'tok_in' => $ti, 'tok_cache' => $tc, 'tok_out' => $to,
+            'msg' => $why
             . ' (HTTP 200 · finish_reason=' . ($fin !== '' ? $fin : '없음')
             . ' · 요청 max_tokens=' . (int)$max_tokens
             . ' · 출력 토큰 ' . $to
             . ($rz > 0 ? ' · 사고과정 ' . $rz . '자' : '')
-            . ' · 모델 ' . $cfg['model'] . ')'
+            . ' · 모델 ' . $cfg['model']
+            . ' · **원가 ' . number_format($cost0, 4) . '원 발생**)'
             . ($fin === 'length' || $rz > 0
                ? ' — max_tokens 를 올려야 합니다. 모델명 문제가 아닙니다.'
                : ''));

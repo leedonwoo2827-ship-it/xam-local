@@ -94,7 +94,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  . (!empty($r['over_cap']) ? ' (원가 상한 초과 — 모델·프롬프트를 확인하십시오)' : '')
                  . '. 아래 초안을 읽고 [초안을 답변란으로 복사] 하십시오.';
         } else {
-            $err = $r['msg'];
+            // 실패해도 원가가 나갔으면 그것을 말한다 — 조용히 넘기면 청구서에서 처음 안다.
+            $c0 = (float)(isset($r['cost']) ? $r['cost'] : 0);
+            $err = $r['msg'] . ($c0 > 0 ? ' (이 실패에도 ' . number_format($c0, 4) . '원이 나갔습니다)' : '');
         }
 
     } elseif ($act === 'reject') {
