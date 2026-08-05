@@ -59,8 +59,12 @@ $FEAT = array(
     'why'=> '초안은 <code>qa_draft</code> 에만 들어가 <b>이용자에게 보이지 않는다.</b>'
           . ' 문항이 연결되면 발문·보기·정답·해설이 프롬프트에 들어가므로'
           . ' <b>모델이 문제를 풀지 않고 설명만 한다</b> — 환각이 구조적으로 줄어든다.'
-          . ' 누르기 전에 건수와 예상 원가를 보여준다.',
-    'shot' => 'adm-qna-list', 'adm' => '/adm/exam_qna_list.php',
+          . ' 누르기 전에 건수와 예상 원가를 보여주고, 도는 동안 경과 시간을 띄운다.',
+    /* ★ 검수 큐 카드와 **다른** 캡처를 쓴다. 둘이 같은 그림이면 "무엇이 다른 기능인가"
+         가 전달되지 않는다. 이 카드가 보여줄 것은 목록이 아니라 **일괄 요청과 진행 표시**다.
+         캡처할 화면: /adm/exam_qna_list.php 에서 전체 체크 → [선택 초안 요청] 을 누른 직후
+         (진행 표시가 떠 있는 상태). 파일: /exam/shots/adm-qna-draft.png */
+    'shot' => 'adm-qna-draft', 'adm' => '/adm/exam_qna_list.php',
   ),
   array(
     'id' => 'import', 'ready' => true,
@@ -147,7 +151,17 @@ $FEAT = array(
   </nav>
 
 <?php foreach ($FEAT as $i => $f) {
-    $shot_rel = $f['shot'] !== '' ? 'assets/shots/' . $f['shot'] . '.png' : '';
+    /* ★ 경로는 `exam/shots/` 다. `exam/assets/shots/` 가 아니다.
+     *
+     *   여기가 `assets/shots/` 를 보고 있었고 파일은 `shots/` 에 있어서, 올려 둔
+     *   캡처 5장이 **한 장도 안 보였다** — 전부 '화면 캡처 자리' 로 떨어졌다.
+     *   is_readable() 이 false 면 자리표시로 넘어가는 설계라 에러가 안 나고,
+     *   그래서 "아직 안 올렸구나" 로 읽혔다. 조용히 틀리는 종류의 고장이다.
+     *
+     *   디스크(shots/)를 정답으로 삼는다 — 파일을 옮기는 것보다 코드 한 단어를
+     *   고치는 쪽이 되돌리기 쉽고, 아래 자리표시 안내 문구도 같은 값을 쓴다. */
+    $shot_dir = 'shots/';
+    $shot_rel = $f['shot'] !== '' ? $shot_dir . $f['shot'] . '.png' : '';
     $has_shot = $shot_rel !== '' && is_readable(G5_PATH . '/exam/' . $shot_rel);
 ?>
   <section class="fe-card<?php echo $f['ready'] ? '' : ' soon' ?>" id="<?php echo $f['id'] ?>">
@@ -173,7 +187,9 @@ $FEAT = array(
         <div class="fe-ph">
           <b>화면 캡처 자리</b>
           <?php if ($is_admin) { ?>
-            <code>/exam/assets/shots/<?php echo $f['shot'] ?>.png</code>
+            <?php /* 안내 경로는 위 $shot_dir 을 그대로 쓴다 — 손으로 적으면 코드와 갈리고,
+                     그러면 사람이 안내대로 올렸는데 안 보이는 일이 생긴다(실제로 그랬다). */ ?>
+            <code>/exam/<?php echo $shot_dir . $f['shot'] ?>.png</code>
             <span><?php echo htmlspecialchars($f['adm']) ?> 를 캡처해 이 경로로 올리면 자동으로 들어갑니다</span>
           <?php } else { ?>
             <span>준비 중입니다</span>

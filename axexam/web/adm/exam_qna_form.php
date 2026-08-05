@@ -440,6 +440,24 @@ $ST   = array('pending' => '대기', 'drafting' => '초안 생성 중', 'draft_r
           placeholder="해설을 인용해 짧고 정확하게. 질문자가 고른 보기가 왜 아닌지까지 짚으면 재질문이 줄어듭니다."><?php
           echo exf_h($q['qa_answer']) ?></textarea>
 
+        <?php
+        /* ★ 저장된 답변을 **렌더해서** 한 번 더 보여준다.
+         *
+         *   답변란은 원문(`**굵게**`)을 들고 있어서, 승인 전에는 실제로 어떻게 보일지
+         *   알 수 없다. 승인하면 그 모습으로 게시판에 나가는데 그때 처음 보게 된다.
+         *
+         *   ★ JS 로 실시간 미리보기를 만들지 않는다. 변환기가 두 벌이 되면 반드시
+         *     갈리고, 그러면 미리보기와 실제가 다르다는 최악의 상태가 된다.
+         *     [저장만] 뒤 서버가 **같은 함수**로 그린 것을 보여주는 쪽이 정확하다.
+         */
+        if (trim((string)$q['qa_answer']) !== ''):
+        ?>
+        <div class="hint" style="margin-top:9px">저장된 답변이 이렇게 보입니다 —
+          게시판 댓글·마이페이지에 나가는 모습입니다.</div>
+        <div class="draft" style="background:#f2f7f4;border-color:#bfe0cf"><?php
+          echo ex_md_html($q['qa_answer']) ?></div>
+        <?php endif; ?>
+
         <label class="chk" style="margin-top:9px">
           <input type="checkbox" name="qa_public" value="1" <?php echo (int)$q['qa_public'] ? 'checked' : '' ?>>
           공개 — 다른 이용자에게도 보인다 (과목게시판·문제 카드에 쌓인다)
