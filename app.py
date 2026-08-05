@@ -231,9 +231,9 @@ async def print_questions(rd: int | None = None):
 
 
 @app.get("/print/lesson")
-async def print_lesson(b: str | None = None, dense: int = 0):
+async def print_lesson(b: str | None = None):
     from services.export import printdoc
-    return _print_page(printdoc.lesson_html, b, bool(dense))
+    return _print_page(printdoc.lesson_html, b)
 
 
 @app.get("/mock")

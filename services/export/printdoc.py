@@ -130,10 +130,14 @@ ol.ch li.a::after{content:"  ← 정답";color:var(--ok);font-size:11.5px;font-w
 
 /* 슬라이드 대본
    ★ 열 비율의 근거: 화면(heading)은 '3번 문제' 처럼 짧고 읽는 말(narration)은 길다.
-     1:1.25 로 두면 heading 쪽에 빈 공간이 남아 페이지가 늘어난다 → 0.6:1.4.
-     번호 열은 두 자리면 충분하다(22px → 18px). */
+     1:1.25 로 두면 heading 쪽에 빈 공간이 남아 그만큼 페이지가 늘어난다 → .38:1.62.
+     번호 열은 두 자리면 충분하다(22px → 18px). 열 간격도 9px → 6px.
+
+   ★ 행 높이(padding:7px)는 **줄이지 않는다.** 검수자가 적색펜으로 ㄱ·ㄴ·ㄷ 같은 표시를
+     손으로 적어 온다 — 줄 사이에 쓸 자리가 없으면 종이 검수 자체가 안 된다.
+     페이지를 줄이는 것은 열 폭과 빈 줄 접기로 한다(가로는 남고 세로는 필요하다). */
 .sc{page-break-inside:avoid;break-inside:avoid;display:grid;
-  grid-template-columns:18px minmax(74px,.42fr) 1.58fr;gap:9px;padding:7px 0;
+  grid-template-columns:18px minmax(70px,.38fr) 1.62fr;gap:6px;padding:7px 0;
   border-bottom:1px solid var(--line);align-items:start}
 .sc .n{color:var(--mute);font-size:11px;text-align:right;padding-top:2px}
 .sc .hd{font-weight:700}
@@ -151,20 +155,14 @@ ol.ch li.a::after{content:"  ← 정답";color:var(--ok);font-size:11.5px;font-w
 .sc.thin .hd .k{display:inline;font-size:10.5px}
 .sc.thin .hd::after{content:none}
 
-.schead{display:grid;grid-template-columns:18px minmax(74px,.42fr) 1.58fr;gap:9px;
+.schead{display:grid;grid-template-columns:18px minmax(70px,.38fr) 1.62fr;gap:6px;
   border-bottom:2px solid var(--ink);padding:0 0 4px;font-size:11.5px;color:var(--mute)}
 
-/* ★ 조밀 모드 — 한 장에 2쪽 인쇄할 때 쓴다.
-   인쇄 대화상자의 '용지 한 장에 2페이지' 는 페이지를 축소해 얹는 것이므로 글자가
-   작아진다. 그래서 조밀 모드는 글자를 더 줄이지 않고 **여백과 행간만** 줄인다 —
-   축소가 겹치면 읽을 수 없게 된다. */
-body.dense{padding:14px 16px}
-body.dense .sc{padding:4px 0;gap:8px}
-body.dense .sc .nr,body.dense .sc .hd{line-height:1.5}
-body.dense .sc.thin{padding:2px 0}
-body.dense .part{margin:14px 0 8px;padding-top:6px}
-body.dense h1{font-size:17px}
-body.dense .sub{margin:0 0 10px}
+/* ★ '조밀 모드' 는 두지 않는다.
+   한 장에 2쪽으로 얹는 것은 인쇄 대화상자가 하는 일이고, 사용자가 그때 정한다.
+   여기서 미리 줄여 두면 축소가 두 번 겹쳐서 읽을 수 없게 된다.
+   페이지를 줄이는 것은 열 비율과 빈 줄 접기로 이미 했다 — 그건 한 쪽 인쇄에서도
+   이득이라 항상 켠다. */
 
 @media print{
   body{padding:0;font-size:11.5pt}
@@ -176,8 +174,7 @@ body.dense .sub{margin:0 0 10px}
 """
 
 
-def _page(title: str, toolbar: str, body: str, mathjax: bool = True,
-          body_cls: str = "") -> str:
+def _page(title: str, toolbar: str, body: str, mathjax: bool = True) -> str:
     """공통 껍데기.
 
     ★ MathJax 는 `pre`·`code` 를 건드리지 않게 제외한다. SQL 박스 안의 `$` 를
@@ -197,8 +194,7 @@ window.MathJax = {
 """
     return (
         "<!DOCTYPE html>\n<html lang=\"ko\"><head><meta charset=\"utf-8\">\n"
-        f"<title>{_h(title)}</title>\n<style>{_CSS}</style>{mj}</head>"
-        f'<body{f" class=\"{body_cls}\"" if body_cls else ""}>\n'
+        f"<title>{_h(title)}</title>\n<style>{_CSS}</style>{mj}</head><body>\n"
         f"{toolbar}\n{body}\n</body></html>\n"
     )
 
@@ -359,7 +355,7 @@ def _scenes(bundle: str) -> tuple[dict, list[dict]]:
     return d, (d.get("scenes") or [])
 
 
-def lesson_html(bundle: str | None = None, dense: bool = False) -> str:
+def lesson_html(bundle: str | None = None) -> str:
     from core.constants import PD_LABEL
 
     bs = bundles()
@@ -370,15 +366,9 @@ def lesson_html(bundle: str | None = None, dense: bool = False) -> str:
     else:
         show = bs
 
-    # 조밀 모드 링크는 지금 보고 있는 범위를 유지한다 — 전체를 보다 누르면 전체가,
-    # 한 번들을 보다 누르면 그 번들이 조밀해져야 한다.
-    keep = f"?b={bundle}&" if bundle else "?"
-    links = [("/print/lesson", "전체", bundle is None and not dense)]
+    links = [("/print/lesson", "전체", bundle is None)]
     for b in bs:
-        links.append((f"/print/lesson?b={b}", b, bundle == b and not dense))
-    links.append((f"/print/lesson{keep}dense=1" if not dense
-                  else (f"/print/lesson?b={bundle}" if bundle else "/print/lesson"),
-                  "조밀하게 (2쪽 인쇄용)" if not dense else "넉넉하게", dense))
+        links.append((f"/print/lesson?b={b}", b, bundle == b))
     links.append(("/print/", "← 목록", False))
 
     n_sc = 0
@@ -425,10 +415,8 @@ def lesson_html(bundle: str | None = None, dense: bool = False) -> str:
                 + "</p>")
     body += parts
 
-    note = ("2쪽 인쇄: Ctrl+P → 용지 한 장에 2페이지 → 배율 100%"
-            if dense else "Ctrl+P → 'PDF로 저장' · 용지 A4")
-    return _page(f"{PD_LABEL} 슬라이드 대본", _toolbar(links, note), "".join(body),
-                 body_cls="dense" if dense else "")
+    note = "Ctrl+P → 'PDF로 저장' · 용지 A4 (2쪽·양면은 인쇄할 때 정하십시오)"
+    return _page(f"{PD_LABEL} 슬라이드 대본", _toolbar(links, note), "".join(body))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
