@@ -616,7 +616,11 @@ $qs = function ($over = array()) use ($st, $pd, $kind, $sj, $stx) {
       /* 진행 표시. 서버가 한 요청 안에서 돌기 때문에 **실시간 진행률은 줄 수 없다** —
          중간에 보고할 통로가 없다. 그래서 경과 시간과 최대 예상 시간을 보여준다.
          "언제까지 기다리나" 에 답하는 것이 목적이고, 그것만으로 새로고침·재클릭을 막는다. */
-      var MAXSEC = <?php echo (int)$DRAFT_BUDGET + 60 ?>;   // 예산 + 마지막 1건 최대치
+      /* 예산을 넘긴 직후 시작한 1건은 LLM 타임아웃만큼 더 쓴다 → 최악 = 예산 + 타임아웃.
+         타임아웃 상수는 prompt.php 가 들고 있다(EX_DRAFT_TIMEOUT). 두 곳에 숫자를
+         적으면 안내와 실제가 갈린다. */
+      var MAXSEC = <?php echo (int)$DRAFT_BUDGET
+                            + (defined('EX_DRAFT_TIMEOUT') ? (int)EX_DRAFT_TIMEOUT : 90) ?>;
       function showWait(n) {
         var w = document.getElementById('exqWait');
         if (!w) return;
