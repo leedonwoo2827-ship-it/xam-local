@@ -178,7 +178,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             /* 등록 · 수정 — 같은 pd_id 면 이름·정렬만 갱신한다(UPSERT).
                pd_open 은 여기서 건드리지 않는다 — 숨김/공개는 아래 토글이 담당한다.
                새로 만들 때만 1(공개)로 들어간다. */
-            $name = trim((string)$_POST['pd_name']);
+            /* 그누보드가 $_POST 에 addslashes 를 걸어 두므로 되돌린 뒤 escape 한다 —
+               안 하면 이름에 따옴표가 있을 때 백슬래시가 남는다
+               (exam_qna_form.php 의 같은 자리 주석 참조). */
+            $name = trim(stripslashes((string)$_POST['pd_name']));
             $sort = (int)$_POST['pd_sort'];
             if ($name === '') {
                 $err = '품목 이름이 비어 있습니다.';

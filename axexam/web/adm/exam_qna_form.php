@@ -32,8 +32,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (function_exists('check_admin_token')) check_admin_token();
     else                                     check_token();
 
+    /* ★ 그누보드는 들어오는 $_POST 에 **이미 addslashes 를 걸어 둔다**
+     *   (common.php 가 magic_quotes 대체로 그렇게 한다. PHP 7+ 에서는 그 분기가
+     *   항상 실행된다). 그 값을 다시 sql_real_escape_string 하면 **두 번 escape** 되어
+     *   백슬래시가 본문에 남는다.
+     *
+     *   실제로 그렇게 걸렸다: 답변에 `"-18은 …"` 이라고 쓴 것이 화면에
+     *   `\"-18은 …\"` 로 보였다(한글 폰트에서 백슬래시는 ₩ 로 그려져 `₩"` 가 됐다).
+     *   게시판 댓글에서는 `\&quot;` 로 나왔다 — 저장된 값에 백슬래시가 있다는 증거다.
+     *
+     *   왜 초안(qa_draft)에는 없었나: 그건 API 응답을 json_decode 한 값이라 POST 를
+     *   지나지 않는다. **브라우저를 한 번 왕복한 텍스트만** 이 문제를 겪는다.
+     *
+     *   stripslashes() 로 되돌린 뒤 아래에서 한 번만 escape 한다. addslashes 가
+     *   추가하는 것은 ' " \ NUL 뿐이고 stripslashes 가 정확히 그것을 되돌린다.
+     */
     $act    = isset($_POST['act']) ? $_POST['act'] : '';
-    $answer = isset($_POST['qa_answer']) ? trim($_POST['qa_answer']) : '';
+    $answer = isset($_POST['qa_answer']) ? trim(stripslashes($_POST['qa_answer'])) : '';
     $public = !empty($_POST['qa_public']) ? 1 : 0;
 
     $q = $qa_id ? sql_fetch("select * from ex_qna where qa_id = " . $qa_id) : null;
@@ -100,7 +115,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
     } elseif ($act === 'reject') {
-        $reason = trim(isset($_POST['reason']) ? $_POST['reason'] : '');
+        // 위 qa_answer 와 같은 이유로 stripslashes 한다. 반려 사유는 이용자에게
+        // 그대로 보이므로 백슬래시가 남으면 더 눈에 띈다.
+        $reason = trim(isset($_POST['reason']) ? stripslashes($_POST['reason']) : '');
         if ($reason === '') {
             $err = '반려 사유를 적어 주십시오. 이용자에게 그대로 보입니다.';
         } elseif ($q['qa_status'] === 'rejected') {
