@@ -12,174 +12,19 @@
    폰트만으로 한도가 소진된다(마이캐쉬 0원 + 자동리셋 꺼짐 = 사이트 정지).
    대신 check_template.html <head> 에서 jsDelivr CDN <link> 로 받는다. */
 
-:root {
-  /* ---- Font ---- */
-  --font: "Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont,
-          "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", Roboto, sans-serif;
+/* ★ 색·타이포 토큰을 tokens.css 로 분리했다 (2026-08-10).
+ *
+ *   이유: 슬라이드(services/deck)가 **같은 정의**를 읽어야 한다. 값을 복사하면
+ *   한쪽만 고쳐지고, 그 차이는 영상을 보고 나서야 드러난다.
+ *
+ * ★ <link> 를 3곳(check.php · landing_template · detail_template)에 넣는 안은
+ *   하나를 빠뜨리면 사이트가 색 없이 뜬다. @import 는 1곳이고 조용히 실패하지 않는다.
+ *
+ * ★ 배포 배선은 필요 없다 — build_check.py:853-855 가 present/ 를 폴더째
+ *   rmtree+copytree 하고 stage.py 가 06/assets/ 를 그대로 올린다.
+ */
+@import url("tokens.css");
 
-  /* ---- Neutral ramp ---- */
-  --gray-0:  #ffffff;
-  --gray-25: #fbfcfe;
-  --gray-50: #f6f8fc;
-  --gray-100:#eef1f7;
-  --gray-150:#e6eaf2;
-  --gray-200:#dbe0ea;
-  --gray-300:#c4cbd9;
-  --gray-400:#9aa2b4;
-  --gray-500:#6b7385;
-  --gray-600:#4c5468;
-  --gray-700:#333a49;
-  --gray-800:#1f2533;
-  --gray-900:#141a26;
-
-  /* ---- Brand: navy + blue ---- */
-  --navy-900:#0e1730;
-  --navy-800:#14213d;
-  --navy-700:#1b2a52;
-  --navy-600:#26386b;
-  --navy-500:#33498a;
-
-  --blue-50: #eef3ff;
-  --blue-100:#dbe6ff;
-  --blue-300:#7ea0f5;
-  --blue-500:#2c5ce6;
-  --blue-600:#1f4ed8;
-  --blue-700:#1a3fae;
-
-  /* legacy/brand aliases (페이지 호환) */
-  --blue: var(--blue-500);
-  --blue-strong: var(--blue-600);
-  --blue-soft: var(--blue-50);
-  --purple:#7458e0;
-  --yellow:#ffd02f;
-  --yellow-deep:#f3c200;
-
-  /* ---- Ink / text ---- */
-  --ink:   #181d26;
-  --body:  #333840;
-  --muted: #5b6376;
-  --faint: #8e96a8;
-
-  /* ---- Surfaces ---- */
-  --canvas:        #ffffff;
-  --surface-soft:  #f6f8fc;
-  --surface-soft2: #eef2fb;
-  --surface-strong:#e6eaf2;
-  --hairline:      #e6eaf2;
-  --hairline-strong:#d4d9e4;
-
-  /* ---- Primary action (Airtable: near-black) ---- */
-  --primary:        #181d26;
-  --primary-active: #0d1218;
-
-  /* ---- Semantic status (base / text / soft-bg / border) ---- */
-  --success:#0f9d58; --success-text:#0c7a45; --success-soft:#e7f6ee; --success-bd:#bfe6cf;
-  --warning:#e8911c; --warning-text:#b46d09; --warning-soft:#fff3e1; --warning-bd:#f6dcae;
-  --danger: #e23b4e; --danger-text: #c22638; --danger-soft: #fdebed; --danger-bd: #f6c7cd;
-  --info:   #2c5ce0; --info-text:   #1f49b8; --info-soft:   #eaf0ff; --info-bd:  #cdddff;
-
-  /* legacy status aliases */
-  --red:var(--danger); --red-soft:var(--danger-soft);
-  --orange:var(--warning); --orange-soft:var(--warning-soft);
-  --teal:#11a594; --teal-soft:#e1f5f2;
-  --green:var(--success); --green-soft:var(--success-soft);
-  --crimson:#d8324a;
-
-  /* ---- Radius (Airtable hierarchy) ---- */
-  --r-xs: 4px;
-  --r-sm: 6px;
-  --r-md: 10px;
-  --r-lg: 12px;
-  --r-xl: 16px;
-  --r-2xl:22px;
-  --r-full:9999px;
-
-  /* ---- Spacing (4px base) ---- */
-  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px;
-  --sp-6:24px; --sp-8:32px; --sp-10:40px; --sp-12:48px; --sp-16:64px; --sp-24:96px;
-  --sp-section: 96px;
-
-  /* ---- Elevation (minimal) ---- */
-  --shadow-xs: 0 1px 2px rgba(20,26,38,.06);
-  --shadow-sm: 0 1px 2px rgba(20,26,38,.05), 0 4px 14px rgba(20,26,38,.05);
-  --shadow-md: 0 2px 4px rgba(20,26,38,.05), 0 12px 34px rgba(20,26,38,.07);
-  --shadow-card: var(--shadow-sm);
-  --shadow-soft: var(--shadow-xs);
-
-  /* ---- Type scale ---- */
-  --t-display: 44px;
-  --t-h1: 34px;
-  --t-h2: 26px;
-  --t-h3: 20px;
-  --t-title: 17px;
-  --t-body: 15px;
-  --t-sm: 13.5px;
-  --t-xs: 12.5px;
-
-  /* ═══════════════════════════════════════════════════════════════════
-     이 아래는 문제집 포털을 위해 추가한 것이다. 위 토큰은 손대지 않았다.
-     ═══════════════════════════════════════════════════════════════════ */
-
-  /* ---- 브랜드 확정 ----
-     퍼스널컬러 = 네이비 --navy-800. 액션 = --blue-600.
-     --yellow 는 강조 전용(배지·워드마크 악센트)이고 CTA 로 쓰지 않는다.
-     노란 버튼을 주 CTA 로 쓰면 브랜드 악센트가 흔해져 눈에 안 띄게 된다. */
-  --brand:        var(--navy-800);
-  --brand-deep:   var(--navy-900);
-  --brand-action: var(--blue-600);
-
-  /* ---- 디스플레이 타이포 (랜딩 히어로용) ----
-     큰 글자일수록 자간을 좁힌다. 44px 이상에서 기본 자간은 성기게 보인다. */
-  --t-hero: 56px;
-  --t-hero-lh: 1.06;
-  --t-hero-ls: -0.03em;
-
-  /* ---- 섹션 리듬 ---- */
-  --sp-section-sm: 64px;
-
-  /* ═══ 차트 팔레트 ═══════════════════════════════════════════════════
-     dataviz 검증기(OKLab ΔE, Machado 2009 색각 시뮬레이션)로 실측 통과한 값이다.
-     흰 배경(#ffffff) 기준. **눈으로 고르지 말고 검증기를 돌려서 바꿀 것.**
-
-       카테고리 6슬롯 (인접쌍)  : 6개 검사 전부 PASS
-                                  최악 인접 CVD ΔE 8.1 (목표 8) · 일반시야 24.2 (하한 15)
-       앞 3슬롯 (all-pairs)     : PASS — 산점·스몰멀티플에서는 3개까지만 쓴다
-                                  4개 이상 필요하면 '기타'로 묶거나 분할한다
-
-     ⚠ 슬롯 순서가 색각 안전성의 메커니즘이다. 순서를 바꾸거나 돌려쓰지 않는다.
-       7번째 계열이 필요하면 색을 늘리는 게 아니라 묶거나 나눈다. */
-  --chart-1: #2c5ce6;   /* blue    — 1계열은 항상 여기서 시작 */
-  --chart-2: #d97510;   /* orange  — #e8911c 는 2.47:1 로 미달이라 한 단 어둡게 잡았다 */
-  --chart-3: #11a594;   /* teal    */
-  --chart-4: #7458e0;   /* purple  */
-  --chart-5: #d8324a;   /* crimson */
-  --chart-6: #1a7f4f;   /* green   */
-
-  /* ---- 정답률 3단 (상태색) ────────────────────────────────────────
-     ★★ 이 셋은 색만으로 의미를 전달하면 안 된다. 반드시 라벨과 숫자를 함께 쓴다.
-        빨강↔초록이 적록색약에서 ΔE 3.0 — 사실상 구분되지 않는다.
-        이는 상태색의 알려진 성질이고(레퍼런스 팔레트도 동일), 정해진 완화책이
-        '아이콘 + 라벨 병기'다. `.wk-row` 는 항상 상태 라벨 + % 를 함께 렌더한다.
-        누군가 나중에 라벨을 지우면 그 순간 접근성이 깨진다. */
-  --rate-bad:       #e23b4e;  /* 채움 4.23:1 */
-  --rate-bad-text:  #c22638;  /* 텍스트 5.79:1 */
-  --rate-mid:       #cf7a0d;  /* 채움 3.26:1 — --warning(2.47) 은 마크로 쓸 수 없다 */
-  --rate-mid-text:  #a35f05;  /* 텍스트 5.00:1 — --warning-text(4.09) 는 AA 미달 */
-  --rate-good:      #0f9d58;  /* 채움 3.51:1 */
-  --rate-good-text: #0c7a45;  /* 텍스트 5.40:1 */
-
-  /* ---- 차트 크롬 ----
-     축·눈금 라벨은 텍스트다 → 4.5:1 이 필요하다.
-     --faint(#8e96a8) 는 2.97:1 이라 쓰면 안 된다. */
-  --chart-surface: var(--canvas);
-  --chart-track:   #e6eaf2;   /* 빈 막대/도넛 트랙 — 마크가 아니라 배경이다 */
-  --chart-grid:    #eef1f7;
-  --chart-ink:     #6b7385;   /* 4.76:1 — 축·라벨 */
-
-  /* 다크 모드는 만들지 않는다. 이 제품에 다크 테마가 없어서
-     '자동 반전'을 넣으면 검증되지 않은 색이 나간다. 필요해지면 그때
-     dataviz 검증기를 다크 표면 기준으로 다시 돌려 스텝을 새로 고른다. */
-}
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
