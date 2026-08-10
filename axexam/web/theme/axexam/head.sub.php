@@ -36,10 +36,33 @@ header("Pragma: no-cache"); // HTTP/1.0
 <head>
 <meta charset="utf-8">
 <?php
+/* ★ viewport meta 는 **장치 판정과 무관하게 항상** 내보낸다.
+ *
+ *   원래 이 줄이 `if (G5_IS_MOBILE)` 안에 있었다. 그런데 같은 테마의
+ *   theme.config.php:13 이 `G5_THEME_DEVICE = 'pc'` 로 못박아서 G5_IS_MOBILE 이
+ *   항상 false 였다 → **viewport meta 가 어느 페이지에도 나가지 않았다.**
+ *   실측(2026-08-06): 데스크톱 UA 0건, iPhone UA 0건.
+ *
+ *   결과: 폰에서 layout viewport 가 980px 로 잡혀 check.css 의
+ *   @media(max-width:920/760/640) 가 **한 번도 안 걸렸다.** 화면은 반응형이 아니라
+ *   축소된 데스크톱이었고, 모바일 CSS 를 고쳐도 아무 일이 일어나지 않았다.
+ *
+ *   head.php:15-16 은 이미 "우리는 반응형 한 벌로 간다" 고 적어 뒀다 —
+ *   그 전제와 코드가 반대였다. 전제에 코드를 맞춘다.
+ *
+ * ★ viewport-fit=cover 가 필요한 이유: 이것이 없으면 env(safe-area-inset-*) 가
+ *   항상 0px 로 계산된다. 문제풀이 화면의 하단 시트가 iPhone 홈 인디케이터 밑에 깔린다.
+ *
+ * ★ minimum-scale=0 · maximum-scale=10 은 버렸다. 확대 배율을 지정하는 것은
+ *   모바일 전용 마크업 시절 유물이고, 값을 잘못 주면 확대 금지에 가까워져
+ *   접근성 문제가 된다. 브라우저 기본값이 옳다.
+ */
+echo '<meta name="viewport" id="meta_viewport"'
+   . ' content="width=device-width,initial-scale=1.0,viewport-fit=cover">'.PHP_EOL;
+echo '<meta name="format-detection" content="telephone=no">'.PHP_EOL;
+
 if (G5_IS_MOBILE) {
-    echo '<meta name="viewport" id="meta_viewport" content="width=device-width,initial-scale=1.0,minimum-scale=0,maximum-scale=10">'.PHP_EOL;
     echo '<meta name="HandheldFriendly" content="true">'.PHP_EOL;
-    echo '<meta name="format-detection" content="telephone=no">'.PHP_EOL;
 } else {
     echo '<meta http-equiv="imagetoolbar" content="no">'.PHP_EOL;
     echo '<meta http-equiv="X-UA-Compatible" content="IE=edge">'.PHP_EOL;

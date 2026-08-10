@@ -105,6 +105,9 @@ COMPARE = [
     (WEB / "exam/assets/report.css",        "/exam/assets/report.css"),
     (WEB / "exam/assets/report.js",         "/exam/assets/report.js"),
     (WEB / "exam/assets/gnuboard-skin.css", "/exam/assets/gnuboard-skin.css"),
+    # features.css·features.php 가 목록에 없었다 — 고쳐도 올렸는지 확인해 줄 장치가
+    # 없어서 조용히 옛 파일이 남는다(실제로 캡처 경로 버그가 그렇게 오래 남았다).
+    (WEB / "exam/assets/features.css",      "/exam/assets/features.css"),
     (BUILD / "assets/ui.js",                "/exam/assets/ui.js"),
     (BUILD / "index.html",                  "/exam/index.html"),
     (BUILD / "detail.html",                 "/exam/detail.html"),
@@ -116,6 +119,16 @@ COMPARE = [
 
 # ── 3. 렌더 결과 표식 (PHP 버전 판정) ────────────────────────────
 MARKERS = [
+    # ★ 이것이 없으면 **모바일 CSS 가 통째로 안 걸린다.**
+    #   viewport meta 가 theme/axexam/head.sub.php 의 `if (G5_IS_MOBILE)` 안에 있었고
+    #   theme.config.php:13 이 G5_THEME_DEVICE='pc' 로 못박아서, 어느 페이지에도
+    #   나가지 않았다(실측: 데스크톱 0건 · iPhone 0건). 폰에서 layout viewport 가
+    #   980px 로 잡혀 @media(max-width:920/760/640) 이 한 번도 안 걸렸다.
+    #   에러가 안 나고 "그냥 작게 보이는" 것이라 사람이 못 잡는다 — 그래서 여기 둔다.
+    ("/exam/check.php?pd={pd}", 'id="meta_viewport"',
+     "★ viewport meta — 없으면 모바일 CSS 가 통째로 안 걸린다"),
+    ("/exam/check.php?pd={pd}", 'viewport-fit=cover',
+     "★ safe-area — 없으면 env(safe-area-inset-*) 가 항상 0px, 하단 시트가 홈 인디케이터에 깔린다"),
     ("/exam/check.php?pd={pd}", 'id="rpLink"',
      "★ 성적표 링크 자리 — 없으면 check.php 가 07-30 13:52 이전 버전"),
     ("/exam/check.php?pd={pd}", "과목게시판", "4탭 (홈·이론·문제집·과목게시판)"),
