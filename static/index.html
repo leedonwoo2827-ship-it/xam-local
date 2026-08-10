@@ -45,19 +45,43 @@
            같은 목록에 붙여 두면 "왜 저건 안 열리나" 를 매번 다시 겪는다. -->
       <li class="side-nav-sep" aria-hidden="true"></li>
 
+      <!-- ★ 집필 — 여기가 도구 #2(클로드 데스크탑)를 대신한다. 이 앱에서 유일하게
+           모델을 부르는 화면이고, **집필자 각자의 Claude Code 구독**으로 나간다
+           (API 키 없음). `_rounds/` 를 만드는 단계라 `문항 교정` 바로 위에 둔다 —
+           위에서 만들고 아래에서 고치는 순서가 목록 순서와 같아야 한다. -->
+      <li><a href="#/authoring" data-nav="a" title="문항 집필 (Claude 구독 OAuth)">
+        <span data-icon="bulb"></span><span>문항 집필 <em class="nav-dest">→_rounds</em></span></a></li>
+
       <li><a href="#/questions" data-nav="q" title="문항 교정">
         <span data-icon="file"></span><span>문항 교정</span></a></li>
-      <li><a href="#/summary" data-nav="s" title="요약노트 검수">
-        <span data-icon="bulb"></span><span>요약노트 검수</span></a></li>
+      <li><a href="#/summary" data-nav="s" title="요약노트(이론) 검수">
+        <span data-icon="bulb"></span><span>요약노트 검수 <em class="nav-dest">이론</em></span></a></li>
+
+      <!-- ★ 순서를 파이프라인 순서로 맞췄다(2026-08-10):
+           집필 → 교정 → 이론 → **슬라이드** → 영상 → **인쇄본** → 발행
+           슬라이드가 영상 앞인 이유: 분할·넘침을 먼저 잡아야 영상을 다시 굽지 않는다.
+           인쇄본이 발행 앞인 이유: 종이 검수가 발행 전 마지막 관문이다.
+
+           ★ 목적지 표시(`nav-dest`)에 **폴더 번호를 넣지 않는다.** 02·03·04·05·06 이
+             바뀔 수 있다고 했다 — 번호를 라벨에 박으면 폴더를 옮길 때 화면이 거짓말을
+             한다. 단계 이름만 쓴다. -->
+
+      <!-- ★ 해시 라우트가 아니라 **별개 페이지**다(target=_blank).
+           슬라이드는 1920×1080 고정이라 앱 셸(레일 248px + 패널) 안에서는 축소돼 보이고,
+           그러면 "실제로 넘치는가" 를 눈으로 판단할 수 없다. 셸 없이 그것만 띄운다. -->
+      <li><a href="/slide/" target="_blank" rel="noopener"
+             title="슬라이드 분할·넘침 검수 (새 탭) — ?fit=1 로 안전선 확인">
+        <span data-icon="grid"></span><span>슬라이드 <em class="nav-dest">분할·넘침</em></span></a></li>
+
       <li><a href="#/video" data-nav="v" title="영상 제작·검수">
         <span data-icon="film"></span><span>영상 제작·검수</span></a></li>
-      <li><a href="#/publish" data-nav="p" title="발행 to XAMpass">
-        <span data-icon="package"></span><span>발행 <em class="nav-dest">to XAMpass</em></span></a></li>
-      <!-- ★ 해시 라우트가 아니라 **별개 페이지**다(target=_blank). 인쇄본은 브라우저의
-           Ctrl+P 로 뽑는 것이고, 그때 앱 화면이 같이 인쇄되면 안 된다.
-           그래서 셸(rail·패널) 없이 그 문서만 있는 페이지로 연다. -->
+
+      <!-- ★ 인쇄본도 별개 페이지다 — Ctrl+P 로 뽑을 때 앱 화면이 같이 인쇄되면 안 된다. -->
       <li><a href="/print/" target="_blank" rel="noopener" title="문항·대본 인쇄본 (새 탭)">
         <span data-icon="file"></span><span>인쇄본 <em class="nav-dest">종이 검수</em></span></a></li>
+
+      <li><a href="#/publish" data-nav="p" title="발행 to XAMpass">
+        <span data-icon="package"></span><span>발행 <em class="nav-dest">to XAMpass</em></span></a></li>
     </ul>
 
     <div class="side-section">

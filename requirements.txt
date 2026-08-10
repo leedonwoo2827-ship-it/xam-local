@@ -1,4 +1,7 @@
-# XAM LOCAL — 로컬 실행 의존성. LLM 없음 · 인증 없음 · DB 없음.
+# XAM LOCAL — 로컬 실행 의존성. 인증 없음 · DB 없음.
+#
+# ★ "LLM 없음" 이었다. 집필이 앱 안으로 들어와서 아니게 됐다(아래 claude-agent-sdk).
+#   단, **API 키는 여전히 없다** — 집필자 각자의 Claude Code 구독 로그인으로 나간다.
 #
 # 선택 의존성을 0 으로 유지하는 것이 setup.bat 의 실패 지점을 없애는 실질적 이득이다.
 # sha256=hashlib · ZIP=zipfile · SVG 검사=xml.etree · 원자적 쓰기=tempfile+os.replace
@@ -10,6 +13,17 @@ python-dotenv
 PyYAML             # 02/*.md 는 읽기 전용(쓰기는 손으로 조립).
                    # 01/*.md 는 **쓰기도** PyYAML 이다 — 도구 #1 이 safe_dump 로 찍었고
                    # 손으로 조립하면 source_pages 블록 목록의 들여쓰기가 어긋난다.
+
+# ── 집필(도구 #2 의 LLM 부분) 내장분 ────────────────────────────────────────
+# 이것은 API 클라이언트가 아니다 — 로그인된 `claude` CLI 를 **자식 프로세스로 띄우는**
+# 클라이언트다. 그래서 키가 필요 없고, 집필자마다 자기 구독으로 나간다.
+#
+# ★ 이 PC 에는 `claude` 가 PATH·npm전역·~/.local/bin 어디에도 없었다. 실행 파일은
+#   VSCode 확장 안에만 있다(`~/.vscode/extensions/anthropic.claude-code-*/`).
+#   `services/authoring/provider.find_cli()` 가 그 경로까지 찾는다 — SME PC 도 대개
+#   확장으로 처음 깔기 때문에 이 폴백이 없으면 "설치했는데 못 찾는다" 가 된다.
+# ★ pip 로 CLI 자체는 안 깔린다. 로그인은 사람이 한 번 해야 한다(구독 계정).
+claude-agent-sdk>=0.2.134
 
 # ── 도구 #1(OCR 검수) 내장분 ────────────────────────────────────────────────
 pypdfium2          # 00/*.pdf → data/raw_pages/*.png (pip 전용·크로스플랫폼)

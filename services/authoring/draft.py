@@ -1,0 +1,302 @@
+# -*- coding: utf-8 -*-
+"""파트 1개(보통 10문항) 집필 → 검증 → **스테이징에 저장.**
+
+★ 모델 출력이 `_rounds/` 에 직접 닿지 않는다. 여기까지가 스테이징이고, 반입은
+  `merge.py` 가 한다. 그래야 검증에 걸린 파트가 이미 검수된 문항을 덮지 못한다.
+  (같은 이유로 `provider.py` 는 `Write`/`Edit` 를 금지한다 — 모델에게 파일을 쓸
+  통로가 애초에 없다.)
+
+★ 스키마가 못 잡는 것을 여기서 잡는다. `output_format` 은 **모양**만 본다:
+    · question_no ↔ subject_no 조합 (스키마는 각각의 enum 만 본다)
+    · 번호 중복·누락
+    · 낭독에 마크다운 누출
+    · 낭독에 `그/느/드/르` 발음체 누출 (자막에 그대로 나가는 사고)
+    · 정답 위치 편중
+  전부 "통과했는데 나중에 사람이 읽고서야 아는" 종류다.
+"""
+from __future__ import annotations
+
+import os
+import re
+import time
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional
+
+from core.atomic_io import atomic_write_json
+from core.constants import DATA_DIR
+
+from .errors import ProviderError
+from .provider import ClaudeAuthor
+from .schema import SUBJECTS, part_schema, subject_no_for
+from .spec import SYSTEM, difficulty_plan, part_prompt
+
+# ★ 집필 단위는 **과목(20문항)** 이다. 번들(10문항)이 아니다.
+#
+#   처음 10 으로 두었다가 고쳤다. 이유가 두 개다:
+#   ① 번들과 맞출 필요가 없다 — `build.py` 는 회차를 통째로 만들고, 10문항 번들로
+#      쪼개는 것은 그 뒤 단계다. 집필 단위가 번들 경계를 따라야 할 제약이 없다.
+#   ② 10 으로 자르면 파트 1(1~10번)과 파트 2(11~20번)가 **둘 다 1과목**인데 서로를
+#      못 본다 → 같은 하위개념이 두 번 나온다. 과목 하나를 한 호출에 담으면 모델이
+#      그 안에서 난이도·하위주제를 스스로 배분한다.
+#
+#   분량 상한을 걸었기 때문에 20문항도 한 응답에 들어간다(문항당 약 900자).
+#   상한 없이 두면 20 × 2,900자여서 안 됐다 — 그것이 처음 10 을 고른 실제 이유였다.
+PART_SIZE = 20          # 1파트 = 1과목 = 20문항
+ROUND_SIZE = 80         # 회차당 80문항 = 4과목 × 20
+
+# ── 분량 기준 ───────────────────────────────────────────────────────────────
+# ★ 검증된 회차(m01 80문항)의 **실측 중앙값**이다. 프롬프트 문서의 "3~4배" 라는
+#   비율 표현이 아니라 이 절대값이 기준이다 — 비율은 화면과 낭독이 같이 부풀면
+#   그대로여서 아무것도 막지 못한다(실제로 통과했다).
+EX_LO, EX_HI, EX_MAX = 160, 260, 320        # 화면 해설 (m01 중앙값 166자)
+SP_LO, SP_HI, SP_MAX = 340, 450, 520        # 낭독     (m01 중앙값 356자)
+CHARS_PER_SEC = 5.5                          # 한국어 낭독 환산(speed 1.05 기준)
+
+
+# ── 스테이징 경로 ───────────────────────────────────────────────────────────
+def staging_dir(round_code: str) -> str:
+    """`data/authoring/<회차>/`. 책 폴더 밖에 둔다 — 검증 전 산출물이 책에 섞이면
+    `scan`·`verify` 가 그것을 진짜 문항으로 세기 시작한다."""
+    return os.path.join(DATA_DIR, "authoring", round_code)
+
+
+def staging_path(round_code: str, part_index: int) -> str:
+    return os.path.join(staging_dir(round_code), f"{round_code}-p{part_index}.json")
+
+
+# ── 결과 ────────────────────────────────────────────────────────────────────
+@dataclass
+class PartResult:
+    round_code: str
+    part_index: int
+    numbers: List[int]
+    items: List[Dict[str, Any]] = field(default_factory=list)
+    problems: List[str] = field(default_factory=list)   # 반입을 막는 것
+    warnings: List[str] = field(default_factory=list)   # 사람이 볼 것
+    cost_usd: float = 0.0
+    turns: int = 0
+    path: str = ""
+    # ★ 걸린 시간과 기준을 같이 남긴다. 비용만 남기면 "얼마 드나" 는 답해도
+    #   "몇 시간 걸리나" 는 매번 상수로 어림잡게 된다 — 실제로 그 상수가 세 군데에
+    #   서로 다른 값으로 박혀 있었다(2026-08-10). 기준(mode)도 같이 남기는 이유:
+    #   시험기준은 기출을 안 읽어 2턴에 끝나고, 연습문제화는 읽어서 훨씬 비싸다.
+    #   둘을 섞어 평균 내면 어느 쪽에도 안 맞는 값이 나온다.
+    seconds: float = 0.0
+    mode: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return not self.problems and len(self.items) == len(self.numbers)
+
+    def as_dict(self) -> Dict[str, Any]:
+        return {
+            "round": self.round_code, "part": self.part_index,
+            "numbers": self.numbers, "n": len(self.items),
+            "ok": self.ok, "problems": self.problems, "warnings": self.warnings,
+            "cost_usd": round(self.cost_usd, 4), "turns": self.turns,
+            "seconds": round(self.seconds, 1), "mode": self.mode,
+            "path": self.path,
+        }
+
+
+# ── 파트 범위 ───────────────────────────────────────────────────────────────
+def part_numbers(part_index: int, part_size: int = PART_SIZE) -> List[int]:
+    """파트 번호(1-based) → 문항번호 목록. `bundle` 의 파트 나누기와 같은 식이다."""
+    if part_index < 1:
+        raise ValueError("파트 번호는 1 부터입니다")
+    lo = (part_index - 1) * part_size + 1
+    hi = min(lo + part_size - 1, ROUND_SIZE)
+    if lo > ROUND_SIZE:
+        raise ValueError(f"파트 {part_index} 는 회차 범위({ROUND_SIZE}문항) 밖입니다")
+    return list(range(lo, hi + 1))
+
+
+def n_parts(part_size: int = PART_SIZE) -> int:
+    return (ROUND_SIZE + part_size - 1) // part_size
+
+
+# ── 검증 ────────────────────────────────────────────────────────────────────
+# 낭독에 있으면 안 되는 것. 마크다운은 TTS 가 그대로 읽는다("별표 별표").
+_MD_IN_SPEECH = [("**", "굵게 표시"), ("`", "백틱"), ("![", "그림 링크"),
+                 ("](", "링크"), ("- ", "불릿")]
+
+# ★ 발음체 누출. 시험지 표기는 `ㄱㄴㄷㄹ` 이고, 자모 이름 낭독은 렌더 단계의
+#   발음사전이 한다. 집필이 `그/드/르` 를 쓰면 **자막에도 그것이 나간다.**
+#   기존 9회차에서 실제로 그렇게 됐다(회차당 8~9건).
+#   경계를 좁게 잡는다 — "그리고" · "느낌" · "드러난다" 를 잡으면 안 된다.
+_SPEECH_JAMO = re.compile(r"(?<![가-힣])(그|느|드|르|므)(?=\s*[,·)]|입니다|이고|와|과)")
+
+
+def _validate(items: List[Dict[str, Any]], numbers: List[int]) -> tuple[List[str], List[str]]:
+    problems: List[str] = []
+    warns: List[str] = []
+
+    got = [int(it.get("question_no", 0)) for it in items]
+    missing = sorted(set(numbers) - set(got))
+    extra = sorted(set(got) - set(numbers))
+    dup = sorted({n for n in got if got.count(n) > 1})
+    if missing:
+        problems.append(f"빠진 문항번호: {missing}")
+    if extra:
+        problems.append(f"범위 밖 문항번호: {extra} (이 파트는 {numbers[0]}~{numbers[-1]})")
+    if dup:
+        problems.append(f"중복 문항번호: {dup}")
+
+    for it in items:
+        no = it.get("question_no")
+        tag = f"{no}번"
+
+        # 과목 — 번호에서 파생되는 값이다. 어긋나면 웹의 과목 필터가 틀린다.
+        try:
+            want = subject_no_for(int(no))
+        except (TypeError, ValueError):
+            continue
+        if int(it.get("subject_no", 0)) != want:
+            problems.append(f"{tag}: subject_no={it.get('subject_no')} "
+                            f"인데 번호상 {want} 과목입니다")
+        if it.get("subject") != SUBJECTS.get(want):
+            problems.append(f"{tag}: subject 문자열이 '{SUBJECTS.get(want)}' 가 "
+                            f"아닙니다 (요약노트 <h1> 과 일치해야 성적표 링크가 붙습니다)")
+
+        # 낭독 — 여기가 자막으로도 나간다
+        sp = str(it.get("explanation_speech") or "")
+        for mark, ko in _MD_IN_SPEECH:
+            if mark in sp:
+                problems.append(f"{tag}: 낭독에 {ko}({mark}) 가 있습니다 — "
+                                f"TTS 가 그대로 읽습니다")
+        if m := _SPEECH_JAMO.search(sp):
+            problems.append(f"{tag}: 낭독에 발음체 '{m.group(1)}' 가 있습니다 — "
+                            f"`ㄱㄴㄷㄹ` 원문으로 쓰십시오(자막에 그대로 나갑니다)")
+        if not sp.startswith("정답은"):
+            warns.append(f"{tag}: 낭독이 '정답은 N번입니다.' 로 시작하지 않습니다")
+
+        # ★ 분량 — **절대 길이로 본다. 비율로 보면 안 된다.**
+        #   처음엔 "낭독이 화면의 N배" 로 검사했는데 그것이 거꾸로였다: 화면과 낭독이
+        #   같이 5배로 부풀면 비율은 그대로여서 통과한다. 실제로 그렇게 통과했고
+        #   (화면 919자 · 낭독 1552자, 비율 1.79배) 그건 편당 47분이다.
+        #   기준은 검증된 m01 의 실측 중앙값이다 — 화면 166자 · 낭독 356자 → 편 10.8분.
+        ex = str(it.get("explanation") or "")
+        if len(ex) > EX_MAX:
+            warns.append(f"{tag}: 화면 해설 {len(ex)}자 — 목표 {EX_LO}~{EX_HI}자를 "
+                         f"넘겼습니다(슬라이드 수가 늘고 편이 길어집니다)")
+        if len(sp) > SP_MAX:
+            warns.append(f"{tag}: 낭독 {len(sp)}자 ≈ {len(sp)/CHARS_PER_SEC:.0f}초 — "
+                         f"목표 {SP_LO}~{SP_HI}자(문항당 90초)를 넘겼습니다")
+        elif len(sp) < SP_LO:
+            warns.append(f"{tag}: 낭독 {len(sp)}자뿐입니다 — 목표 {SP_LO}~{SP_HI}자")
+
+        # 보기가 서로 같으면 정답이 둘이 된다
+        ch = [str(c).strip() for c in (it.get("choices") or [])]
+        if len(set(ch)) != len(ch):
+            problems.append(f"{tag}: 보기 중 같은 것이 있습니다 {ch}")
+
+    # 정답 위치 편중 — 파트 단위로는 표본이 작으므로 경고만
+    if items:
+        ai = [int(it.get("answer_index", -1)) for it in items]
+        for k in range(4):
+            if ai.count(k) > max(2, len(items) // 2):
+                warns.append(f"정답이 {k+1}번에 {ai.count(k)}개 몰렸습니다")
+    return problems, warns
+
+
+# ── 집필 ────────────────────────────────────────────────────────────────────
+def draft_part(*, round_code: str, part_index: int, book_dir: str,
+               part_size: int = PART_SIZE,
+               derive_hint: str = "",
+               mode: str = "derive",
+               round_index: int = 0, round_total: int = 0,
+               model: str = "", effort: Optional[str] = None,
+               on_activity: Optional[Callable[[str], None]] = None) -> PartResult:
+    """파트 1개를 집필해 스테이징에 저장한다. 검증 실패도 **저장한다.**
+
+    ★ 실패한 것도 저장하는 이유: $0.25~ 를 이미 썼다. 버리면 사람이 무엇이 틀렸는지
+      볼 수 없고 다시 부르는 수밖에 없다. 저장해 두고 `merge` 가 막는다.
+    """
+    numbers = part_numbers(part_index, part_size)
+    subj_nos = sorted({subject_no_for(n) for n in numbers})
+    plans = difficulty_plan(n_parts(part_size))
+    ask = plans[min(part_index - 1, len(plans) - 1)]
+
+    author = ClaudeAuthor(model=model, effort=effort, cwd=book_dir,
+                          on_activity=on_activity)
+    prompt = part_prompt(round_code=round_code, numbers=numbers,
+                         subject_nos=subj_nos, difficulty_ask=ask,
+                         derive_hint=("" if mode == "exam" else derive_hint),
+                         mode=mode,
+                         round_index=round_index, round_total=round_total)
+
+    res = PartResult(round_code=round_code, part_index=part_index, numbers=numbers,
+                     mode=mode)
+    # ★ 벽시계가 아니라 단조시계다. 집필 하나가 10~20분씩 가는데 그 사이 시스템
+    #   시각이 바뀌면(NTP 보정·서머타임) 음수 초가 남는다.
+    t0 = time.monotonic()
+    try:
+        got = author.structured(SYSTEM, prompt, part_schema(subj_nos, numbers))
+        res.items = list(got.get("items") or [])
+    except ProviderError as e:
+        res.problems.append(str(e))
+    finally:
+        # ★ 실패해도 계량은 기록한다. 실패분에도 요금이 나간다 —
+        #   답변초안 화면에서 같은 것을 이미 겪었다(실패분 비용을 따로 보여 준다).
+        res.cost_usd = author.last_cost_usd
+        res.turns = author.last_turns
+        res.seconds = time.monotonic() - t0
+
+    if res.items:
+        p, w = _validate(res.items, numbers)
+        res.problems += p
+        res.warnings += w
+
+    res.path = staging_path(round_code, part_index)
+    atomic_write_json(res.path, {
+        "round": round_code, "part": part_index, "numbers": numbers,
+        "ok": res.ok, "problems": res.problems, "warnings": res.warnings,
+        "cost_usd": round(res.cost_usd, 4), "turns": res.turns,
+        "seconds": round(res.seconds, 1), "mode": res.mode,
+        "items": res.items,
+    }, indent=2, trailing_newline=True)
+    return res
+
+
+def is_done(round_code: str, part_index: int) -> bool:
+    """이 과목이 **이미 합격으로** 스테이징에 있는가.
+
+    ★ 7시간짜리 잡이 30/36 에서 끊겼을 때(구독 한도·서버 재시작·정전) 처음부터
+      다시 돌리면 이미 만든 30과목을 또 태운다 — 실측으로 $44 다. 스테이징은
+      과목이 끝나는 즉시 파일로 남으므로, 그 파일을 보고 건너뛰면 된다.
+    ★ 합격한 것만 센다. 실패로 남은 파트는 다시 만들어야 하니 건너뛰면 안 된다.
+    """
+    import json
+    p = staging_path(round_code, part_index)
+    if not os.path.isfile(p):
+        return False
+    try:
+        with open(p, encoding="utf-8") as f:
+            return bool(json.load(f).get("ok"))
+    except (OSError, ValueError):
+        return False        # 읽을 수 없으면 없는 것으로 보고 다시 만든다
+
+
+def list_staged(round_code: str) -> List[Dict[str, Any]]:
+    """스테이징에 무엇이 있는가. 화면이 파트별 상태를 그린다."""
+    import json
+    d = staging_dir(round_code)
+    out: List[Dict[str, Any]] = []
+    for i in range(1, n_parts() + 1):
+        p = staging_path(round_code, i)
+        row: Dict[str, Any] = {"part": i, "numbers": part_numbers(i), "exists": False}
+        if os.path.isfile(p):
+            try:
+                with open(p, encoding="utf-8") as f:
+                    d0 = json.load(f)
+                row.update(exists=True, ok=bool(d0.get("ok")),
+                           n=len(d0.get("items") or []),
+                           problems=d0.get("problems") or [],
+                           warnings=d0.get("warnings") or [],
+                           cost_usd=d0.get("cost_usd") or 0,
+                           seconds=d0.get("seconds") or 0,
+                           mode=d0.get("mode") or "")
+            except (OSError, ValueError) as e:
+                row.update(exists=True, ok=False, problems=[f"파일을 읽을 수 없습니다: {e}"])
+        out.append(row)
+    return out

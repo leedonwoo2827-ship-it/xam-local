@@ -681,6 +681,23 @@ body[data-rail="collapsed"] .rail-menu { left: -4px; width: 190px; right: auto; 
 .empty { padding: 26px 14px; text-align: center; color: var(--text-3); font-size: var(--t-xs); line-height: var(--lh-loose); }
 .muted { color: var(--text-3); }
 
+/* ── 설명표(라벨 : 값) ────────────────────────────────────────────────────
+ * 연결 상태·경로처럼 **읽기만 하는 사실**을 줄줄이 세우는 자리다.
+ * ★ 라벨 열을 고정폭으로 둔다. 값이 경로라 길이가 제각각인데, 라벨까지 같이
+ *   밀리면 눈이 값의 시작점을 매번 새로 찾아야 한다.
+ * ★ 값은 `minmax(0,1fr)` 이다 — 안 그러면 긴 경로가 격자를 밀어 카드가 넘친다.
+ */
+.kvs { display: grid; gap: 8px; }
+.kv {
+  display: grid; grid-template-columns: 84px minmax(0, 1fr);
+  gap: 12px; align-items: baseline;
+}
+.kv-k { font-size: var(--t-2xs); color: var(--text-3); font-weight: 600; }
+.kv-v { font-size: var(--t-xs); color: var(--text-2); line-height: var(--lh-loose); min-width: 0; }
+.kv-v code { word-break: break-all; }
+.kv-v .bad { color: var(--err); }
+@media (max-width: 560px) { .kv { grid-template-columns: 1fr; gap: 2px; } }
+
 /* ── 검색 상자 ── */
 .search-box {
   display: flex; align-items: center; gap: 8px; padding: 8px 13px;
@@ -1734,6 +1751,12 @@ table.data tr.on b { color: var(--brand); }
 
 /* ── 작업 폴더 패널 ───────────────────────────────────────────────────────── */
 .bk-list { display: grid; gap: 9px; align-content: start; }
+/* 연결 카드 — 폴더 카드(.bk)와 같은 바탕이라 같은 목록의 일부로 읽힌다. */
+.bk-conn-card {
+  background: var(--linen); border-radius: var(--r-lg); padding: 14px 16px;
+  display: grid; gap: 11px; justify-items: start;
+}
+.bk-conn-card .kvs, .bk-conn-card .field-hint { width: 100%; margin: 0; }
 .bk {
   display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 13px;
   align-items: center; padding: 12px 14px; border-radius: var(--r-lg);
@@ -1844,3 +1867,70 @@ table.data tr.on b { color: var(--brand); }
   font-size: var(--t-xs); line-height: 1.5;
 }
 .share-banner b { margin-right: 2px; }
+
+/* ═══ 레일 다크 오버라이드 ═════════════════════════════════════════════════
+ * showcase-agent 의 레일과 같은 결로 맞춘다(2026-08-10 지시).
+ *
+ * ★ 위의 규칙들을 고치지 않고 **여기서 덮는다.** `.side-nav a`·`.btn-new`·
+ *   `.brand-mark` 같은 규칙은 라이트 바탕(--bone)을 전제로 쓰였고 카드·패널에서도
+ *   쓰인다. 위를 고치면 카드까지 같이 어두워진다. 레일 안(.rail 자손)만 다시 잡는다.
+ *
+ * ★ 웜 차콜을 쓴다. 순회색(#222)을 쓰면 리넨·본(웜 오프화이트) 옆에서 레일이
+ *   푸르게 떠 보인다 — 같은 화면에 두 색온도가 생긴다.
+ *
+ * ★ 활성·액션색은 --brand(#c41c0b) 를 그대로 쓰지 않는다. 어두운 바탕에서 대비가
+ *   3:1 미만이라 글자가 읽히지 않는다. 한 단계 밝은 --verm-400 계열로 올린다.
+ */
+:root {
+  --rail-bg:         #241f1c;   /* 웜 차콜 */
+  --rail-ink:        #f5f1e8;   /* 브랜드명 · 강조 글자 */
+  --rail-ink-2:      #d2cabd;   /* 네비 라벨 (본문) */
+  --rail-ink-3:      #968d81;   /* 보조 · 목적지 표시 */
+  --rail-hairline:   rgb(255 255 243 / .11);
+  --rail-hover:      rgb(255 255 243 / .07);
+  --rail-brand:      #f4562f;   /* 어두운 바탕에서 읽히는 주홍 */
+  --rail-brand-soft: #c41c0b;
+  --rail-active-bg:  rgb(244 86 47 / .17);
+}
+
+.rail {
+  background: var(--rail-bg);
+  /* 헤어라인이 어두운 바탕에서는 보이지 않는다 — 밝은 쪽으로 뒤집는다. */
+  box-shadow: 1px 0 0 var(--rail-hairline);
+}
+
+.rail .brand-name { color: var(--rail-ink); }
+.rail .brand-mark { background: var(--rail-brand-soft); color: #fff; }
+.rail .rail-toggle { color: var(--rail-ink-3); }
+.rail .rail-toggle:hover { background: var(--rail-hover); color: var(--rail-brand); }
+
+/* 기본 액션 — 어두운 바탕에서 채움 버튼은 글자를 어둡게 둬야 대비가 선다.
+   흰 글자 + 주홍 채움은 레일 배경과 명도가 붙어 버튼 경계가 사라진다. */
+.rail .btn-new { background: var(--rail-brand); color: #2a1410; font-weight: 700; }
+.rail .btn-new:hover { background: #ff6f49; }
+
+.rail .side-nav a { color: var(--rail-ink-2); }
+.rail .side-nav a:hover { background: var(--rail-hover); color: var(--rail-ink); }
+.rail .side-nav a.active { background: var(--rail-active-bg); color: var(--rail-brand); }
+.rail .side-nav .i,
+.rail .side-nav a [data-icon] { color: var(--rail-ink-3); }
+.rail .side-nav a:hover [data-icon] { color: var(--rail-ink-2); }
+.rail .side-nav a.active [data-icon] { color: var(--rail-brand); }
+.rail .side-nav a .nav-dest { color: var(--rail-ink-3); }
+.rail .side-nav a.active .nav-dest { color: var(--rail-brand); opacity: .8; }
+.rail .side-nav-sep { background: var(--rail-hairline); }
+
+.rail .side-section-title { color: var(--rail-ink-3); }
+.rail .side-section-more { color: var(--rail-brand); }
+.rail .side-empty { color: var(--rail-ink-3); }
+.rail .side-recent a,
+.rail .side-recent button { color: var(--rail-ink-2); }
+.rail .side-recent a:hover,
+.rail .side-recent button:hover { background: var(--rail-hover); color: var(--rail-ink); }
+
+.rail .side-user { color: var(--rail-ink-2); }
+.rail .side-user:hover { background: var(--rail-hover); }
+.rail .su-avatar { background: var(--rail-brand-soft); color: #fff; }
+.rail .su-name { color: var(--rail-ink); }
+.rail .su-team { color: var(--rail-ink-3); }
+.rail .side-user [data-icon] { color: var(--rail-ink-3); }

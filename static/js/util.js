@@ -26,13 +26,48 @@ export function escapeHtml(s) {
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** JSON 요청. 실패 시 서버가 준 detail 을 담아 throw. */
+/** 서버 오류를 사람이 읽는 한 줄로.
+ *
+ * ★ FastAPI 의 422 는 `detail` 이 **배열**이다(`[{loc, msg, type}, …]`). 그걸 그대로
+ *   Error() 에 넣으면 화면에 `[object Object]` 만 뜬다 — 실제로 그렇게 겪었고,
+ *   진짜 원인(본문이 JSON 이 아니었다)이 통째로 가려졌다.
+ */
+function errText(body, status) {
+  const d = body && body.detail;
+  if (typeof d === "string" && d) return d;
+  if (Array.isArray(d) && d.length) {
+    return d.map((x) => {
+      const at = (x.loc || []).filter((v) => v !== "body").join(".");
+      return (at ? at + ": " : "") + (x.msg || JSON.stringify(x));
+    }).join(" · ");
+  }
+  if (d) return JSON.stringify(d);
+  if (typeof body === "string" && body.trim()) return body.trim().slice(0, 300);
+  return `요청 실패 (${status})`;
+}
+
+/** JSON 요청. 실패 시 서버가 준 detail 을 담아 throw.
+ *
+ * ★ body 가 **객체면 여기서 JSON 으로 바꾼다.** 안 그러면 fetch 가 그 객체를
+ *   `"[object Object]"` 라는 문자열로 보내고 서버는 422 를 낸다. 호출부마다
+ *   `JSON.stringify` + `Content-Type` 을 손으로 붙이던 규약이라, 한 곳만 빼먹으면
+ *   조용히 그렇게 됐다. 문자열·FormData 는 손대지 않으므로 옛 호출부는 그대로 돈다.
+ */
 export async function api(path, opts = {}) {
-  const r = await fetch(path, { cache: "no-store", ...opts });
+  const o = { cache: "no-store", ...opts };
+  const b = o.body;
+  const raw = typeof b === "string" || b instanceof FormData ||
+              b instanceof Blob || b instanceof URLSearchParams ||
+              b instanceof ArrayBuffer || ArrayBuffer.isView(b || 0);
+  if (b != null && !raw) {
+    o.body = JSON.stringify(b);
+    o.headers = { "Content-Type": "application/json", ...(o.headers || {}) };
+  }
+  const r = await fetch(path, o);
   const ct = r.headers.get("content-type") || "";
   const body = ct.includes("json") ? await r.json().catch(() => ({})) : await r.text();
   if (!r.ok) {
-    const err = new Error((body && body.detail) || `요청 실패 (${r.status})`);
+    const err = new Error(errText(body, r.status));
     err.status = r.status;
     err.body = body;
     throw err;

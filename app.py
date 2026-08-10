@@ -100,6 +100,9 @@ async def api_mode(request: Request):
 _ROUTERS = (
     ("routes.books_routes", "setup_books_routes", "작업 폴더"),
     ("routes.book_routes", "setup_book_routes", "BOOK 개요"),
+    # 집필 — 유일하게 LLM 을 부르는 계층. claude-agent-sdk 가 없으면 여기만 빠지고
+    # 나머지 화면은 그대로 뜬다(위 try/except 가 그 목적이다).
+    ("routes.authoring_routes", "setup_authoring_routes", "집필(구독 OAuth)"),
     ("routes.ocr_routes", "setup_ocr_routes", "OCR 검수(페이지 단위)"),
     ("routes.scan_routes", "setup_scan_routes", "구조화 MD"),
     ("routes.question_routes", "setup_question_routes", "문항 교정"),
@@ -234,6 +237,26 @@ async def print_questions(rd: int | None = None):
 async def print_lesson(b: str | None = None):
     from services.export import printdoc
     return _print_page(printdoc.lesson_html, b)
+
+
+# ── 슬라이드 미리보기 ───────────────────────────────────────────────────────
+# ★ `def` 다. `async def` 가 아니다 — 나중에 ?fit=1 이 Chromium 으로 실제 높이를 재게
+#   되는데 `sync_playwright()` 는 asyncio 루프가 도는 스레드에서 죽는다. `def` 면
+#   FastAPI 가 스레드풀에서 돌린다. (`deck_capture` 에서 이미 겪은 함정이다.)
+#
+# ★ 파일을 굽지 않는다. 요청마다 지금 데이터로 그린다 — `/print/` 와 같은 패턴이고,
+#   그래서 미리보기와 베이크가 **같은 함수**를 쓴다는 규약이 유지된다.
+@app.get("/slide/")
+def slide_index():
+    from services.deck import preview
+    return _print_page(preview.index_html)
+
+
+@app.get("/slide/bundle")
+def slide_bundle(b: str | None = None, fit: str = ""):
+    """번들 하나를 슬라이드로. `?fit=1` 이 안전선을 빨간 띠로 얹는다."""
+    from services.deck import preview
+    return _print_page(preview.bundle_html, b, bool(fit))
 
 
 @app.get("/mock")

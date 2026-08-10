@@ -35,11 +35,58 @@ export const meta = {
 export async function mount(root, ctx) {
   root.innerHTML = `
     <div class="bk-list" id="bk-list"><div class="empty">불러오는 중…</div></div>
+    <div id="bk-conn" hidden></div>
     <div class="field-hint" id="bk-note"></div>
   `;
   hydrateIcons(root);
   await refresh();
+  drawConn();          // ★ 폴더 목록을 막지 않는다 — 기다리지 않고 따로 채운다
 }
+
+/* ── 연결 — 집필이 무슨 자격으로 나가는지 ──────────────────────────────────
+ *
+ * ★ 여기에 둔다. 폴더를 고르는 화면이 곧 "이 앱이 무엇을 쓰는가" 를 정하는 자리고,
+ *   문항 집필 화면까지 들어가야만 보이면 **로그인이 안 된 것을 집필을 누른 뒤에야**
+ *   알게 된다. 과목 하나가 10~20분짜리라 그때 알면 늦다.
+ * ★ 모델을 부르지 않는다(`/status` 는 무료·즉시). 화면을 열 때마다 과금될 수 없다.
+ */
+async function drawConn() {
+  const box = $("#bk-conn");
+  if (!box) return;
+  // 집필 라우트가 없는 서버(옛 프로세스)면 조용히 접는다 — 폴더 화면의 본업이 아니다.
+  const st = await api("/api/authoring/status").catch(() => null);
+  if (!st) { box.hidden = true; return; }
+
+  const on = st.installed && st.credentials;
+  const rows = [];
+  rows.push(kv("CLI", st.installed
+    ? `<code>${escapeHtml(st.path || "")}</code>`
+    : `<b class="bad">찾지 못했습니다</b> — Claude Code 를 설치하거나 `
+      + `<code>CLAUDE_CLI</code> 로 실행 파일 경로를 지정하십시오.`));
+  rows.push(kv("로그인", st.credentials
+    ? `있습니다 <span class="muted">(~/.claude/.credentials.json · 구독 OAuth)</span>`
+    : `<b class="bad">없습니다</b> — Claude Code 에서 한 번 로그인하십시오.`));
+  // ★ 켜져 있으면 반드시 말해 준다. 이 앱은 자식 환경에서 비워 무력화하지만,
+  //   "왜 내 계정에 안 찍히지" 를 물을 때 짚을 곳이 필요하다.
+  if (st.api_key_env) {
+    rows.push(kv("주의", `<b class="bad">ANTHROPIC_API_KEY 가 설정돼 있습니다.</b> `
+      + `이 앱은 무시하고 구독 로그인으로 나가지만, 다른 도구는 이 키로 과금될 수 있습니다.`));
+  }
+
+  box.hidden = false;
+  box.innerHTML = `
+    <div class="section-label">연결</div>
+    <div class="bk-conn-card">
+      <span class="badge ${on ? "ok" : "err"}">${
+        on ? "Claude Code 로그인됨" : st.installed ? "로그인 필요" : "CLI 없음"}</span>
+      <div class="kvs">${rows.join("")}</div>
+      <div class="field-hint">API 키를 쓰지 않습니다. <b>이 PC 의 구독 로그인</b>으로 나가므로
+        사용량과 한도가 사람별로 갈립니다.</div>
+    </div>`;
+}
+
+const kv = (k, v) => `<div class="kv"><span class="kv-k">${escapeHtml(k)}</span>`
+                   + `<span class="kv-v">${v}</span></div>`;
 
 async function refresh() {
   try {

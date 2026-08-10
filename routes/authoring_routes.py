@@ -1,0 +1,411 @@
+"""/api/authoring — 앱 안에서 집필한다. **API 키 없음** · 집필자 각자의 구독 OAuth.
+
+흐름 — 네 단계가 한 화면에서 끝난다:
+
+    집필(파트 단위) → 스테이징(data/authoring/) → 반입(_rounds/) → 파생(02/·04/)
+
+★ 계층 규약: 이 파일은 JSON 만 돌려준다(페이지 HTML 은 app.py 만). 무거운 일은
+  `services/authoring/*` 이 하고 여기서는 배선과 잡 관리만 한다.
+
+★ 집필은 **잡**이다. 파트 1개가 1~3분, 회차 1개(8파트)는 20분쯤 간다. 요청-응답으로
+  두면 브라우저가 먼저 끊고, 사람은 "멈췄다" 고 읽는다 — 렌더에서 이미 겪은 것이다.
+
+★ 동시 실행을 막는다. 파트를 두 개 같이 돌리면 프롬프트 캐시 접두가 갈려 비용이
+  4배가 되고(실측 $0.066 → $0.257), 구독 한도도 같이 태운다.
+"""
+from __future__ import annotations
+
+from typing import Any, Dict, List
+
+from fastapi import APIRouter, Body, HTTPException
+
+from core.constants import BOOK_DIR
+from services.authoring import cost, derive, draft, examspec, merge, pool, provider
+# ★ 라우트 인자 이름이 `spec` 이라 모듈을 그 이름으로 두면 가려진다 — 별칭으로 받는다.
+from services.authoring import spec as authspec
+from services.jobs import registry
+
+KIND = "authoring"
+
+# 연속 몇 번 헛발질하면 멈출 것인가. 3 인 이유: 1~2회는 일시적 과부하(529)로도
+# 나므로 그때 멈추면 멀쩡한 실행을 죽인다. 3회 연속이면 한도·인증 쪽이다.
+STALL_LIMIT = 3
+
+
+def _round_ok(code: str) -> str:
+    code = (code or "").strip()
+    if not (len(code) == 3 and code[0] == "m" and code[1:].isdigit()):
+        raise HTTPException(400, "회차코드는 m01 ~ m99 형태여야 합니다.")
+    return code
+
+
+def _derive_hint(book_dir: str, limit: int = 24) -> str:
+    """기출 파일명 목록. **내용은 넣지 않는다** — 모델이 Read 로 필요한 것만 읽는다.
+
+    240문항을 프롬프트에 부으면 접두가 거대해지고 파트마다 그 값을 다시 태운다.
+    실측: 문항 1개에 `Read:01/01-01.md` 1회로 끝났다.
+    """
+    import glob
+    import os
+    names = sorted(os.path.basename(p)[:-3]
+                   for p in glob.glob(os.path.join(book_dir, "01", "*.md"))
+                   if not os.path.basename(p).startswith("_"))
+    if not names:
+        return ""
+    head = names[:limit]
+    more = f" … 외 {len(names) - len(head)}개 (`01/` 를 Glob 으로 훑어도 된다)" \
+        if len(names) > len(head) else ""
+    return ", ".join(head) + more
+
+
+def setup_authoring_routes() -> APIRouter:
+    router = APIRouter(prefix="/api/authoring", tags=["authoring"])
+
+    # ── 상태 ────────────────────────────────────────────────────────────────
+    @router.get("/status")
+    async def status():
+        """★ 모델을 부르지 않는다(무료·즉시). 화면을 열 때마다 $0.25 를 태울 수 없다."""
+        st = provider.status()
+        job = registry.running(KIND)
+        return {**st, "book": BOOK_DIR,
+                "running_job": job["id"] if job else None,
+                "part_size": draft.PART_SIZE, "parts": draft.n_parts()}
+
+    @router.post("/ping")
+    async def ping():
+        """실제로 한 번 불러 본다. ★ 약 $0.25 가 든다 — 버튼을 눌렀을 때만."""
+        ok, msg = provider.ClaudeAuthor().ping()
+        return {"ok": ok, "message": msg}
+
+    # ── 시험정보 ────────────────────────────────────────────────────────────
+    # ★ 시험은 매년·개정마다 바뀐다. 코드에 박아 두면 개정마다 코드를 고쳐야 하고
+    #   SME 가 할 수 없다. 파일로 두고 화면에서 고치고 주고받게 한다.
+    @router.get("/exams")
+    async def exams():
+        return {"dir": examspec.EXAMS_DIR, "items": examspec.listing()}
+
+    @router.get("/exams/{exam_id}")
+    async def exam_get(exam_id: str):
+        """내보내기도 이 응답을 그대로 쓴다 — 화면이 JSON 을 파일로 내려 준다."""
+        try:
+            d = examspec.load(exam_id)
+        except (OSError, ValueError) as e:
+            raise HTTPException(404, str(e))
+        errs, warns = examspec.validate(d)
+        return {"id": exam_id, "doc": d, "errors": errs, "warnings": warns}
+
+    @router.put("/exams/{exam_id}")
+    async def exam_put(exam_id: str, body: Dict[str, Any] = Body(...)):
+        """가져오기. ★ 검증을 통과하지 않으면 쓰지 않는다."""
+        doc = body.get("doc") if isinstance(body.get("doc"), dict) else body
+        try:
+            return examspec.save(exam_id, doc)
+        except (OSError, ValueError) as e:
+            raise HTTPException(400, str(e))
+
+    @router.get("/plan")
+    async def plan(multiple: int = 0, start: str = "", spec: str = "",
+                   exam: str = ""):
+        """기출 회차 × 배수 → 만들 회차 목록. 화면의 표가 이걸 그린다.
+
+        ★ 배수는 **행별**이다. `spec="01:3,02:3,03:2"` 로 받는다 — SQLD 는 7회 OCR 중
+          여섯을 ×3, 마지막을 ×2 로 해서 20회차 × 50문항 = 1,000제를 맞춘다.
+          전역 `multiple` 은 처음 열 때(아직 행별 값이 없을 때)만 쓴다.
+
+        ★ 회차당 문항수는 **시험정보 파일**에서 온다(코드가 아니다). 빅분기 80,
+          SQLD 50 — 매년·개정마다 바뀌므로 코드에 박을 수 없다.
+        """
+        per: Dict[str, int] = {}
+        for tok in (spec or "").split(","):
+            if ":" in tok:
+                k, _, v = tok.partition(":")
+                if k.strip() and v.strip().isdigit():
+                    per[k.strip()] = int(v)
+        try:
+            p = pool.plan_rounds(BOOK_DIR, multiple or 3, start, per_round=per)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+        p["modes"] = [{"id": m, "label": authspec.MODE_LABEL[m]} for m in authspec.MODES]
+        # 회차 규격 — 화면이 총 문항수를 계산하는 근거
+        try:
+            d = examspec.load(exam) if exam else None
+        except (OSError, ValueError):
+            d = None
+        if d is None:
+            ok = [e for e in examspec.listing() if e["ok"]]
+            d = examspec.load(ok[0]["id"]) if ok else None
+        p["exam"] = (d or {}).get("id") or ""
+        p["round_size"] = ((d or {}).get("round") or {}).get("size") or 80
+        p["part_size"] = ((d or {}).get("round") or {}).get("part_size") or 20
+        # ★ 과목 수는 **시험정보에서** 나온다. 빅분기 80/20 = 4과목, SQLD 50/25 = 2과목.
+        #   화면이 `part_count` 를 읽는데 서버가 그 키를 준 적이 없어 늘 4 로 떨어지고
+        #   있었다 — 빅분기라 우연히 맞았을 뿐이다(2026-08-10).
+        p["part_count"] = max(1, -(-p["round_size"] // p["part_size"]))
+        # 예상 소모량을 여기서 다시 잡는다. `plan_rounds` 는 시험정보를 모르고
+        # 기본 4과목으로 계산한다 — 과목 수가 다른 시험이면 그 값이 틀린다.
+        p["est"] = cost.estimate(p["n_rounds"], part_count=p["part_count"])
+        p["est_cost_usd"] = p["est"]["usd"]
+        p["est_minutes"] = p["est"]["minutes"]
+        p["est_note"] = p["est"]["note"]
+        return p
+
+    @router.get("/round/{code}")
+    async def round_state(code: str):
+        """파트별 상태 + 반입 가능 여부. 화면의 표가 이걸 그린다."""
+        code = _round_ok(code)
+        staged = draft.list_staged(code)
+        items, blocked = merge.collect_ready(code)
+        return {
+            "round": code, "parts": staged,
+            "ready_items": len(items), "blocked": blocked,
+            "rounds_path": merge.rounds_path(BOOK_DIR, code),
+            "local_edits": derive.guard_local_edits(BOOK_DIR, code),
+            "staged_cost_usd": round(
+                sum(float(p.get("cost_usd") or 0) for p in staged), 4),
+        }
+
+    # ── 집필 (잡) ───────────────────────────────────────────────────────────
+    @router.post("/draft")
+    async def start_draft(body: Dict[str, Any] = Body(...)):
+        """파트 몇 개를 **연달아** 집필한다.
+
+        ★ 연달아가 중요하다. 1시간 안에 같은 접두로 다시 부르면 33,682토큰이 캐시
+          읽기로 전환돼 비용이 $0.257 → $0.066 로 떨어진다(실측). 사이를 벌리면
+          매번 캐시를 새로 만든다.
+        """
+        # ★ 회차마다 **기준이 다를 수 있다.** 화면이 회차별로 보낸다:
+        #     items = [{"round": "m10", "mode": "exam"}, {"round": "m11", "mode": "derive"}]
+        #   전역 `mode` 하나였던 것을 고쳤다 — 기출 1회차는 시험기준으로, 2회차는
+        #   연습문제화로 갈 수 있어야 한다(2026-08-10).
+        raw = body.get("items")
+        if not raw:
+            # 옛 형태 호환: rounds[] + mode 하나
+            rs = body.get("rounds") or ([body["round"]] if body.get("round") else [])
+            m0 = (body.get("mode") or "exam").strip()
+            raw = [{"round": x, "mode": m0} for x in rs]
+        items: List[Dict[str, str]] = []
+        for it in raw:
+            rc = _round_ok(str((it or {}).get("round") or ""))
+            md = (str((it or {}).get("mode") or "exam")).strip()
+            if md not in authspec.MODES:
+                raise HTTPException(400, f"집필 기준이 올바르지 않습니다: {md} "
+                                         f"({' | '.join(authspec.MODES)})")
+            items.append({"round": rc, "mode": md})
+        if not items:
+            raise HTTPException(400, "집필할 회차가 없습니다.")
+        # 같은 회차가 두 번 오면 뒤엣것이 앞엣것을 덮는다 — 조용히 두 번 돌리지 않는다.
+        seen: Dict[str, str] = {}
+        for it in items:
+            seen[it["round"]] = it["mode"]
+        items = [{"round": k, "mode": v} for k, v in seen.items()]
+
+        parts: List[int] = [int(x) for x in (body.get("parts") or [])]
+        if not parts:
+            parts = list(range(1, draft.n_parts() + 1))
+        bad = [p for p in parts if not 1 <= p <= draft.n_parts()]
+        if bad:
+            raise HTTPException(400, f"파트 번호가 1~{draft.n_parts()} 밖입니다: {bad}")
+
+        if (busy := registry.running(KIND)):
+            raise HTTPException(
+                409, f"집필이 이미 돌고 있습니다 (job {busy['id'][:8]}). "
+                     "동시에 돌리면 프롬프트 캐시가 갈려 비용이 4배가 됩니다.")
+
+        model = (body.get("model") or "").strip()
+        effort = (body.get("effort") or "").strip() or None
+        # ★ 실행 순서를 여기서 확정한다 — **회차 안의 과목을 연달아** 돌린다.
+        #   회차를 바깥 루프에 두는 이유: 한 회차의 4과목이 같은 시스템 프롬프트 접두를
+        #   쓰므로 1시간 캐시가 걸린다(실측 $3.6 → $1.4). 과목을 바깥에 두면 매번 갈린다.
+        #
+        # ★ **이미 합격한 과목은 건너뛴다.** 이것이 없으면 30/36 에서 끊긴 잡을 다시
+        #   돌릴 때 이미 만든 30과목을 또 태운다(실측 $44). 7시간짜리 작업은 반드시
+        #   중간에 끊긴다고 보고 만들어야 한다 — 구독 한도·서버 재시작·정전.
+        #   `redo: true` 로 부르면 전부 다시 만든다.
+        redo = bool(body.get("redo"))
+        # ★ 회차 4과목이 다 끝나면 **반입·파생까지 자동으로** 간다. 9회차면 사람이
+        #   버튼을 18번 눌러야 하는데, 그 7시간 동안 아무도 화면을 안 본다.
+        #   자동으로 둬도 되는 근거: ① `build.py --round mNN` 은 **그 회차만** 만든다
+        #   (책 전체 렌더가 아니다) ② 모델을 안 부르므로 한도를 안 먹는다
+        #   ③ 덮어쓰기 위험은 `guard_local_edits` 가 막는다 — 걸리면 건너뛰고
+        #   버튼을 사람에게 남긴다.
+        auto = body.get("auto_derive")
+        auto = True if auto is None else bool(auto)
+        todo: List[tuple] = []
+        skipped: List[str] = []
+        for it in items:
+            for p in parts:
+                if not redo and draft.is_done(it["round"], p):
+                    skipped.append(f"{it['round']}-p{p}")
+                    continue
+                todo.append((it["round"], p, it["mode"]))
+        if not todo:
+            raise HTTPException(
+                400, f"고르신 {len(skipped)}과목이 모두 이미 집필돼 있습니다. "
+                     "반입·파생으로 넘어가시거나, 다시 만들려면 "
+                     "`data/authoring/` 의 해당 회차 폴더를 지우십시오.")
+        keys = [f"{rc}-p{p}" for rc, p, _ in todo]
+        codes = [it["round"] for it in items]
+        label = (f"집필 {codes[0]}" if len(codes) == 1
+                 else f"집필 {codes[0]}~{codes[-1]} ({len(codes)}회차)")
+        modes_used = sorted({it["mode"] for it in items})
+        job = registry.create(
+            KIND, label, keys,
+            note=" · ".join([authspec.MODE_LABEL.get(m, m) for m in modes_used]
+                            + [f"{len(todo)}과목", f"{len(todo) * draft.PART_SIZE}문항"]
+                            + ([f"{len(skipped)}과목은 이미 있어 건너뜀"] if skipped else [])))
+        # 연습문제화가 하나라도 있으면 기출 목록을 준비한다(시험기준 회차는 안 쓴다).
+        hint = _derive_hint(BOOK_DIR) if "derive" in modes_used else ""
+        # ★ 건너뛴 것을 조용히 넘기지 않는다. 사람이 "9회차 시켰는데 왜 20과목만
+        #   도나" 를 물을 때 짚을 곳이 있어야 한다.
+        if skipped:
+            registry.log(job, f"이미 합격한 {len(skipped)}과목은 건너뜁니다: "
+                              + ", ".join(skipped[:12])
+                              + (f" 외 {len(skipped) - 12}개" if len(skipped) > 12 else "")
+                              + "  (전부 다시 만들려면 redo 로 부르십시오)", force=True)
+
+        def finish_round(j: Dict[str, Any], rc: str) -> None:
+            """회차 하나가 다 찼으면 반입 → 파생까지 간다.
+
+            ★ **절대 예외를 밖으로 내지 않는다.** 여기서 죽으면 남은 회차의 집필까지
+              같이 죽는다 — 몇 시간짜리 모델 호출을 파생 실패로 잃을 수는 없다.
+            ★ 조건이 안 맞으면 조용히 넘기지 않고 이유를 로그에 남긴다. 사람이
+              나중에 "왜 02 가 안 생겼지" 를 물을 때 짚을 곳이 있어야 한다.
+            """
+            try:
+                staged = draft.list_staged(rc)
+                ok_n = sum(1 for s in staged if s.get("exists") and s.get("ok"))
+                if ok_n < draft.n_parts():
+                    bad = [f"파트 {s['part']}" for s in staged
+                           if not (s.get("exists") and s.get("ok"))]
+                    registry.log(j, f"[{rc}] 반입 보류 — {draft.n_parts()}과목 중 "
+                                    f"{ok_n}과목만 합격했습니다 ({', '.join(bad)}). "
+                                    f"실패한 과목을 다시 돌린 뒤 화면에서 반입하십시오.",
+                                 force=True)
+                    return
+
+                m = merge.merge_round(book_dir=BOOK_DIR, round_code=rc)
+                registry.log(j, f"[{rc}] 반입 완료 — {m.get('total')}문항 → "
+                                f"{m.get('path')}", force=True)
+
+                edits = derive.guard_local_edits(BOOK_DIR, rc)
+                if edits:
+                    registry.log(j, f"[{rc}] 파생 건너뜀 — `02/` 에 더 새로운 파일이 "
+                                    f"{len(edits)}개 있습니다. 파생하면 그 교정이 "
+                                    f"되돌아갑니다. 화면에서 확인 후 직접 파생하십시오.",
+                                 force=True)
+                    return
+
+                d = derive.derive_round(BOOK_DIR, rc)
+                if d.get("ok"):
+                    registry.log(j, f"[{rc}] 파생 완료 — 02/ · 04/ 가 만들어졌습니다.",
+                                 force=True)
+                else:
+                    registry.log(j, f"[{rc}] 파생 실패 — "
+                                    f"{(d.get('err') or d.get('out') or '')[:400]}\n"
+                                    f"집필은 계속합니다. 화면에서 직접 파생하십시오.",
+                                 force=True)
+            except Exception as e:                     # noqa: BLE001
+                registry.log(j, f"[{rc}] 반입·파생 중 오류 — {type(e).__name__}: {e}\n"
+                                f"집필은 계속합니다. 화면에서 직접 하십시오.", force=True)
+
+        def work(j: Dict[str, Any]) -> None:
+            total_cost = 0.0
+            # ★ 헛발질이 이어지면 멈춘다. 구독 **주간 한도**에 걸리면 모든 호출이
+            #   즉시 실패하는데, 브레이크가 없으면 남은 35과목을 몇 초 만에 줄줄이
+            #   실패로 돌아 놓고 "36개 중 35개 실패" 라는 화면을 남긴다. 사람은
+            #   그걸 보고 뭐가 깨진 줄 안다 — 실제로는 그냥 한도다.
+            #
+            # ★ 비용으로 가른다. **모델을 못 부른 실패는 비용이 0 이다**(한도·인증·
+            #   네트워크). 문항이 모자라거나 검증에 걸린 것은 이미 돈이 나갔으므로
+            #   0 이 아니다 — 그런 것은 다음 과목에서 잘 될 수 있으니 계속 간다.
+            stalled = 0
+            for idx, (rc, p, md) in enumerate(todo):
+                key = f"{rc}-p{p}"
+                if j.get("cancel_requested"):
+                    registry.item(j, key, status="skipped", error="취소됨")
+                    continue
+                nums = draft.part_numbers(p)
+                registry.update(j, current=key)
+                registry.item(j, key, status="running")
+                registry.log(j, f"[{key}] {nums[0]}~{nums[-1]}번 집필 시작", force=True)
+
+                res = draft.draft_part(
+                    round_code=rc, part_index=p, book_dir=BOOK_DIR,
+                    derive_hint=(hint if md == "derive" else ""), mode=md,
+                    round_index=codes.index(rc) + 1, round_total=len(codes),
+                    model=model, effort=effort,
+                    # ★ 모델이 무엇을 읽고 있는지 흘린다. 과목 1개가 10~20분씩 가는데
+                    #   화면이 한 글자도 안 바뀌면 멈춘 것으로 보인다.
+                    on_activity=lambda s, j=j, k=key: registry.log(j, f"[{k}] {s}"))
+                total_cost += res.cost_usd
+
+                for w in res.warnings:
+                    registry.log(j, f"[{key}] (주의) {w}", force=True)
+                if res.ok:
+                    stalled = 0
+                    registry.log(j, f"[{key}] 합격 · {len(res.items)}문항 · "
+                                    f"{res.turns}턴 · {res.seconds / 60:.1f}분 · "
+                                    f"${res.cost_usd:.3f}", force=True)
+                    registry.item(j, key, status="done", output=res.path,
+                                  seconds=round(res.seconds, 1))
+                else:
+                    for pr in res.problems:
+                        registry.log(j, f"[{key}] (문제) {pr}", force=True)
+                    registry.item(j, key, status="error", output=res.path,
+                                  seconds=round(res.seconds, 1),
+                                  error=(res.problems or ["검증 실패"])[0])
+                    stalled = stalled + 1 if res.cost_usd <= 0 else 0
+                    if stalled >= STALL_LIMIT:
+                        why = (res.problems or ["원인을 알 수 없습니다"])[0]
+                        registry.log(
+                            j, f"연속 {stalled}회 모델을 부르지 못해 멈춥니다 — {why}\n"
+                               f"구독 한도에 걸렸을 가능성이 큽니다. "
+                               f"Claude 사용량 화면에서 한도와 재설정 시각을 확인하십시오.\n"
+                               f"★ 여기까지 만든 것은 날아가지 않습니다. 합격한 과목은 "
+                               f"`data/authoring/` 에 파일로 남아 있고, 한도가 풀린 뒤 "
+                               f"같은 회차로 다시 [실행] 하면 **끝난 과목은 건너뛰고 "
+                               f"남은 것부터** 이어서 갑니다.", force=True)
+                        for rc2, p2, _ in todo[idx + 1:]:
+                            registry.item(j, f"{rc2}-p{p2}", status="skipped",
+                                          error="앞선 과목이 연속 실패해 건너뜀")
+                        registry.log(j, f"합계 ${total_cost:.3f}", force=True)
+                        registry.finish(j, "error",
+                                        error=f"모델 호출 연속 실패 — {why}",
+                                        result={"cost_usd": round(total_cost, 4)})
+                        return
+
+                # ── 회차 경계 ──────────────────────────────────────────────
+                # ★ 이 회차의 마지막 과목이었으면 반입·파생까지 간다. 회차를 바깥
+                #   루프에 두었으므로(캐시 때문) 다음 항목의 회차가 다르면 경계다.
+                if auto and (idx + 1 >= len(todo) or todo[idx + 1][0] != rc):
+                    finish_round(j, rc)
+
+            registry.log(j, f"합계 ${total_cost:.3f} — 구독이라 청구는 없지만 "
+                            f"사용량의 대리 지표입니다.", force=True)
+            registry.finish(j, "done", result={"cost_usd": round(total_cost, 4)})
+
+        registry.spawn(job, work)
+        return {"job": job["id"], "items": items, "parts": parts,
+                "todo": len(todo), "skipped": skipped}
+
+    # ── 반입 ────────────────────────────────────────────────────────────────
+    @router.post("/merge")
+    async def do_merge(body: Dict[str, Any] = Body(...)):
+        """스테이징 → `_rounds/mNN.json`. 검증에 걸린 파트가 하나라도 있으면 멈춘다."""
+        code = _round_ok(body.get("round") or "")
+        return merge.merge_round(book_dir=BOOK_DIR, round_code=code,
+                                 dry_run=bool(body.get("dry_run")))
+
+    # ── 파생 ────────────────────────────────────────────────────────────────
+    @router.post("/derive")
+    async def do_derive(body: Dict[str, Any] = Body(...)):
+        """`_rounds` → `02/`·`04/`. ★ 덮어쓰기다 — 로컬 교정이 있으면 막는다."""
+        code = _round_ok(body.get("round") or "")
+        out = derive.derive_round(BOOK_DIR, code,
+                                  dry_run=bool(body.get("dry_run")),
+                                  force=bool(body.get("force")))
+        out["validate"] = derive.validate_round(BOOK_DIR, code)
+        return out
+
+    return router

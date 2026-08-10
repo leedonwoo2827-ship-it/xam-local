@@ -30,6 +30,10 @@ const routes = [
   { re: /^\/video\/(.+)$/,      nav: "v",  layer: "base",  load: () => import("./video.js") },
   // 일괄 렌더의 진행·터미널. 목록(패널)에서 시작하면 여기로 온다 — 작업은 바탕에서.
   { re: /^\/render\/(.+)$/,     nav: "v",  layer: "base",  load: () => import("./video.js") },
+  // 집필 — **바탕이다.** 파트 하나가 10분씩 가고 진행 로그를 보며 기다리는 화면이라
+  // 패널에 두면 Esc·스크림 클릭에 닫히고, 돌던 잡의 진행을 놓친다.
+  { re: /^\/authoring$/,        nav: "a",  layer: "base",  load: () => import("./authoring.js") },
+  { re: /^\/authoring\/(.+)$/,  nav: "a",  layer: "base",  load: () => import("./authoring.js") },
   { re: /^\/publish$/,          nav: "p",  layer: "base",  load: () => import("./publish.js") },
   { re: /^\/summary$/,          nav: "s",  layer: "base",  load: () => import("./summary.js") },
   { re: /^\/summary\/(.+)$/,    nav: "s",  layer: "base",  load: () => import("./summary.js") },

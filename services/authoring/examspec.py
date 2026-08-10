@@ -1,0 +1,172 @@
+# -*- coding: utf-8 -*-
+"""시험정보(`exams/*.json`) 읽기 · 검증 · 저장.
+
+★ 왜 파일로 두는가 — 시험은 **매년, 그리고 개정될 때마다 바뀐다**(2026-08-10).
+  회차당 문항수·과목 구성·난이도 분포를 코드에 박아 두면 개정마다 코드를 고쳐야 하고,
+  그건 SME 가 할 수 없는 일이다. JSON 으로 빼면 화면에서 고치고 주고받을 수 있다.
+
+★ 검증이 이 파일의 핵심이다. 값이 틀린 JSON 을 통과시키면 집필이 그것을 기준으로
+  20~80회 돌고(수 시간·수십 달러), **틀린 문제집이 나온 뒤에** 안다.
+  그래서 `validate()` 가 합을 검산한다 — 과목 문항수의 합 == 회차 문항수.
+
+★ FastAPI 를 import 하지 않는다(services/* 규약).
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+from typing import Any, Dict, List, Tuple
+
+from core.atomic_io import atomic_write_json, backup_sibling
+from core.constants import BASE_DIR
+
+EXAMS_DIR = os.path.join(BASE_DIR, "exams")
+_ID = re.compile(r"^[a-z0-9][a-z0-9\-]{0,40}$")
+
+
+def path_of(exam_id: str) -> str:
+    if not _ID.fullmatch(exam_id or ""):
+        raise ValueError(f"시험정보 id 가 올바르지 않습니다: {exam_id} "
+                         "(영소문자·숫자·하이픈)")
+    return os.path.join(EXAMS_DIR, f"{exam_id}.json")
+
+
+def load(exam_id: str) -> Dict[str, Any]:
+    p = path_of(exam_id)
+    if not os.path.isfile(p):
+        raise FileNotFoundError(f"시험정보가 없습니다: {p}")
+    with open(p, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def validate(d: Dict[str, Any]) -> Tuple[List[str], List[str]]:
+    """(막는 것, 알려줄 것). 막는 것이 하나라도 있으면 집필에 쓰지 않는다."""
+    errs: List[str] = []
+    warns: List[str] = []
+
+    for k in ("id", "label", "round", "subjects", "choices"):
+        if not d.get(k):
+            errs.append(f"필수 항목이 없습니다: {k}")
+    if errs:
+        return errs, warns
+
+    rd = d.get("round") or {}
+    size = int(rd.get("size") or 0)
+    part = int(rd.get("part_size") or 0)
+    subs = d.get("subjects") or []
+
+    if size <= 0:
+        errs.append("round.size 가 0 입니다.")
+    if part <= 0:
+        errs.append("round.part_size 가 0 입니다.")
+    elif size % part:
+        # ★ 균등 분할만 지원한다(`draft.part_numbers`). 나누어떨어지지 않으면 마지막
+        #   파트가 짧아지고, 그 사실이 스키마의 개수 강제와 충돌한다.
+        errs.append(f"round.size({size}) 가 part_size({part}) 로 나누어떨어지지 "
+                    f"않습니다 — 지금 코드는 균등 분할만 합니다.")
+
+    # ★ 이 검산이 이 파일의 존재 이유다. 합이 틀리면 과목 비율이 조용히 어긋난다.
+    tot = sum(int(s.get("count") or 0) for s in subs)
+    if tot != size:
+        errs.append(f"과목 문항수 합({tot}) 이 round.size({size}) 와 다릅니다 — "
+                    f"{' + '.join(str(s.get('count')) for s in subs)}")
+
+    nos = [int(s.get("no") or 0) for s in subs]
+    if nos != list(range(1, len(subs) + 1)):
+        errs.append(f"과목 번호가 1부터 연속이 아닙니다: {nos}")
+    for s in subs:
+        if not str(s.get("name") or "").strip():
+            errs.append(f"{s.get('no')}과목 이름이 비었습니다 — 요약노트 "
+                        f"<h1>N과목 · 이름</h1> 과 일치해야 성적표 링크가 붙습니다.")
+
+    if int(d.get("choices") or 0) < 2:
+        errs.append("choices 가 2 미만입니다.")
+
+    ln = d.get("length") or {}
+    for k in ("explanation", "explanation_speech"):
+        b = ln.get(k) or {}
+        t = b.get("target") or []
+        if len(t) != 2 or not (b.get("min") and b.get("max")):
+            warns.append(f"length.{k} 가 불완전합니다 — 분량을 강제할 수 없습니다.")
+        elif not (b["min"] <= t[0] < t[1] <= b["max"]):
+            errs.append(f"length.{k} 의 min/target/max 순서가 어긋납니다: "
+                        f"{b['min']} ≤ {t[0]} < {t[1]} ≤ {b['max']}")
+
+    # ★ 파트가 과목 경계를 넘는가. 동작은 하지만 처음 있는 일이므로 알려 준다.
+    if part and subs:
+        edges, acc = [], 0
+        for s in subs:
+            acc += int(s.get("count") or 0)
+            edges.append(acc)
+        if any(e % part for e in edges[:-1]):
+            warns.append(f"파트({part}문항)가 과목 경계를 넘습니다 — 한 호출이 두 과목을 "
+                         f"함께 씁니다. 첫 회차를 돌려 과목 비율이 유지되는지 확인하십시오.")
+
+    rev = d.get("revision") or {}
+    if not rev.get("confirmed"):
+        warns.append("revision.confirmed 가 false 입니다 — 시행처 공고로 확인되지 "
+                     "않은 값입니다. 집필 전에 확인하십시오.")
+    if not rev.get("checked_at"):
+        warns.append("revision.checked_at 이 비었습니다 — 언제 확인한 값인지 알 수 없습니다.")
+    return errs, warns
+
+
+def listing() -> List[Dict[str, Any]]:
+    """관리 화면과 집필 화면 콤보가 읽는 목록."""
+    out: List[Dict[str, Any]] = []
+    if not os.path.isdir(EXAMS_DIR):
+        return out
+    for p in sorted(os.listdir(EXAMS_DIR)):
+        if not p.endswith(".json"):
+            continue
+        eid = p[:-5]
+        row: Dict[str, Any] = {"id": eid, "path": os.path.join(EXAMS_DIR, p)}
+        try:
+            d = load(eid)
+        except (OSError, ValueError) as e:
+            out.append({**row, "ok": False, "errors": [f"읽을 수 없습니다 — {e}"],
+                        "label": eid})
+            continue
+        errs, warns = validate(d)
+        rev = d.get("revision") or {}
+        subs = d.get("subjects") or []
+        out.append({
+            **row,
+            "ok": not errs,
+            "errors": errs, "warnings": warns,
+            "label": d.get("label") or eid,
+            "label_short": d.get("label_short") or "",
+            "pd_id": d.get("pd_id") or "",
+            "round_size": (d.get("round") or {}).get("size"),
+            "part_size": (d.get("round") or {}).get("part_size"),
+            "subjects": [{"no": s.get("no"), "name": s.get("name"),
+                          "count": s.get("count")} for s in subs],
+            "confirmed": bool(rev.get("confirmed")),
+            "checked_at": rev.get("checked_at") or "",
+            "effective_from": rev.get("effective_from") or "",
+            "spec_version": rev.get("spec_version"),
+        })
+    return out
+
+
+def save(exam_id: str, doc: Dict[str, Any], *, allow_new: bool = True) -> Dict[str, Any]:
+    """가져오기(붙여넣기·업로드)가 부르는 곳. **검증을 통과하지 않으면 쓰지 않는다.**"""
+    p = path_of(exam_id)
+    if not allow_new and not os.path.isfile(p):
+        raise FileNotFoundError(f"없는 시험정보입니다: {exam_id}")
+    if not isinstance(doc, dict):
+        raise ValueError("JSON 최상위가 객체가 아닙니다.")
+    if (doc.get("id") or exam_id) != exam_id:
+        raise ValueError(f"파일 id({exam_id}) 와 JSON 의 id({doc.get('id')}) 가 다릅니다.")
+    doc.setdefault("id", exam_id)
+
+    errs, warns = validate(doc)
+    if errs:
+        # ★ 통과시키지 않는다. 틀린 값으로 집필이 수 시간 돌고 나서야 알게 된다.
+        raise ValueError("시험정보가 검증을 통과하지 못했습니다:\n  - "
+                         + "\n  - ".join(errs))
+    os.makedirs(EXAMS_DIR, exist_ok=True)
+    backup_sibling(p)
+    atomic_write_json(p, doc, indent=2, trailing_newline=True)
+    return {"ok": True, "id": exam_id, "path": p, "warnings": warns}
