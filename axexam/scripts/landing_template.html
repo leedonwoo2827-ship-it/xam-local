@@ -617,15 +617,56 @@ async function loadProducts(){
   fillNav(list);
 }
 
-/* 상단 내비의 문제집 항목 — 열려 있는 것만, 이름 그대로.
-   ★ 앞에 끼워 넣는다(수강 신청·성적표 샘플 앞). 정적 랜딩이라 서버가 못 그리고,
-     PHP 화면(theme/axexam/head.php)과 같은 모습이 되어야 이동해도 흔들리지 않는다. */
+/* ══ 상단 내비의 문제집 메뉴 ═══════════════════════════════════════════════
+ * ★ `navMegaHtml()` 은 `theme/axexam/head.php` 와 `detail_template.html` 와
+ *   **글자까지 같은 함수**다. 세 곳이 같은 마크업을 내야 화면을 옮겨 다닐 때 헤더가
+ *   흔들리지 않는다(axnav.css 머리 주석의 규약). 한 곳을 고치면 세 곳을 고친다.
+ *
+ * ★ `p.open` 으로 **거르지 않는다.** 문항 0건인 품목도 '준비중' 으로 보여준다 —
+ *   라인업 전체가 보여야 하고, 그게 api/products.php:26-39 의 판정이다.
+ *   대신 링크를 걸지 않는다(<span>). 누르면 빈 화면이 뜬다.
+ *
+ * ★ 카드 그리드(pdGrid)는 이 함수와 무관하다 — 거기는 받은 순서 그대로,
+ *   즉 pd_sort(출간·업로드 순)로 뜬다. 묶는 것은 **메뉴만** 한다.
+ */
+function navMegaHtml(list, cur){
+  const esc = s => String(s==null?"":s).replace(/[&<>"]/g,
+    c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  /* 주관처별 묶음. 키를 `정렬번호|이름` 으로 두고 키 순으로 정렬하면 group_sort 순이
+     되고, 열 안에서는 받은 순서(=pd_sort, 출간·업로드 순)가 그대로 유지된다.
+     Map 은 삽입 순서를 보존하므로 push 순서가 곧 pd_sort 순이다. */
+  const map = new Map();
+  list.forEach(p => {
+    const gs = isFinite(+p.group_sort) ? +p.group_sort : 99;
+    const k  = ("00" + gs).slice(-3) + "|" + (p.group || "기타");
+    if(!map.has(k)) map.set(k, []);
+    map.get(k).push(p);
+  });
+  const cols = Array.from(map.keys()).sort().map(k => {
+    const items = map.get(k).map(p => {
+      const nm = esc(p.name);
+      if(!p.open) return '<span class="axnav-sub-item is-soon">' + nm + '<em>준비중</em></span>';
+      return '<a class="axnav-sub-item' + (p.pd_id === cur ? ' on' : '') + '"'
+           + ' href="/exam/check.php?pd=' + encodeURIComponent(p.pd_id) + '">' + nm + '</a>';
+    }).join("");
+    return '<div class="axnav-col"><div class="axnav-col-h">'
+         + esc(k.slice(k.indexOf("|") + 1)) + '</div>' + items + '</div>';
+  }).join("");
+  if(!cols) return "";
+  return '<div class="axnav-drop">'
+       + '<button class="axnav-item axnav-drop-btn" type="button"'
+       + ' aria-haspopup="true" aria-expanded="false">'
+       + '<svg class="ic"><use href="#i-clipboard"></use></svg>문제집'
+       + '<i class="axnav-caret"></i></button>'
+       + '<div class="axnav-mega"><div class="axnav-mega-in">' + cols + '</div></div></div>';
+}
+
+/* ★ 앞에 끼워 넣는다(수강 신청·성적표 샘플 앞). 정적 랜딩이라 서버가 못 그린다.
+   랜딩에는 '지금 보고 있는 품목' 이 없으므로 cur 는 빈 문자열이다. */
 function fillNav(list){
   const nav = document.getElementById("navMain");
   if(!nav) return;
-  const html = list.filter(p => p.open).map(p =>
-    '<a class="axnav-item" href="/exam/check.php?pd=' + encodeURIComponent(p.pd_id) + '">'
-    + '<svg class="ic"><use href="#i-edit"></use></svg>' + esc(p.name) + '</a>').join("");
+  const html = navMegaHtml(list, "");
   if(html) nav.insertAdjacentHTML("afterbegin", html);
 }
 

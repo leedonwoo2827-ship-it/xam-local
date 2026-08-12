@@ -166,6 +166,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+    } elseif ($act === 'bulk') {
+        /* ── 품목 일괄 등록 ────────────────────────────────────────────────────
+         *
+         * ★ 왜 필요한가. 이 화면은 품목을 **한 번에 하나씩** 넣게 만들어져 있었다.
+         *   라인업이 18개가 되면서 그 방식은 pd_sort·pd_config 오타를 부른다. 그리고
+         *   카페24에는 phpMyAdmin 이 없어서 SQL 을 직접 붙여넣을 자리도 없다 —
+         *   여기가 그 자리다.
+         *
+         * 한 줄 = 탭으로 나눈 5칸:
+         *     pd_id  pd_name  pd_sort  group  group_sort
+         *
+         * · `group`·`group_sort` 는 `pd_config` 에 들어가 **상단 메뉴의 열**이 된다
+         *   (theme/axexam/head.php · api/products.php). 품목 목록·랜딩 카드 순서는
+         *   `pd_sort` 이고 그룹은 메뉴만 묶는다 — 두 축이 다르다.
+         * · `pd_open` 은 **건드리지 않는다.** 이미 숨긴 품목이 되살아나면 안 된다.
+         *   새로 만드는 행만 1(공개)로 들어간다. 문항이 0건이면 랜딩·메뉴가 알아서
+         *   '준비중' 으로 낸다(api/products.php:26-39) — 그래서 미리 다 넣어도 안전하다.
+         * · `ex_plan`(수강 과정)은 **만들지 않는다.** 과정이 없으면 buy.php 가
+         *   "등록된 과정이 없습니다" 를 내므로, 그 자체로 신청이 막힌다. 문제집을 실제로
+         *   여는 품목만 아래 표에서 [＋과정 3종] 을 누른다.
+         * · pd_config 의 다른 키(thumb·icon·pass)는 **보존한다** — 읽어서 group 만 덮는다.
+         */
+        $raw = isset($_POST['bulk']) ? stripslashes((string)$_POST['bulk']) : '';
+        $lines = preg_split('/\r\n|\r|\n/', $raw);
+        $n_new = 0; $n_upd = 0; $skipped = array();
+
+        foreach ($lines as $ln => $line) {
+            $line = trim($line);
+            if ($line === '' || $line[0] === '#') continue;        // 빈 줄·주석
+            $col = preg_split('/\t+/', $line);
+            if (count($col) < 3) {
+                $skipped[] = ($ln + 1) . '행: 칸이 부족합니다 (탭으로 5칸)';
+                continue;
+            }
+            $b_id   = trim($col[0]);
+            $b_name = trim($col[1]);
+            $b_sort = (int)trim($col[2]);
+            $b_grp  = isset($col[3]) ? trim($col[3]) : '';
+            $b_gs   = isset($col[4]) ? (int)trim($col[4]) : 99;
+
+            if (!preg_match($PD_RE, $b_id)) {
+                $skipped[] = ($ln + 1) . "행: pd_id '" . htmlspecialchars($b_id)
+                           . "' — 소문자·숫자·하이픈 1~20자만 됩니다";
+                continue;
+            }
+            if ($b_name === '') {
+                $skipped[] = ($ln + 1) . '행: 품목 이름이 비어 있습니다';
+                continue;
+            }
+
+            $bq  = sql_escape_string($b_id);
+            $old = sql_fetch("select pd_id, pd_config from ex_product where pd_id = '$bq'");
+
+            /* 기존 pd_config 를 읽어 group 만 덮는다 — thumb·icon·pass 를 잃지 않는다. */
+            $cfg = array();
+            if ($old && $old['pd_config'] !== '' && $old['pd_config'] !== null) {
+                $tmp = json_decode((string)$old['pd_config'], true);
+                if (is_array($tmp)) $cfg = $tmp;
+            }
+            if ($b_grp !== '') { $cfg['group'] = $b_grp; $cfg['group_sort'] = $b_gs; }
+            /* JSON_UNESCAPED_UNICODE — 없으면 한글이 \uXXXX 로 부풀어 읽을 수 없다. */
+            $cfgj = $cfg ? json_encode($cfg, JSON_UNESCAPED_UNICODE) : '';
+
+            sql_query("insert into ex_product
+                         (pd_id, pd_name, pd_open, tier, model_id, provider,
+                          cost_units, cost_cap, pd_sort, pd_config)
+                       values
+                         ('$bq', '" . sql_escape_string($b_name) . "', 1, 'T1',
+                          'deepseek-v4-flash', 'openai_compat', 10, 3.0000, $b_sort,
+                          '" . sql_escape_string($cfgj) . "')
+                       on duplicate key update
+                         pd_name   = values(pd_name),
+                         pd_sort   = values(pd_sort),
+                         pd_config = values(pd_config)");
+            if ($old) $n_upd++; else $n_new++;
+        }
+
+        $msg = "일괄 등록 — 신규 {$n_new} · 갱신 {$n_upd} · 건너뜀 " . count($skipped) . '건.'
+             . ($n_new ? ' 새 품목은 공개(pd_open=1) 상태이고, 문항이 0건이면 랜딩·메뉴에'
+                       . " '준비중' 으로 뜹니다." : '');
+        if ($skipped) {
+            $err = '건너뛴 줄: ' . htmlspecialchars(implode(' / ', array_slice($skipped, 0, 8)))
+                 . (count($skipped) > 8 ? ' 외 ' . (count($skipped) - 8) . '건' : '');
+        }
+
     } elseif (!preg_match($PD_RE, $pd_id)) {
         $err = "pd_id 형식이 잘못됐습니다: '" . htmlspecialchars($pd_id)
              . "' (소문자·숫자·하이픈 1~20자)";
@@ -403,6 +488,53 @@ $f_sort = $edit ? (int)$edit['pd_sort'] : 20;
   <?php if ($edit): ?>
     &nbsp; <a href="seed_pd.php">새 등록으로 돌아가기</a>
   <?php endif; ?>
+</form>
+
+<hr style="margin:30px 0;border:0;border-top:1px solid #ddd">
+
+<h3>품목 일괄 등록 <span class="m">(라인업 한 번에)</span></h3>
+<p class="m">
+  한 줄이 품목 하나입니다. <b>탭</b>으로 다섯 칸 —
+  <code>pd_id &nbsp; 이름 &nbsp; 정렬 &nbsp; 주관처 &nbsp; 주관처정렬</code>.
+  빈 줄과 <code>#</code> 로 시작하는 줄은 넘깁니다.
+</p>
+<div class="w">
+  <b>정렬(3번째 칸)과 주관처(4·5번째 칸)는 서로 다른 축입니다.</b>
+  랜딩 카드와 품목 목록은 <b>정렬</b>(출간·업로드 순)로 뜨고,
+  <b>주관처</b>는 상단 메뉴가 열로 묶을 때만 씁니다.
+  <br>· <code>pd_open</code> 은 건드리지 않습니다 — 이미 숨긴 품목이 되살아나지 않습니다.
+  새로 만드는 행만 공개로 들어갑니다.
+  <br>· <b>문항이 0건이면 랜딩·메뉴에 '준비중' 으로 뜹니다</b>(누를 수 없습니다).
+  그래서 라인업을 미리 다 넣어도 안전합니다.
+  <br>· <b>수강 과정은 만들지 않습니다.</b> 과정이 없으면 신청서가 안 뜨므로 그 자체로
+  신청이 막힙니다. 실제로 여는 품목만 위 표에서 <code>[＋과정 3종]</code> 을 누르십시오.
+</div>
+<form method="post">
+  <input type="hidden" name="act" value="bulk">
+  <textarea name="bulk" rows="21" spellcheck="false"
+            style="width:100%;padding:9px;border:1px solid #ccc;border-radius:4px;
+                   font:12.5px/1.65 Consolas,'D2Coding',monospace;white-space:pre;
+                   overflow-x:auto"># pd_id&#9;이름&#9;정렬&#9;주관처&#9;주관처정렬
+sqld&#9;SQLD&#9;1&#9;한국데이터산업진흥원&#9;1
+adsp&#9;ADsP&#9;2&#9;한국데이터산업진흥원&#9;1
+bigdata&#9;빅데이터분석기사 필기&#9;3&#9;한국데이터산업진흥원&#9;1
+bigdata-p&#9;빅데이터분석기사 실기&#9;4&#9;한국데이터산업진흥원&#9;1
+iip-w&#9;정보처리산업기사 필기&#9;5&#9;한국산업인력공단&#9;2
+iip-p&#9;정보처리산업기사 실기&#9;6&#9;한국산업인력공단&#9;2
+eip-w&#9;정보처리기사 필기&#9;7&#9;한국산업인력공단&#9;2
+eip-p&#9;정보처리기사 실기&#9;8&#9;한국산업인력공단&#9;2
+oa-w&#9;사무자동화산업기사 필기&#9;9&#9;한국산업인력공단&#9;2
+oa-p&#9;사무자동화산업기사 실기&#9;10&#9;한국산업인력공단&#9;2
+comp2-w&#9;컴퓨터활용능력 2급 필기&#9;11&#9;대한상공회의소&#9;3
+comp2-p&#9;컴퓨터활용능력 2급 실기&#9;12&#9;대한상공회의소&#9;3
+comp1-w&#9;컴퓨터활용능력 1급 필기&#9;13&#9;대한상공회의소&#9;3
+comp1-p&#9;컴퓨터활용능력 1급 실기&#9;14&#9;대한상공회의소&#9;3
+topik1&#9;TOPIK Ⅰ (1~2급)&#9;15&#9;국어·한국어&#9;4
+topik2&#9;TOPIK Ⅱ (3~6급)&#9;16&#9;국어·한국어&#9;4
+writing&#9;실용글쓰기&#9;17&#9;국어·한국어&#9;4
+kbs-korean&#9;KBS 한국어&#9;18&#9;국어·한국어&#9;4</textarea>
+  <button type="submit" class="p">일괄 등록</button>
+  <span class="m">&nbsp; 다시 눌러도 안전합니다 — 같은 pd_id 는 이름·정렬·주관처만 갱신합니다.</span>
 </form>
 
 <hr style="margin:30px 0;border:0;border-top:1px solid #ddd">

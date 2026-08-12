@@ -98,6 +98,19 @@ while ($r = sql_fetch_array($res)) {
     $icon  = (is_array($cfg) && !empty($cfg['icon']))  ? $cfg['icon']  : $ICONS[$idx % count($ICONS)];
     $idx++;
 
+    /* ★ 상단 메뉴용 묶음 — **주관처**다(시행기관). 품목이 18개가 되면 평평한 나열로는
+     *   내비가 터지므로 대분류 열로 펼친다.
+     *
+     *   여기서도 표를 만들지 않는다 — 위 ⚠ 와 같은 이유다. `pd_config` 에
+     *   {"group":"한국데이터산업진흥원","group_sort":1} 을 넣으면 DB 에서 끝난다.
+     *   빠뜨린 품목은 '기타'(99)로 가서 맨 뒤 열에 모인다 — 사라지지 않는다.
+     *
+     *   ★ 카드 목록의 **순서는 바꾸지 않는다.** 정렬은 pd_sort(=출간·업로드 순)이고
+     *     그룹은 메뉴가 묶을 때만 쓰는 부가 정보다. 랜딩 카드는 업로드 순으로 뜬다.
+     */
+    $group = (is_array($cfg) && !empty($cfg['group'])) ? (string)$cfg['group'] : '기타';
+    $gsort = (is_array($cfg) && isset($cfg['group_sort'])) ? (int)$cfg['group_sort'] : 99;
+
     $items[] = array(
         'pd_id'    => $pd,
         'name'     => $r['pd_name'],
@@ -109,8 +122,10 @@ while ($r = sql_fetch_array($res)) {
         'desc'     => $open
             ? "모의고사 {$rd}회차 · 정답과 해설 전문 포함"
             : '준비 중입니다.',
-        'thumb'    => $thumb,
-        'icon'     => $icon,
+        'thumb'      => $thumb,
+        'icon'       => $icon,
+        'group'      => $group,   // 주관처 — 상단 메뉴가 열로 묶는다
+        'group_sort' => $gsort,
         /* href  = 문제집 상세(기획서 IA 의 중간 단계)
          * solve = 바로 문제풀이
          * 예전에는 href 가 check.html 을 가리키는데 랜딩은 sqld.html 로 링크해서

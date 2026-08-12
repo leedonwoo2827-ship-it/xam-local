@@ -38,26 +38,59 @@ if (!isset($EX_TAGLINE))    $EX_TAGLINE    = '자격증 문제은행';
 if (!isset($EX_INTRO))      $EX_INTRO      = '자격증 문제은행과 1:1 질문 서비스.';
 
 /* ── 문제집 목록 ────────────────────────────────────────────────────────────
- * nav 의 '문제 풀기'·'이론'·'수강 신청' 이 어느 문제집을 가리킬지 DB 에서 정한다.
+ * nav 의 '문제집'·'수강 신청' 이 어느 문제집을 가리킬지 DB 에서 정한다.
  * pd=sqld 를 박아두면 문제집을 추가할 때마다 이 파일을 고치게 되고,
  * 형제 사이트로 복사하면 존재하지 않는 자격증으로 링크가 간다.
  *
- * 노출 중이고 **문제가 실제로 있는** 것만. 문제 0건인 품목으로 보내면 빈 화면이 뜬다
- * (api/products.php:40 과 같은 판정이다).
+ * ★ 예전에는 `exists (select 1 from ex_problem …)` 로 **문제가 있는 것만** 뽑았다.
+ *   그래서 아직 문항을 안 넣은 품목이 상단 메뉴에서 통째로 사라졌다 — 라인업을
+ *   18개 등록해도 메뉴에는 1~2개만 보였다. `api/products.php:26-39` 는 같은 상황을
+ *   이미 다르게 처리한다(둘을 구분한다):
+ *
+ *     pd_open = 0            관리자가 감췄다 → 목록에 없다
+ *     pd_open = 1 · 문항 0   열어뒀지만 비었다 → **'준비중' 으로 보여준다**
+ *
+ *   랜딩과 상단 메뉴가 서로 다른 라인업을 보여주면 안 되므로 그 판정을 여기로 옮겼다.
+ *   문항 0 인 품목은 **링크를 걸지 않는다**(누르면 빈 화면이 뜬다).
  *
  * 쿼리 1회이고 품목은 많아도 수십 행이라 매 페이지 부담이 없다.
  */
 $ex_books = array();
-$ex_res = sql_query("select d.pd_id, d.pd_name
+$ex_res = sql_query("select d.pd_id, d.pd_name, d.pd_config,
+                            (select count(*) from ex_problem x
+                              where x.pd_id = d.pd_id and x.pr_open = 1) as n_prob
                        from ex_product d
                       where d.pd_open = 1
-                        and exists (select 1 from ex_problem x
-                                     where x.pd_id = d.pd_id and x.pr_open = 1)
                       order by d.pd_sort, d.pd_id", false);
 while ($ex_res && $ex_r = sql_fetch_array($ex_res)) $ex_books[] = $ex_r;
 
-// nav 가 가리킬 기본 문제집. 하나도 없으면(문제 임포트 전) 링크를 문제집 목록으로 보낸다.
-$ex_pd = $ex_books ? $ex_books[0]['pd_id'] : '';
+/* nav 가 가리킬 기본 문제집.
+ *
+ * ★ `$ex_books[0]` 을 쓰면 안 된다. 위에서 준비중 품목까지 뽑으므로 정렬 첫 행이
+ *   문항 0 인 품목일 수 있고, 그러면 '수강 신청'·'성적표 샘플' 이 **빈 문제집**으로 간다.
+ *   문항이 실제로 있는 첫 품목을 따로 고른다. 하나도 없으면(임포트 전) 목록으로 보낸다.
+ */
+$ex_pd = '';
+foreach ($ex_books as $ex_b) {
+    if ((int)$ex_b['n_prob'] > 0) { $ex_pd = $ex_b['pd_id']; break; }
+}
+
+/* 주관처별 묶음. 키를 `정렬번호|이름` 으로 두고 ksort 하면 group_sort 순 →
+ * 같은 번호면 이름 순이 되고, 열 안에서는 pd_sort(위 쿼리 순서)가 그대로 유지된다.
+ *
+ * 그룹은 `pd_config` 의 {"group":"…","group_sort":n} 에서 읽는다 — 이 파일에 표를
+ * 만들지 않는다(products.php:14-20 과 같은 이유). 빠뜨린 품목은 '기타'(99)로 가서
+ * 맨 뒤 열에 모인다 — 조용히 사라지지 않는다.
+ */
+$ex_groups = array();
+foreach ($ex_books as $ex_b) {
+    $ex_cfg = json_decode((string)$ex_b['pd_config'], true);
+    if (!is_array($ex_cfg)) $ex_cfg = array();
+    $ex_g  = !empty($ex_cfg['group']) ? (string)$ex_cfg['group'] : '기타';
+    $ex_gs = isset($ex_cfg['group_sort']) ? (int)$ex_cfg['group_sort'] : 99;
+    $ex_groups[sprintf('%03d|%s', $ex_gs, $ex_g)][] = $ex_b;
+}
+ksort($ex_groups);
 ?>
 
 <!-- 상단 시작 { -->
@@ -99,32 +132,64 @@ $ex_pd = $ex_books ? $ex_books[0]['pd_id'] : '';
           };
           ?>
           <?php
-          /* ★ 내비는 **문제집 이름**을 직접 띄운다.
+          /* ★ 내비는 **문제집을 주관처별 열로 펼친다.**
            *
-           *   예전에는 `문제집` · `문제 풀기` · `이론` 세 개였다. 기능 이름이라 어느
-           *   자격증인지 알 수 없고, `문제 풀기` 는 $ex_books[0](정렬 첫 품목) 하나로만
-           *   갔다. 품목이 둘이 되자 "다른 자격증은 어디로 들어가나" 가 됐다.
+           *   1세대: `문제집` · `문제 풀기` · `이론` 세 개. 기능 이름이라 어느 자격증인지
+           *          알 수 없고 `문제 풀기` 는 정렬 첫 품목 하나로만 갔다.
+           *   2세대: 문제집 이름을 **평평하게 나열**. 둘일 때는 좋았지만 라인업이 18개가
+           *          되면서 내비 한 줄을 넘겨 터졌다.
+           *   3세대(지금): `문제집` 하나에 메가 드롭다운. 주관처가 열이 된다.
            *
-           *   → 문제집을 이름으로 나열한다. 누르면 그 문제집 문제풀이로 간다.
-           *     목록은 위에서 DB 로 뽑은 $ex_books 라 품목이 늘어도 이 파일을 안 고친다.
-           *     이론은 그 화면 안의 탭(&m=theory)이므로 내비에서 뺀다 — 문제집을 고르기
-           *     전에는 어느 이론인지 정할 수 없다.
+           *   열 목록은 위에서 DB 로 묶은 $ex_groups 라 **품목이 늘어도 이 파일을 안 고친다.**
+           *   이론은 그 화면 안의 탭(&m=theory)이므로 내비에서 뺀다 — 문제집을 고르기
+           *   전에는 어느 이론인지 정할 수 없다.
+           *
+           * ⚠ 이 마크업은 `scripts/landing_template.html`·`detail_template.html` 의
+           *   `fillNav()` 가 **클래스와 순서까지 똑같이** 만든다. 한쪽만 고치면 화면을
+           *   옮겨 다닐 때 헤더가 달라진다(axnav.css 머리 주석의 규약).
+           *
+           * ★ 여는 것은 **CSS 가 한다** — `:hover` 와 `:focus-within` 이다. JS 를 쓰면
+           *   정적 페이지와 그누보드에 같은 스크립트를 두 벌 둬야 하고, 그 두 벌이 갈린다.
+           *   button 을 쓰는 이유는 hover 가 없는 터치·키보드에서 focus 로 열리게 하려는
+           *   것이다(div 는 focus 를 못 받는다).
            */
-          foreach ($ex_books as $ex_b) {
-              $bid  = $ex_b['pd_id'];
-              $bq   = '?pd=' . urlencode($bid);
-              $bon  = (strpos($_SERVER['REQUEST_URI'], 'pd=' . $bid) !== false
-                       && strpos($_SERVER['REQUEST_URI'], 'check.php') !== false) ? ' on' : '';
-              echo '<a class="axnav-item' . $bon . '" href="' . $ex_url . '/check.php' . $bq . '">'
-                 . '<svg class="ic"><use href="#i-edit"></use></svg>'
-                 . htmlspecialchars($ex_b['pd_name']) . '</a>';
-          }
-          if (!$ex_books) {
-              // 문제 임포트 전 — 링크할 곳이 없다. 목록으로 보낸다.
-              echo '<a class="axnav-item" href="' . $ex_url . '/">'
-                 . '<svg class="ic"><use href="#i-clipboard"></use></svg>문제집</a>';
-          }
+          $ex_here_pd = (strpos($_SERVER['REQUEST_URI'], 'check.php') !== false);
           ?>
+          <div class="axnav-drop">
+            <button class="axnav-item axnav-drop-btn" type="button" aria-haspopup="true" aria-expanded="false">
+              <svg class="ic"><use href="#i-clipboard"></use></svg>문제집<i class="axnav-caret"></i>
+            </button>
+            <div class="axnav-mega">
+              <div class="axnav-mega-in">
+                <?php foreach ($ex_groups as $ex_key => $ex_list) {
+                    list(, $ex_gname) = explode('|', $ex_key, 2); ?>
+                <div class="axnav-col">
+                  <div class="axnav-col-h"><?php echo htmlspecialchars($ex_gname) ?></div>
+                  <?php foreach ($ex_list as $ex_b) {
+                      $bid  = $ex_b['pd_id'];
+                      $bnm  = htmlspecialchars($ex_b['pd_name']);
+                      if ((int)$ex_b['n_prob'] < 1) {
+                          /* 준비중 — 링크를 걸지 않는다. 누르면 빈 화면이 뜬다. */
+                          echo '<span class="axnav-sub-item is-soon">' . $bnm
+                             . '<em>준비중</em></span>';
+                          continue;
+                      }
+                      $bon = ($ex_here_pd && strpos($_SERVER['REQUEST_URI'], 'pd=' . $bid) !== false)
+                             ? ' on' : '';
+                      echo '<a class="axnav-sub-item' . $bon . '" href="' . $ex_url
+                         . '/check.php?pd=' . urlencode($bid) . '">' . $bnm . '</a>';
+                  } ?>
+                </div>
+                <?php } ?>
+                <?php if (!$ex_books) { ?>
+                <div class="axnav-col">
+                  <div class="axnav-col-h">문제집</div>
+                  <span class="axnav-sub-item is-soon">준비중<em>준비중</em></span>
+                </div>
+                <?php } ?>
+              </div>
+            </div>
+          </div>
           <a class="axnav-item<?php echo $on('buy.php') ?>" href="<?php echo $ex_go('buy.php') ?>"><svg class="ic"><use href="#i-cap"></use></svg>수강 신청</a>
           <?php /* 성적표 샘플 — 로그인·응시 없이 열린다(api/lib/sample.php).
                    채점 뒤에 무엇이 나오는지 보여주는 유일한 경로다. */ ?>

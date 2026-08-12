@@ -95,6 +95,83 @@
 /* 구분선 */
 .axnav-sep{ width:1px; height:20px; background:var(--ax-nav-line); flex:0 0 auto; margin:0 4px; }
 
+/* ══ 문제집 메가 드롭다운 ══════════════════════════════════════════════════
+ * 라인업이 18개가 되면서 품목을 평평하게 나열할 수 없게 됐다(내비 한 줄을 넘긴다).
+ * `문제집` 하나에 걸고 **주관처를 열로** 펼친다.
+ *
+ * ★ 여는 것은 CSS 다 — `:hover` 와 `:focus-within`. JS 를 쓰면 정적 페이지와
+ *   그누보드에 같은 스크립트를 두 벌 둬야 하고 그 두 벌이 갈린다.
+ *   hover 가 없는 터치·키보드는 button 의 focus 로 열린다.
+ *
+ * ⚠ 이 파일은 **두 벌**이다. 서버에서 둘 다 /exam/assets/axnav.css 로 가고
+ *   stage.py 가 나중에 쓰는 web/exam/assets 쪽이 이긴다. 반드시 같이 고친다.
+ *     axexam\web\exam\assets\axnav.css   (PHP 화면)
+ *     axexam\assets\present\axnav.css    (정적 빌드 → 06/assets/)
+ */
+.axnav-drop{ position:relative; display:inline-flex; }
+
+/* button 을 .axnav-item 처럼 보이게 — 기본 스타일을 지운다 */
+.axnav-drop-btn{
+  border:0; background:none; font:inherit; cursor:pointer;
+  font-size:14px; font-weight:600;
+}
+.axnav-caret{
+  width:0; height:0; margin-left:1px; flex:0 0 auto;
+  border-left:4px solid transparent; border-right:4px solid transparent;
+  border-top:5px solid currentColor; opacity:.7;
+  transition:transform .15s;
+}
+.axnav-drop:hover .axnav-caret,
+.axnav-drop:focus-within .axnav-caret{ transform:rotate(180deg); }
+.axnav-drop:hover .axnav-drop-btn,
+.axnav-drop:focus-within .axnav-drop-btn{
+  background:rgba(255,255,255,.14); color:var(--ax-nav-fg-on);
+}
+
+.axnav-mega{
+  position:absolute; top:100%; left:0; z-index:50;
+  /* ★ padding-top 이 버튼과 패널 사이의 **hover 다리**다. 이게 없으면 마우스가
+     틈을 지나는 순간 닫힌다. 투명 영역이지만 hover 판정에는 들어간다. */
+  padding-top:8px;
+  opacity:0; visibility:hidden; transform:translateY(-4px);
+  transition:opacity .14s, transform .14s, visibility .14s;
+}
+.axnav-drop:hover .axnav-mega,
+.axnav-drop:focus-within .axnav-mega{
+  opacity:1; visibility:visible; transform:none;
+}
+.axnav-mega-in{
+  display:flex; gap:26px; padding:20px 24px;
+  background:#fff; border-radius:12px;
+  box-shadow:0 14px 40px rgba(10,20,45,.28), 0 0 0 1px rgba(10,20,45,.08);
+  max-height:72vh; overflow-y:auto;
+}
+.axnav-col{ min-width:158px; }
+.axnav-col-h{
+  padding:5px 9px; margin-bottom:6px; border-radius:6px;
+  background:#eef3fb; color:#48597c;
+  font-size:12px; font-weight:700; letter-spacing:-.01em; white-space:nowrap;
+}
+.axnav-sub-item{
+  display:block; padding:7px 9px; border-radius:6px;
+  font-size:13.5px; font-weight:500; color:#24365e;
+  white-space:nowrap; transition:background .12s, color .12s;
+}
+a.axnav-sub-item:hover{ background:#f1f5fc; color:#0b57d0; }
+a.axnav-sub-item.on{ background:#e8f0fe; color:#0b57d0; font-weight:700; }
+
+/* 준비중 — <span> 이라 링크가 아니다. 문항 0건인 품목은 누르면 빈 화면이 뜬다.
+   목록에서 빼지 않는 이유: 라인업 전체가 보여야 한다(api/products.php:26-39 규약). */
+.axnav-sub-item.is-soon{
+  color:#9aa6bf; cursor:default;
+  display:flex; align-items:center; gap:6px;
+}
+.axnav-sub-item.is-soon em{
+  font-style:normal; font-size:10.5px; font-weight:700;
+  padding:1px 5px; border-radius:4px;
+  background:#f0f2f6; color:#8b97af; flex:0 0 auto;
+}
+
 /* ── 모바일 ────────────────────────────────────────────────────────────
    햄버거 메뉴를 만들지 않는다(JS 의존이 늘고 세 곳에 복제해야 한다).
    대신 가로 스크롤 되는 한 줄로 접는다 — 항목이 8개뿐이라 이게 더 단순하다. */
@@ -110,10 +187,29 @@
   .axnav-cta{ order:2; margin-left:auto; }
   .axnav-me{ order:2; }
   .axnav-sep{ display:none; }
+
+  /* ★ 드롭다운을 **.axnav 기준**으로 띄운다.
+   *
+   *   `.axnav-main` 이 위에서 `overflow-x:auto` 가 되므로, 그 안에 상대 배치된
+   *   패널을 두면 스크롤 영역에 잘려 열 몇 개가 안 보인다. `.axnav-drop` 을
+   *   static 으로 만들면 배치 기준이 `.axnav`(position:relative)로 올라가고,
+   *   그러면 스크롤 컨테이너의 클립을 벗어난다 — 담는 블록이 밖에 있으면
+   *   overflow 가 자르지 않는다.
+   */
+  .axnav-drop{ position:static; }
+  .axnav-mega{ left:14px; right:14px; padding-top:6px; }
+  .axnav-mega-in{
+    display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:14px 18px; padding:16px; max-height:66vh;
+  }
+  .axnav-col{ min-width:0; }
+  .axnav-sub-item{ white-space:normal; }
 }
 @media (max-width:480px){
   .axnav-item{ padding:0 9px; font-size:13.5px; }
   .axnav-item .ic{ width:16px; height:16px; }
+  /* 한 열로 — 두 열이면 자격증 이름이 두 줄로 접힌다 */
+  .axnav-mega-in{ grid-template-columns:minmax(0,1fr); }
 }
 
 /* ══ SVG 스프라이트 숨김 ═══════════════════════════════════════════════════
