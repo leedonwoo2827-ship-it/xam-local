@@ -203,6 +203,11 @@ def q_stats() -> str:
 
 
 # ── 03/ 요약노트 ────────────────────────────────────────────────────────────
+def summary_dir() -> str:
+    """요약노트 폴더. 화면이 '지금 보고 있는 자리' 를 띄우고 열어 줄 때 쓴다."""
+    return os.path.join(book_dir(), "03")
+
+
 def summary_html(key: str) -> str:
     return os.path.join(book_dir(), "03", f"summary_{key}.html")
 

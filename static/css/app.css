@@ -1288,6 +1288,25 @@ kbd {
 .log-pane .lv-ok   { color: var(--ok); font-weight: 600; }
 .log-pane .lv-skip { color: var(--text-3); }
 
+/* ★ `.dim` — 값 옆에 붙는 근거·단위 표시. 이것도 **정의가 없었다**(2026-08-12 확인).
+   `authoring.js` 의 남은시간 안내가 "(이번 잡 실측 · 과목당 10분)" 을 이 클래스로
+   흐리게 두려 했는데, 정의가 없어 본문과 같은 굵기·색으로 나왔다 — 그래서 추정
+   근거가 결과값처럼 읽혔다. */
+.dim { color: var(--text-3); font-weight: 400; }
+
+/* ── 잡 로그 (집필 · 이론) ───────────────────────────────────────────────
+   ★ `authoring.js` 가 세 곳에서 `.job-log` 를 쓰는데 **정의가 없었다**(2026-08-12
+     확인). 브라우저 기본 <pre> 로 나오고 있었다 — 줄바꿈이 안 되어 긴 줄이
+     옆으로 흐르고, 과목 하나가 10~20분씩 가는 그 로그를 사람이 그대로 봤다.
+     `.log-pane` 과 같은 규약으로 맞춘다(높이 상한 · 자동 줄바꿈 · 등폭). */
+.job-log {
+  margin: 8px 0 0; padding: 10px 12px;
+  background: var(--white); border-radius: var(--r);
+  font: 11.5px/1.55 ui-monospace, Consolas, monospace;
+  max-height: 260px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+  color: var(--text-2);
+}
+
 /* ── 화면 ① 문항 교정 ───────────────────────────────────────────────────── */
 .qz-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
 .qz-chips { display: flex; gap: 5px; flex-wrap: wrap; }
@@ -1349,6 +1368,18 @@ kbd {
 
 .qz-field { margin-bottom: 15px; }
 .qz-label { display: block; margin-bottom: 5px; font-size: var(--t-2xs); font-weight: 700; letter-spacing: .04em; color: var(--text-3); }
+
+/* ★ "지금 어느 자리인가" — 화면마다 보는 폴더가 다르다(01·02·03·05·06). 상대경로만
+   띄우면 책 폴더가 여럿일 때 어느 책인지 알 수 없어서 절대경로를 띄우고, 누르면
+   탐색기에서 그 파일을 골라 놓고 연다(summary.js 의 renderWhere). */
+.sm-where {
+  font-family: var(--mono, ui-monospace, Consolas, monospace);
+  font-size: var(--t-2xs); font-weight: 500; letter-spacing: 0;
+  color: var(--text-2); cursor: pointer; border-radius: 4px; padding: 1px 4px;
+  text-decoration: underline; text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+.sm-where:hover { background: var(--bg-2, rgba(0,0,0,.05)); color: var(--text-1); }
 .qz-field textarea, .qz-tags {
   width: 100%; padding: 9px 12px; border: 0; border-radius: var(--r);
   background: var(--white); box-shadow: inset 0 0 0 1px var(--hairline);
