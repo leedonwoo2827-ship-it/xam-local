@@ -12,7 +12,7 @@
 ★ 집필 규칙(`spec.py`)이나 스키마(`schema.py`)를 고쳤으면 **이것을 먼저 돌린다.**
   임시 폴더에 가짜 파트를 깔아 반입까지 실제로 해 보므로, 책 폴더는 건드리지 않는다.
 """
-import io, json, os, re, shutil, sys, tempfile, traceback
+import io, json, os, re, shutil, sys, tempfile, time, traceback
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 OK, NG = [], []
@@ -191,11 +191,42 @@ v = derive.validate_round(BOOK_DIR, "m01")
 check("validate.py 인자 맞음 (--rounds-dir)", v["ok"] and "검증 통과" in (v["out"] or ""))
 d = derive.derive_round(BOOK_DIR, "m01", dry_run=True)
 check("build.py dry-run 통과 · 한글 디코딩", d["ok"] and "80문항" in (d["out"] or ""))
-e = derive.guard_local_edits(BOOK_DIR, "m01")
-check("교정 감시가 실제 교정을 잡음", len(e) > 0, f"{len(e)}개")
-blk = derive.derive_round(BOOK_DIR, "m01")
-check("교정 있으면 실제 파생 차단", blk["ok"] is False and "되돌아갑니다" in (blk["err"] or ""))
-check("차단 사유에 파일명 포함", bool(blk.get("blocked_by_edits")))
+# ★ 교정 감시·차단은 **임시 폴더에서** 본다. 책 폴더에서 보면 안 된다.
+#
+#   원래 이 자리가 `derive.derive_round(BOOK_DIR, "m01")` 이었다 — dry_run 이 아닌
+#   **실제 파생**이고, 대상이 실제 책이다. "교정이 있으면 차단된다" 를 기대하고
+#   부르지만, 교정이 없으면 차단되지 않으므로 **그대로 m01 을 다시 만든다.**
+#   2026-08-12 09:29:43 에 실제로 그렇게 됐다: 02/ 82개 · assets/ 54개 · 04/ 1개가
+#   다시 쓰였다. `_rounds/m01.json` 은 무사했으므로 내용은 같지만, mtime 이 밀려
+#   `guard_local_edits`(시각만 본다)가 이제 m01 을 **80건 교정**으로 오인한다.
+#   → 이 검사는 한 번 책을 망가뜨린 뒤에야 통과하는 **자기충족 테스트**였다.
+#     깨끗한 책에서는 FAIL 이 나면서 동시에 파생을 돌려 버린다.
+#
+#   임시 폴더면 셋 다 성립한다: 감시가 무엇을 잡는지, 차단이 도는지, 사유에 파일명이
+#   붙는지. 차단은 `build.py` 를 부르기 **전에** 판정되므로(derive.py:88) 임시 폴더에
+#   가짜 파일만 있으면 된다.
+e_real = derive.guard_local_edits(BOOK_DIR, "m01")
+check("교정 감시가 책 폴더에서 돈다 (읽기만)", isinstance(e_real, list),
+      f"m01 {len(e_real)}건")
+tmp2 = tempfile.mkdtemp(prefix="smoke-derive-")
+try:
+    os.makedirs(os.path.join(tmp2, "_rounds"), exist_ok=True)
+    os.makedirs(os.path.join(tmp2, "02"), exist_ok=True)
+    with open(os.path.join(tmp2, "_rounds", "m99.json"), "w", encoding="utf-8") as f:
+        json.dump({"questions": []}, f)
+    check("교정 없으면 빈 목록", derive.guard_local_edits(tmp2, "m99") == [])
+    # `_rounds` 보다 새로운 md 하나 = 사람이 손본 것
+    md = os.path.join(tmp2, "02", "m99-01.md")
+    with open(md, "w", encoding="utf-8") as f:
+        f.write("# 사람이 손본 문항\n")
+    os.utime(md, (time.time() + 10, time.time() + 10))   # 확실히 더 새롭게
+    check("교정 감시가 새 md 를 잡음", derive.guard_local_edits(tmp2, "m99") == ["m99-01.md"])
+    blk = derive.derive_round(tmp2, "m99")
+    check("교정 있으면 실제 파생 차단",
+          blk["ok"] is False and "되돌아갑니다" in (blk["err"] or ""))
+    check("차단 사유에 파일명 포함", "m99-01.md" in (blk.get("blocked_by_edits") or []))
+finally:
+    shutil.rmtree(tmp2, ignore_errors=True)
 
 # ══ 7. 라우트 ═══════════════════════════════════════════════════════════════
 section("7. 라우트 · 사내망 게이트")
@@ -283,8 +314,35 @@ o = a2._options(system="s", schema={"type": "object"})
 check("Write/Edit/Bash 금지", set(["Write", "Edit", "Bash"]) <= set(o.disallowed_tools))
 check("Read/Grep/Glob 허용 (기출 읽기)", set(["Read", "Grep", "Glob"]) <= set(o.allowed_tools))
 check("setting_sources=[] (전역 CLAUDE.md 차단)", o.setting_sources == [])
-check("예산 상한 있음", getattr(o, "max_budget_usd", 0) > 0)
+# ★ 예산 상한은 **기본으로 걸지 않는다** — provider.py 머리말 참조(2026-08-10 에 $4
+#   상한 때문에 6과목·$29 를 통째로 잃었다). 이 검사가 상한을 계속 요구하고 있어서
+#   그날부터 `None > 0` 으로 TypeError 를 내며 죽었고, **아래 검사가 하나도 안 돌았다.**
+#   테스트가 조용히 실패한 것이 아니라 시끄럽게 죽었는데도 뒤가 가려져 있었다.
+check("예산 상한 기본 없음 (달러는 재는 값이지 끊는 값이 아니다)",
+      o.max_budget_usd is None)
+check("예산 상한을 주면 그때만 걸린다",
+      provider.ClaudeAuthor(budget_usd=4.0)._options(
+          system="s", schema={"type": "object"}).max_budget_usd == 4.0)
 check("턴 상한 있음", getattr(o, "max_turns", 0) > 0)
+
+# ★ 무한루프 방어선 — 2026-08-12 m09-p1. 스키마 반려 후 재생성이 출력 상한에서
+#   잘리고, 잘린 응답이 컨텍스트에 남아 또 잘렸다. 3회 연속 64,000토큰 · 5시간 ·
+#   0문항. `max_turns=40` 이므로 방어선이 없으면 8.7시간까지 간다.
+def _msg(stop, out=100):
+    return type("M", (), {"stop_reason": stop, "usage": {"output_tokens": out}})()
+
+check("잘림(max_tokens) 을 보면 끊는다",
+      "잘렸습니다" in a2._abort_reason(_msg("max_tokens", 64000), time.monotonic()))
+check("정상 응답(tool_use) 은 안 끊는다",
+      a2._abort_reason(_msg("tool_use"), time.monotonic()) == "")
+check("벽시계 상한이 실측 최장 과목(36분)보다 넉넉", a2.timeout_sec >= 36 * 60)
+check("벽시계 상한을 넘기면 끊는다",
+      "끊었습니다" in a2._abort_reason(
+          _msg("tool_use"), time.monotonic() - a2.timeout_sec - 1))
+# ★ 자식 `claude.exe` 를 죽이는 것은 `aclosing` 이다. 이것이 없으면 위 `break` 가
+#   고아를 남긴다 — 앱은 과목 사이에 죽지 않으므로 SDK 의 atexit 회수도 안 온다.
+check("query 스트림을 aclosing 으로 감쌈 (자식 프로세스 정리)",
+      "aclosing" in open("services/authoring/provider.py", encoding="utf-8").read())
 check("오류 3분류 상속", issubclass(NotAuthenticated, ProviderError)
       and issubclass(QuotaExceeded, ProviderError))
 check("vendor/exambook 원본 수정 안 함 (LLM 참조 0건)",

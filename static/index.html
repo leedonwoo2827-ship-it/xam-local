@@ -54,8 +54,11 @@
 
       <li><a href="#/questions" data-nav="q" title="문항 교정">
         <span data-icon="file"></span><span>문항 교정</span></a></li>
-      <li><a href="#/summary" data-nav="s" title="요약노트(이론) 검수">
-        <span data-icon="bulb"></span><span>요약노트 검수 <em class="nav-dest">이론</em></span></a></li>
+      <!-- ★ 라벨이 "검수" 에서 "제작" 으로 바뀌었다(2026-08-12). 이 화면이 이제
+           `03/` 요약노트를 **만드는** 곳이기도 하다 — [이론 집필] 버튼이 붙었다.
+           검수만 하는 곳으로 읽히면 사람이 만들 방법을 찾아 딴 데를 뒤진다. -->
+      <li><a href="#/summary" data-nav="s" title="이론 요약 노트 제작·검수">
+        <span data-icon="bulb"></span><span>이론 요약 노트 <em class="nav-dest">제작</em></span></a></li>
 
       <!-- ★ 순서를 파이프라인 순서로 맞췄다(2026-08-10):
            집필 → 교정 → 이론 → **슬라이드** → 영상 → **인쇄본** → 발행
@@ -70,8 +73,8 @@
            슬라이드는 1920×1080 고정이라 앱 셸(레일 248px + 패널) 안에서는 축소돼 보이고,
            그러면 "실제로 넘치는가" 를 눈으로 판단할 수 없다. 셸 없이 그것만 띄운다. -->
       <li><a href="/slide/" target="_blank" rel="noopener"
-             title="슬라이드 분할·넘침 검수 (새 탭) — ?fit=1 로 안전선 확인">
-        <span data-icon="grid"></span><span>슬라이드 <em class="nav-dest">분할·넘침</em></span></a></li>
+             title="슬라이드 제작 (새 탭) — ?fit=1 로 분할·넘침 안전선 확인">
+        <span data-icon="grid"></span><span>슬라이드 <em class="nav-dest">제작</em></span></a></li>
 
       <li><a href="#/video" data-nav="v" title="영상 제작·검수">
         <span data-icon="film"></span><span>영상 제작·검수</span></a></li>

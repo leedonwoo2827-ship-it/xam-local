@@ -103,6 +103,9 @@ _ROUTERS = (
     # 집필 — 유일하게 LLM 을 부르는 계층. claude-agent-sdk 가 없으면 여기만 빠지고
     # 나머지 화면은 그대로 뜬다(위 try/except 가 그 목적이다).
     ("routes.authoring_routes", "setup_authoring_routes", "집필(구독 OAuth)"),
+    # 이론(03/ 요약노트) — 집필과 같은 프로바이더를 쓰지만 산출물이 과목별이라
+    # 라우트를 나눴다. 기본 모델이 Fable 이다(theory_routes 머리말).
+    ("routes.theory_routes", "setup_theory_routes", "이론 요약노트"),
     ("routes.ocr_routes", "setup_ocr_routes", "OCR 검수(페이지 단위)"),
     ("routes.scan_routes", "setup_scan_routes", "구조화 MD"),
     ("routes.question_routes", "setup_question_routes", "문항 교정"),

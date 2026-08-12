@@ -30,6 +30,7 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -128,6 +129,13 @@ class ClaudeAuthor:
     #
     #   ★ 값을 주면 그때만 건다. 폭주가 의심되는 실험에서 일시적으로 쓰는 용도다.
     budget_usd: Optional[float] = None
+    # ★ 벽시계 상한. 잘림(`_abort_reason`)이 아닌 방식으로 되풀이하는 경우의 마지막
+    #   방어선이다. 실측 최장 과목이 36분(m08-p1 · 2158.9초)이므로 60분이면 정상
+    #   과목을 건드리지 않는다.
+    # ★ **메시지가 올 때만** 검사한다. 타이머(`asyncio.wait_for`)로는 못 끊는다 —
+    #   아래 `_structured` 머리말 참조. CLI 가 한 글자도 안 보내고 멈추면 이 상한은
+    #   안 걸린다. 실측에서는 시도마다 13분에 한 번씩 응답이 왔다.
+    timeout_sec: float = 3600.0
     exe: Optional[Path] = field(default=None)
     # ★ 모델이 도구를 쓸 때마다 부른다. 파트 1개가 몇 분씩 가는데 화면이 한 글자도
     #   안 바뀌면 **멈춘 것으로 보인다.** 답변초안 화면에서 이미 같은 말을 들었다
@@ -208,27 +216,94 @@ class ClaudeAuthor:
         """
         return _run(self._structured(system, prompt, schema))
 
+    # ── 지금 끊어야 하는가 ──
+    def _abort_reason(self, m: Any, t0: float) -> str:
+        """이 응답을 보고 **여기서 끊어야 하는가.** 빈 문자열이면 계속 간다.
+
+        ★ 이것이 없으면 무한루프가 된다. 2026-08-12 m09-p1 에서 실측한 것:
+
+            08:31  45,024토큰 · stop=tool_use    → 스키마 반려
+                   (/items/16/explanation: must NOT have fewer than 140 characters)
+            08:36  64,000토큰 · stop=max_tokens  ← 잘림
+            08:49  64,000토큰 · stop=max_tokens  ← 잘림
+            09:03  64,000토큰 · stop=max_tokens  ← 잘림
+
+          **한 번 잘리면 끝이다.** 잘린 응답이 다음 시도의 컨텍스트에 그대로 얹히므로
+          다음도 잘린다 — 세 번이 정확히 같은 값에서 멈춘 것이 그 증거다. 그런데
+          `max_turns=40` 이라 40번까지 그렇게 간다: 13분 × 40 = 8.7시간이다.
+          화면은 한 글자도 안 바뀌므로 사람에게는 "멈춘 것"으로 보인다 — 멈춘 것이
+          아니라 구독 한도를 태우고 있었다. 그날 5시간 · 237,000토큰 · 0문항이었다.
+
+        ★ 잘림을 `ResultMessage` 로 알 수는 없다. 그것은 루프가 다 끝난 뒤에 온다.
+          `AssistantMessage.stop_reason` 이 매 응답마다 오므로 그것을 본다.
+        """
+        el = time.monotonic() - t0
+        if getattr(m, "stop_reason", None) == "max_tokens":
+            got = int((getattr(m, "usage", None) or {}).get("output_tokens") or 0)
+            return (f"응답이 출력 상한에서 잘렸습니다 ({got:,}토큰 · {el / 60:.1f}분). "
+                    f"다시 시도해도 잘린 응답이 컨텍스트에 남아 또 잘리므로 여기서 "
+                    f"끊습니다. 한 문항이 스키마에 걸려 20문항을 다시 쓰는 중일 수 "
+                    f"있습니다 — 스테이징의 problems 를 보고, 반복되면 "
+                    f"draft.PART_SIZE 를 줄이십시오.")
+        if el > self.timeout_sec:
+            return (f"{el / 60:.0f}분이 지나 끊었습니다(상한 "
+                    f"{self.timeout_sec / 60:.0f}분). 정상 과목은 실측 23~36분입니다 — "
+                    f"그보다 오래 걸리면 같은 응답을 되풀이하고 있을 가능성이 큽니다.")
+        return ""
+
     async def _structured(self, system: str, prompt: str,
                           schema: Dict[str, Any]) -> Dict[str, Any]:
+        """★ `aclosing` 이 있어야 자식 `claude.exe` 가 죽는다.
+
+        SDK 가 주석으로 못을 박아 두었다(`_internal/client.py`):
+          "``async for`` does NOT close its iterator when the loop body raises
+           (PEP 533 was deferred)."
+        닫히지 않으면 `query.close()` 의 terminate/kill 이 돌지 않아 자식이 남는다.
+        부모(앱)는 과목 사이에 죽지 않으므로 SDK 의 atexit 회수도 오지 않는다 →
+        고아가 몇 시간 한도를 태우는데 앱은 태연히 다음 과목을 시작한다. 아래
+        `break` 를 쓰려면 이것이 먼저다. (이 파일이 원래 `aclosing` 없이 예외를
+        던지고 있었다 — 위 반려 실패 경로에서 이미 자식이 남을 수 있었다.)
+
+        ★ 같은 이유로 `asyncio.wait_for` 로는 시간 상한을 못 건다. SDK 가 그 경우를
+          명시해 두었다(`subprocess_cli.py` 의 `close()` 머리말): 생 asyncio 취소는
+          anyio shield 를 통과해 terminate/kill escalation 을 **건너뛴다.** 그래서
+          시간 상한도 타이머가 아니라 **메시지 경계에서 `break`** 로 건다.
+        """
+        from contextlib import aclosing
+
         from claude_agent_sdk import AssistantMessage, ResultMessage, query
 
         out: Optional[Dict[str, Any]] = None
         sub = "?"
+        abort = ""          # 비어 있으면 정상 종료. 채워지면 **우리가** 끊은 것이다
+        t0 = time.monotonic()
         try:
-            async for m in query(prompt=prompt,
-                                 options=self._options(system=system, schema=schema)):
-                if isinstance(m, AssistantMessage):
-                    self._activity(m.content)
-                elif isinstance(m, ResultMessage):
-                    self.last_cost_usd = float(getattr(m, "total_cost_usd", 0.0) or 0.0)
-                    self.last_turns = int(getattr(m, "num_turns", 0) or 0)
-                    self.last_usage = dict(getattr(m, "usage", None) or {})
-                    sub = getattr(m, "subtype", "?")
-                    out = getattr(m, "structured_output", None)
+            stream = query(prompt=prompt,
+                           options=self._options(system=system, schema=schema))
+            async with aclosing(stream):
+                async for m in stream:
+                    if isinstance(m, AssistantMessage):
+                        self._activity(m.content)
+                        if abort := self._abort_reason(m, t0):
+                            break
+                    elif isinstance(m, ResultMessage):
+                        self.last_cost_usd = float(getattr(m, "total_cost_usd", 0.0) or 0.0)
+                        self.last_turns = int(getattr(m, "num_turns", 0) or 0)
+                        self.last_usage = dict(getattr(m, "usage", None) or {})
+                        sub = getattr(m, "subtype", "?")
+                        out = getattr(m, "structured_output", None)
         except Exception as e:   # noqa: BLE001
             if isinstance(e, ProviderError):
                 raise
             raise _classify_error(str(e)) from e
+
+        if abort:
+            # ★ 끊었으므로 `ResultMessage` 를 못 받았다 → `last_cost_usd` 가 0 이다.
+            #   draft/잡 쪽은 비용 0 을 "모델을 아예 못 불렀다" 로 읽어 STALL_LIMIT 를
+            #   올린다. 이 경우엔 그것이 맞다 — 연속 3회 잘리면 스키마나 파트 크기가
+            #   문제이므로 남은 과목을 계속 태울 이유가 없다. 실제로 쓴 돈은 잡히지
+            #   않지만, 그것을 살리려고 끊지 않는 것은 오늘 겪은 쪽이 훨씬 비싸다.
+            raise ProviderError(abort)
 
         if not isinstance(out, dict):
             # ★ subtype=="success" 인데 structured_output 이 없는 경우가 문서에 명시돼

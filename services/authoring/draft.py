@@ -179,6 +179,11 @@ def _validate(items: List[Dict[str, Any]], numbers: List[int]) -> tuple[List[str
         if len(ex) > EX_MAX:
             warns.append(f"{tag}: 화면 해설 {len(ex)}자 — 목표 {EX_LO}~{EX_HI}자를 "
                          f"넘겼습니다(슬라이드 수가 늘고 편이 길어집니다)")
+        elif len(ex) < EX_LO:
+            # ★ 이 경고가 스키마의 하한을 대신한다. 하한을 스키마에 두었더니 한 문항의
+            #   미달이 20문항 전량 재생성을 불러 무한루프가 됐다(schema.py 머리말).
+            #   낭독 쪽에는 아래에 같은 경고가 이미 있었다 — 화면 쪽만 비어 있었다.
+            warns.append(f"{tag}: 화면 해설 {len(ex)}자뿐입니다 — 목표 {EX_LO}~{EX_HI}자")
         if len(sp) > SP_MAX:
             warns.append(f"{tag}: 낭독 {len(sp)}자 ≈ {len(sp)/CHARS_PER_SEC:.0f}초 — "
                          f"목표 {SP_LO}~{SP_HI}자(문항당 90초)를 넘겼습니다")
@@ -189,6 +194,25 @@ def _validate(items: List[Dict[str, Any]], numbers: List[int]) -> tuple[List[str
         ch = [str(c).strip() for c in (it.get("choices") or [])]
         if len(set(ch)) != len(ch):
             problems.append(f"{tag}: 보기 중 같은 것이 있습니다 {ch}")
+
+        # ★ 그림 링크 ↔ `assets` 대응. 스키마는 둘을 **각각만** 본다 — 해설 문자열과
+        #   assets 배열이 서로 맞는지는 아무도 안 봤다.
+        #
+        #   m06 에서 실제로 깨졌다(2026-08-12 확인). 3과목 7문항이 해설에
+        #   `![…](assets/m06-43-정보이득.svg)` 를 썼는데 `assets` 배열에 그 SVG 가
+        #   없다 → `02/assets/` 에 파일이 안 생기고 **사이트에서 깨진 이미지 7개**가
+        #   된다. 발행한 뒤에야 드러나는 종류다.
+        #
+        #   `schema.py` 가 "그림 0개로 나오는 회귀" 는 못박아 뒀지만 **부분적으로
+        #   비는 경우**가 비어 있었다. 0개는 눈에 띄고 7개는 안 띈다.
+        names = {str((a or {}).get("name") or "") for a in (it.get("assets") or [])}
+        linked = set(re.findall(r"\]\(assets/([^)]+?)\.svg\)", ex))
+        if miss := sorted(linked - names):
+            problems.append(f"{tag}: 해설이 그림 {miss} 을 링크하는데 assets 에 그 SVG 가 "
+                            f"없습니다 — 사이트에서 깨진 이미지가 됩니다")
+        # 반대쪽은 경고다. 그림을 넣고 안 쓴 것은 낭비지 고장이 아니다.
+        if unused := sorted(names - linked):
+            warns.append(f"{tag}: assets 의 {unused} 이 해설에서 쓰이지 않습니다")
 
     # 정답 위치 편중 — 파트 단위로는 표본이 작으므로 경고만
     if items:

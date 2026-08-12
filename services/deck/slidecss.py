@@ -62,9 +62,10 @@ body{{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic",
   flex:none;
   padding:var(--slide-pad);
   display:flex; flex-direction:column;
-  /* 머리 띠 ↔ 본문 ↔ 발 띠 사이 간격. `theme.BAND_GAP` 이 이 값을 예산에서 빼므로
-     여기서 실제로 만들어야 파이썬과 DOM 이 같은 숫자가 된다(안 만들면 24px 어긋난다). */
-  gap:calc(var(--slide-band-gap) / 2);
+  /* ★ 띠 간격을 **0 으로 두었다**. 머리·푸터가 카드 안으로 들어갔으므로(render.py
+     `_card` 머리말) 카드 밖에 간격을 둘 형제가 없다. `theme.avail()` 도 더는 이
+     값을 예산에서 빼지 않는다 — 한쪽만 바꾸면 파이썬과 DOM 이 어긋난다. */
+  gap:0;
   background:var(--c-bg, #fff); color:var(--c-ink, #1e2637);
   overflow:hidden;              /* 넘침을 숨긴다 — 넘쳤는지는 measure 가 판정한다 */
   position:relative;
@@ -74,9 +75,13 @@ body{{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic",
    ★ showcase-agent 의 `h2::after`(52×3px 밑줄 + margin-top:14px) 를 **넣지 않았다.**
      장식 3px + 여백 14px = 17px 이 그림 위로 들어가고, 그림을 최상단에 두라는
      요구와 정면으로 부딪힌다. 제목 구분은 글자 굵기로 낸다. */
+/* ★ 카드 **안** 첫 줄이다. 띠 높이(`--slide-head`)로 고정하지 않는다 — 고정하면
+   머리가 없는 장에서도 그 자리가 남고, 그것이 118px 을 모든 장에서 잃던 원인이다.
+   내용 높이만큼만 쓰고 아래 간격만 둔다. */
 .slide .s-head{{
-  height:var(--slide-head); flex:0 0 var(--slide-head);
+  flex:0 0 auto;
   display:flex; align-items:center; gap:calc(8px * var(--ss));
+  margin-bottom:calc(8px * var(--ss));
   font-size:calc(13px * var(--ts)); font-weight:800;
   color:var(--c-muted, #6b7688); letter-spacing:.02em;
 }}
@@ -99,9 +104,30 @@ body{{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic",
      652px 예산의 10% 다(실측). 10px 로 내려 24px 씩 쓰게 한다 — 슬라이드는
      여백보다 내용이 우선이고, 1080px 예산은 사이트보다 훨씬 빡빡하다. */
   display:flex; flex-direction:column; gap:calc(10px * var(--ss));
-  padding:{theme.CARD_PAD}px; border:{theme.CARD_BORDER}px solid var(--c-line, #e3e8f0);
-  border-radius:calc(14px * var(--ss)); background:var(--c-paper, #fff);
+  padding:{theme.CARD_PAD}px;
+  /* ★ 테두리와 둥근 모서리를 **없앴다**(2026-08-12 지시). 캡처한 흰 면이 그대로
+     영상에 뜨므로, 박스 선이 있으면 영상 안에 액자가 하나 더 생긴다.
+     `theme.CARD_BORDER` 를 0 으로 두었으니 이 줄이 0px 로 나간다 — 값을 두 곳에서
+     정하지 않는다. */
+  border:{theme.CARD_BORDER}px solid var(--c-line, #e3e8f0);
+  border-radius:0; background:var(--c-paper, #fff);
 }}
+
+/* ── 이어지는 장 ── 한 문항이 여러 장으로 쪼개졌을 때 **한 카드가 이어지는 것처럼**
+   보이게 한다. 규약은 사용자가 정했다(2026-08-12):
+
+     첫 장   상단 테두리 O · 머리 O · 하단 테두리 X · 푸터 X
+     중간 장 상단 테두리 X · 머리 X · 하단 테두리 X · 푸터 X
+     끝 장   상단 테두리 X · 머리 X · 하단 테두리 O · 푸터 O
+
+   ★ 머리·푸터를 HTML 에서 빼는 것만으로는 안 된다. `.slide` 이 그 자리를
+     `--slide-head`/`--slide-foot` 로 잡아 두므로, 빼면 **빈 띠가 남아 카드가 뜬다.**
+     그래서 여기서 그 띠를 0 으로 접는다. 둘이 한 묶음이다 — 한쪽만 하면 어긋난다.
+   ★ 테두리를 없앤 뒤로는 이 클래스가 **자리(패딩)만** 접는다. 지울 선이 없다. */
+.slide.cont-top{{ padding-top:0; }}
+.slide.cont-top .qcard{{ padding-top:0; }}
+.slide.cont-bottom{{ padding-bottom:0; }}
+.slide.cont-bottom .qcard{{ padding-bottom:0; }}
 
 /* ★★ 그림을 최상단으로 — DOM 순서와 무관하게 카드 첫 자리에 온다.
    `order:-1` 하나로 되는 이유: 형제 모두가 기본 order:0 이다.
@@ -124,6 +150,21 @@ body{{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic",
   max-width:100%; max-height:var(--fig-max); height:auto;
 }}
 
+/* ── 해설 면 2단 ── 그림 옆에 해설을 둔다(2026-08-12 지시: "옆에 그림이 뜨고 …
+   해설은 한바닥에 모아서"). 세로로 쌓으면 그림 481px + 해설이 한 장을 넘겨 쪼개지고,
+   그러면 해설이 두 바닥으로 갈린다. 옆에 두면 **한 바닥에 모인다.**
+   ★ 그림이 없는 문항은 이 줄을 쓰지 않는다 — 한 단으로 그대로 흐른다. */
+.slide .ans-row{{
+  display:flex; align-items:flex-start; gap:calc(16px * var(--ss));
+}}
+.slide .ans-row > .ans-fig{{ flex:0 0 44%; min-width:0; }}
+.slide .ans-row > .ans-txt{{ flex:1 1 auto; min-width:0;
+  display:flex; flex-direction:column; gap:calc(8px * var(--ss)); }}
+/* 2단 안에서는 그림이 자기 칸 폭을 다 쓴다 — `order:-1` 은 여기서 의미가 없다. */
+.slide .ans-row figure.diagram{{ margin:0; }}
+.slide .ans-row figure.diagram svg,
+.slide .ans-row img.fig{{ width:100%; max-width:100%; max-height:none; }}
+
 /* ── 발문 ── */
 .slide .q{{
   font-size:calc(15px * var(--ts)); font-weight:700; line-height:1.5;
@@ -145,6 +186,18 @@ body{{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic",
 .slide.ch2 .opts{{
   display:grid; grid-template-columns:1fr 1fr;
   gap:calc(8px * var(--ss)) calc(18px * var(--ss));
+}}
+/* ★ 1×4 — 보기 4개를 **한 줄**로(2026-08-12 지시). 2×2 가 세로 2줄을 쓰던 것을
+   1줄로 만들어 그림까지 한 장에 당긴다. 16:9 는 가로가 남으므로 이것이 공짜다.
+   ★ `minmax(0,1fr)` 이어야 한다. `1fr` 만 주면 긴 보기가 칸을 밀어 4칸이 안 맞는다. */
+.slide.ch4 .opts{{
+  display:grid; grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:calc(10px * var(--ss));
+}}
+/* 한 줄에 4칸이면 칸이 좁다 — 번호와 글자를 위아래로 쌓아 폭을 번다. */
+.slide.ch4 .opt{{
+  flex-direction:column; gap:calc(3px * var(--ss));
+  font-size:calc(13px * var(--ts)); line-height:1.35;
 }}
 /* ★ 보기 한 칸의 상하 패딩을 10px→6px 로 조였다. **실측 근거**: 10px×2.4 = 24px 이
    상하로 붙어 칸마다 48px, 2×2 두 줄이면 96px 이 패딩만으로 나간다. 예산 652px 의 15% 다.
@@ -196,10 +249,12 @@ body{{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic",
    (`dense2`(30px) 는 1080p h.264 에서 못 읽는다 — 거기까지 오면 lesson 을 고칠 신호다.) */
 .slide.dense{{ --ts:2.30; --ss:2.05; }}
 
-/* ── 발 띠 ── */
+/* ── 발 줄 ── 카드 **안** 마지막 줄. 머리와 같은 이유로 높이를 고정하지 않는다.
+   ★ `margin-top:auto` 로 카드 바닥에 붙인다 — 내용이 짧아도 페이지 번호가 중간에
+     떠 있지 않게 한다. */
 .slide .s-foot{{
-  height:var(--slide-foot); flex:0 0 var(--slide-foot);
-  display:flex; align-items:center; justify-content:space-between;
+  flex:0 0 auto; margin-top:auto; padding-top:calc(8px * var(--ss));
+  display:flex; align-items:center; justify-content:flex-end;
   font-size:calc(11.5px * var(--ts)); color:var(--c-muted, #6b7688);
 }}
 
