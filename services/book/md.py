@@ -86,7 +86,18 @@ def _fm_line(key: str, value) -> str:
     if key in FM_FLOW_LIST:
         items = [_flow_item(v, key) for v in (value or [])]
         return f"{key}: [{', '.join(items)}]\n"
-    return f"{key}: {_scalar(value, key)}\n"
+    # ★ **빈 문자열은 `""` 로 낸다** — 위 `"R&R"` 과 같은 종류의 2바이트 문제다.
+    #
+    #   YAML 로는 `key:` 와 `key: ""` 가 둘 다 되지만, `02/*.md` 를 쓰는 사람이 **둘**이다:
+    #   이 앱(문항 저장)과 vendor 의 `build.py`(파생). 표기가 갈리면 파생을 돌릴 때마다
+    #   왕복 검증이 720건 전부 불일치로 뜨고, 발행 사전점검이 `q.md_sync` error 로 막힌다.
+    #   실제로 그렇게 막혔다(2026-08-13).
+    #
+    #   어느 쪽으로 맞출지는 **파일에서 되맞춘다**(이 저장소의 규칙). 720개 전수에서
+    #   빈 값은 `derived_from: ""` 뿐이고 값 없이 빈 키는 **하나도 없다** →
+    #   "빈 문자열이면 감싼다" 가 관측과 정확히 일치한다.
+    s = _scalar(value, key)
+    return f'{key}: ""\n' if s == "" else f"{key}: {s}\n"
 
 
 def front_matter(fm: dict) -> str:
