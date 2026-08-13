@@ -273,7 +273,7 @@ function render(){
   if(mode==="board"){ renderBoard(list); return; }
   if(mode==="theory"){
     if(!THEORY.length){ list.innerHTML='<div class="empty">이론 자료가 없습니다.</div>'; return; }
-    list.innerHTML='<div id="tbody" class="theorybox"></div>';
+    list.innerHTML=theoryVidBar()+'<div id="tbody" class="theorybox"></div>';
     loadTheory(curTheory||THEORY[0].href); return;
   }
   const rows=cur();
@@ -417,6 +417,25 @@ function vidButtons(round){
       + '<svg class="ic ic-sm"><use href="#i-'+(ext?'arrow-right':'play')+'"></use></svg>'
       + esc(v.label) + (ext?' <small>(링크)</small>':'') + '</button>';
   }).join("");
+}
+/* 이론 영상 — 과목 버튼 바로 밑에 한 개.
+   회차 영상과 달리 THEORY 항목 안에 `vid` 로 실려 온다(build_check.theory_videos).
+   링크가 없는 과목은 **아무것도 그리지 않는다** — 죽은 버튼을 만들지 않는 규칙은 여기도 같다. */
+function curTheoryItem(){
+  const h=curTheory||(THEORY[0]&&THEORY[0].href);
+  return THEORY.find(x=>x.href===h)||null;
+}
+function openTheoryVid(){ const t=curTheoryItem(); if(t&&t.vid&&t.vid.id) openVid(t.vid); }
+function theoryVidBar(){
+  const t=curTheoryItem(), v=t&&t.vid;
+  if(!v||!v.id) return "";
+  /* provider=link 는 새 창으로 나간다 — 회차 영상의 규칙을 그대로 따른다. */
+  const ext=v.provider==="link";
+  return '<div class="theory-vid" style="margin:0 0 12px">'
+    + '<button class="catbtn" onclick="openTheoryVid()"'
+    + (ext?' title="새 창에서 열립니다 — 내려받아 보는 링크입니다"':'') + '>'
+    + '<svg class="ic ic-sm"><use href="#i-'+(ext?'arrow-right':'play')+'"></use></svg>'
+    + esc(v.label||"이론 강의") + (ext?' <small>(링크)</small>':'') + '</button></div>';
 }
 function renderVideos(){
   const box=$("#vidList");

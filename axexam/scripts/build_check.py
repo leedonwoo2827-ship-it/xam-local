@@ -670,11 +670,60 @@ def map_videos(book: Path, pd_id: str = "sqld",
     return vids, filled, total, priv
 
 
-def build_theory(book: Path, out: Path) -> tuple[list[dict], dict]:
+def theory_videos(pd_id: str) -> dict[int, dict]:
+    """이론 요약노트에 붙는 **과목별 강의 영상**. `youtube_map.<pd>.json` 의 `theory` 를 읽는다.
+
+    회차 영상(`videos`)과 **같은 파일**에 둔다 — 발행 때 챙길 파일이 늘지 않게.
+    키는 과목 번호다(요약노트 `<h1>N과목` 의 그 번호). `t1` 처럼 써도 받는다:
+
+        "theory": { "1": {"id": "<드라이브 ID 또는 공유 URL>", "label": "1과목 이론 강의"} }
+
+    `id` 가 빈 항목은 버린다 — 화면에 죽은 버튼이 생기지 않게(회차 영상과 같은 규칙).
+
+    ★ 레벨 제한(min_level)은 지원하지 않는다. 이론 영상 링크는 공개 `theory.js` 에 실린다.
+      가리려면 회차 영상처럼 별도 비공개 파일 + api/videos.php 통로가 필요한데 이론 탭에는
+      그 통로가 없다. 비공개가 필요해지면 videos.private.json 방식을 그대로 옮긴다.
+    """
+    ymap = youtube_map_path(pd_id)
+    if not ymap:
+        return {}
+    try:
+        raw = json.loads(ymap.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"[warn] {ymap.name} 파싱 실패({e}) — 이론 영상 없이 빌드한다")
+        return {}
+
+    dflt = raw.get("_provider") or "youtube"
+    out: dict[int, dict] = {}
+    for k, e in (raw.get("theory") or {}).items():
+        e = e or {}
+        try:
+            sub = int(str(k).strip().lstrip("tT") or 0)
+        except ValueError:
+            print(f"[warn] {ymap.name} 의 theory '{k}' — 과목 번호로 읽을 수 없다. 건너뛴다")
+            continue
+        vid = str(e.get("id") or "").strip()
+        if not sub or not vid:
+            continue
+        prov = e.get("provider") or dflt
+        # 모르는 provider 는 화면이 유튜브로 간주해 빈 iframe 을 띄운다 → 여기서 죽인다
+        if prov not in PROVIDERS:
+            raise SystemExit(
+                f"[error] {ymap.name} 의 theory '{k}': provider={prov!r} 를 화면이 모른다.\n"
+                f"        쓸 수 있는 값: {', '.join(PROVIDERS)}")
+        out[sub] = {"provider": prov, "id": video_id(vid, prov),
+                    "label": e.get("label") or f"{sub}과목 이론 강의"}
+    return out
+
+
+def build_theory(book: Path, out: Path,
+                 tvids: dict[int, dict] | None = None) -> tuple[list[dict], dict]:
     """03 요약노트 → 이론 탭 목록 + 내용(JS 에 구워넣을 dict) 반환.
 
     fetch/iframe 없이 file://·서버 둘 다 되도록, 각 요약 HTML 의 <style>+<body> 를 추출해
     theory_content.js(window.THEORY_HTML)로 굽는다.
+
+    `tvids` 가 있으면 과목별 강의 영상을 항목에 `vid` 로 얹는다(`theory_videos()` 참조).
     """
     src = book / "03"
     if not src.is_dir():
@@ -705,8 +754,14 @@ def build_theory(book: Path, out: Path) -> tuple[list[dict], dict]:
     for f in files:
         raw = f.read_text(encoding="utf-8")
         styles = "".join(re.findall(r"<style[^>]*>(.*?)</style>", raw, re.S))
-        mb = re.search(r"<body[^>]*>(.*?)</body>", raw, re.S)
-        body = mb.group(1) if mb else raw
+        # ★ 본문을 찾기 전에 <style> 을 떼어낸다. 요약노트 CSS 주석에 설명용으로 적힌
+        #   `<body>` 가 진짜 본문보다 먼저 나오기 때문이다(authoring/theory.py 의 _FOLD_CSS).
+        #   원문 그대로 찾으면 CSS 조각이 본문으로 잘려 나간다 — 2026-08-13 에 4개 과목이
+        #   전부 이렇게 깨져 있었다(첫 <body> 1703~2128, 진짜 본문 3218~3643). 화면에는
+        #   주석 한 줄만 뜨고 h2 15개·h3 136개가 사라진다.
+        naked = re.sub(r"<style[^>]*>.*?</style>", "", raw, flags=re.S)
+        mb = re.search(r"<body[^>]*>(.*?)</body>", naked, re.S)
+        body = mb.group(1) if mb else naked
         for old, new in name_map.items():
             if old != new:
                 body = body.replace(old, new)
@@ -717,7 +772,11 @@ def build_theory(book: Path, out: Path) -> tuple[list[dict], dict]:
         if f.stem != "summary_index":
             n, name = subject_of(raw)
             lab = f"{n}과목 · {name}" if n != 99 else (f.stem.replace("summary_", "") + " 요약")
-            items.append({"label": lab, "href": key, "sub": n})
+            it = {"label": lab, "href": key, "sub": n}
+            v = (tvids or {}).get(n)
+            if v:
+                it["vid"] = v      # 영상이 없는 과목은 키 자체를 넣지 않는다 → 버튼도 안 생긴다
+            items.append(it)
     items.sort(key=lambda x: x["sub"])
     return items, content
 
@@ -873,7 +932,7 @@ def main(argv: list[str] | None = None) -> int:
     vids, vfilled, vtotal, vpriv = map_videos(book, args.pd, vbundles)
 
     # 4) 이론(03 요약노트)  → 06/pd/<pd>/theory/
-    theory, theory_html = build_theory(book, pdir)
+    theory, theory_html = build_theory(book, pdir, theory_videos(args.pd))
 
     # 5) 데이터 파일 — 전부 문제집별 디렉터리로
     (pdir / "problems.js").write_text(
