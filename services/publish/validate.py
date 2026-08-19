@@ -36,6 +36,36 @@ def _chk(gid: str, cid: str, level: str, label: str, ok: bool, detail: str = "")
             "ok": bool(ok), "detail": detail}
 
 
+def _difficulty_target(n_r: int):
+    """(목표 개수, 허용치) — 시험정보의 `difficulty.round_target` 을 회차 문항수에 맞춘다.
+
+    ★ 시험정보 값은 **그 시험의 회차 문항수 기준**이다(빅분기 80, SQLD 50).
+      실제 회차가 그보다 적거나 많을 수 있으므로 비율로 바꿔 다시 곱한다.
+    """
+    try:
+        from services.authoring import parts
+
+        d = parts.active() or {}
+        rt = ((d.get("difficulty") or {}).get("round_target") or {})
+        base = parts.round_size(d) or 0
+        if rt and base > 0:
+            tgt, tol = {}, {}
+            for k in ("상", "중", "하"):
+                v = rt.get(k)
+                lo, hi = (v if isinstance(v, (list, tuple)) and len(v) == 2 else (v, v))
+                mid = (float(lo) + float(hi)) / 2 / base
+                half = max(0.02, (float(hi) - float(lo)) / 2 / base)
+                tgt[k] = round(n_r * mid)
+                tol[k] = max(3, round(n_r * half))
+            return tgt, tol
+    except Exception:                                        # noqa: BLE001
+        pass
+    # 되돌림 — 빅분기 실측 비율
+    return ({"상": round(n_r * .375), "중": round(n_r * .55), "하": round(n_r * .0875)},
+            {"상": max(4, round(n_r * .05)), "중": max(6, round(n_r * .08)),
+             "하": max(3, round(n_r * .04))})
+
+
 def check_questions() -> list[dict]:
     out: list[dict] = []
     items = bindex.cached_items()
@@ -168,15 +198,13 @@ def check_questions() -> list[dict]:
         # 목표 난이도 비율을 **그 회차 문항 수에 비례**해 잡는다. 24/44/12 로 못박으면
         # 80문항 회차만 맞고 50문항 책에서는 늘 경고가 뜬다.
         #
-        # ★ 비율은 **집필 정책**이다 — `exam-all-빅분기-프롬프트-260803.md` 의
-        #   "상 28~32 · 중 42~46 · 하 6~8 (합 80)" 이 정본이고, 여기 값은 그 비율이다.
-        #   프롬프트를 고치면 이 값도 같이 고친다. 두 곳이 갈리면 9회차 전부 경고가 뜨고,
-        #   항상 뜨는 경고는 읽지 않게 되어 정말 편중된 회차도 같이 지나간다.
-        #   (예전 값 상30%·하15% 는 SQLD 시절 정책이라 실측 상37%·하9% 와 늘 갈렸다.)
+        # ★ 목표 비율은 **시험정보에서** 온다 — `difficulty.round_target` 이 정본이다.
+        #   여기 박아 두면 품목마다 갈린다: 빅분기는 상 28~32(37%)인데 SQLD 는
+        #   상 12~16(28%)이다. 상수로 두면 SQLD 20회차 전부 경고가 뜨고, 항상 뜨는
+        #   경고는 읽지 않게 되어 정말 편중된 회차도 같이 지나간다.
+        #   시험정보를 못 읽으면 옛 비율(빅분기 실측)로 떨어진다.
         n_r = len(rows)
-        tgt = {"상": round(n_r * .375), "중": round(n_r * .55), "하": round(n_r * .0875)}
-        tol = {"상": max(4, round(n_r * .05)), "중": max(6, round(n_r * .08)),
-               "하": max(3, round(n_r * .04))}
+        tgt, tol = _difficulty_target(n_r)
         ok_d = all(abs(ddist.get(k, 0) - tgt[k]) <= tol[k] for k in tgt)
         out.append(_chk("questions", f"q.difficulty_mix.{rc}", "warn",
                         f"{rc} 난이도 "

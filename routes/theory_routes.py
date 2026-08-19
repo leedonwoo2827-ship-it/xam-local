@@ -37,9 +37,21 @@ KIND = "theory"
 #   아예 미탑재이고(app.py 머리말), 그때 이 라우트까지 같이 죽으면 안 된다.
 AUTHORING_KIND = "authoring"
 
-# ★ 규약상 소스는 m01~m09 다(exam-all-빅분기-프롬프트-260803.md 110행).
+# ★ 기대 회차 수는 **시험정보에서** 온다(`amplification.target_items` ÷ 회차 문항수).
+#   상수 9 는 빅분기 것이었다 — SQLD 는 20회차라, 9회차만 있어도 「다 찼다」 고 봤다.
 #   못 채웠으면 막지 않고 경고만 한다 — 있는 회차로 만들어 두는 것이 쓸모가 있다.
-ROUNDS_EXPECTED = 9
+def rounds_expected() -> int:
+    from services.authoring import parts
+
+    d = parts.active() or {}
+    try:
+        target = int((d.get("amplification") or {}).get("target_items") or 0)
+    except (TypeError, ValueError):
+        target = 0
+    per = parts.round_size(d) or 0
+    if target > 0 and per > 0:
+        return max(1, -(-target // per))
+    return 9
 
 # ★ 빈 값 = CLI 기본. 문항 집필(`/api/authoring`)이 쓰는 것과 같은 모델이다.
 #   여기에 특정 모델명을 박지 않는다 — 문제집 하나가 두 모델로 갈리면 이론과 해설의
@@ -72,9 +84,9 @@ def setup_theory_routes() -> APIRouter:
             "keys": [k for k, _ in theory.keys()],
             "items": items,
             "rounds": rounds,
-            "rounds_expected": ROUNDS_EXPECTED,
+            "rounds_expected": rounds_expected(),
             # ★ 화면이 "지금 눌러도 되나" 를 이 값으로 판단한다.
-            "rounds_ready": len(rounds) >= ROUNDS_EXPECTED,
+            "rounds_ready": len(rounds) >= rounds_expected(),
             "authoring_running": bool(registry.running(AUTHORING_KIND)),
             "running_job": (registry.running(KIND) or {}).get("id"),
         }
@@ -109,7 +121,7 @@ def setup_theory_routes() -> APIRouter:
             if a := registry.running(AUTHORING_KIND):
                 raise HTTPException(
                     409, f"문항 집필이 돌고 있습니다 (job {a['id'][:8]}). "
-                         f"이론은 m01~m{ROUNDS_EXPECTED:02d} 전체를 병합해 만드는 것이 "
+                         f"이론은 m01~m{rounds_expected():02d} 전체를 병합해 만드는 것이 "
                          f"규약이므로, 회차가 다 찬 뒤에 부르십시오. 지금 있는 회차로 "
                          f"만들려면 allow_while_authoring: true 로 부르십시오.")
 
@@ -137,10 +149,10 @@ def setup_theory_routes() -> APIRouter:
                          force=True)
         # ★ 회차가 모자란 것을 조용히 넘기지 않는다. 나중에 "왜 m09 내용이 없지" 를
         #   물을 때 짚을 곳이 있어야 한다.
-        if len(rounds) < ROUNDS_EXPECTED:
+        if len(rounds) < rounds_expected():
             registry.log(
                 job, f"★ 소스가 {len(rounds)}회차뿐입니다({', '.join(rounds) or '없음'}). "
-                     f"규약은 m01~m{ROUNDS_EXPECTED:02d} 전체 병합입니다 — 남은 회차를 "
+                     f"규약은 m01~m{rounds_expected():02d} 전체 병합입니다 — 남은 회차를 "
                      f"집필한 뒤 redo 로 다시 부르십시오.", force=True)
 
         def work(j: Dict[str, Any]) -> None:
