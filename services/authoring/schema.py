@@ -30,12 +30,12 @@ N_CHOICES = 4
 
 # 과목 문자열 — **한 글자도 바꾸면 안 된다.** 요약노트 <h1>N과목 · 이름</h1> 과
 # 일치해야 성적표의 과목별 링크가 붙는다(프롬프트 문서 33-34행).
-SUBJECTS: Dict[int, str] = {
-    1: "빅데이터 분석 기획",
-    2: "빅데이터 탐색",
-    3: "빅데이터 모델링",
-    4: "빅데이터 결과 해석",
-}
+# ★ 과목은 **시험정보 파일**에서 온다(`exams/<pd>.json`). 여기 박아 두면 품목마다
+#   코드를 고쳐야 하고, 실제로 SQLD 를 붙이는 순간 빅분기 과목명이 그대로 나갔다.
+#   `parts.subjects_map()` 이 활성 책 폴더의 품목으로 정한다.
+def subjects() -> Dict[int, str]:
+    from services.authoring import parts
+    return parts.subjects_map()
 
 DIFFICULTIES = ["상", "중", "하"]
 
@@ -57,7 +57,8 @@ def _item_schema(subject_nos: List[int], numbers: List[int]) -> Dict[str, Any]:
             "subject_no": {"type": "integer", "enum": subject_nos},
             # 과목명도 enum — subject_no 와 어긋나는 조합을 스키마가 막지는 못하므로
             # draft.py 가 교차 검증한다. 그래도 오타는 여기서 걸린다.
-            "subject": {"type": "string", "enum": [SUBJECTS[n] for n in subject_nos]},
+            "subject": {"type": "string",
+                        "enum": [subjects()[n] for n in subject_nos if n in subjects()]},
             "difficulty": {"type": "string", "enum": DIFFICULTIES},
             "tags": {"type": "array", "items": {"type": "string"},
                      # 프롬프트 문서는 2~4개다. 실측에서 모델이 6개를 냈다 —
@@ -162,11 +163,21 @@ def part_schema(subject_nos: List[int], numbers: List[int]) -> Dict[str, Any]:
 
 
 def subject_no_for(question_no: int) -> int:
-    """문항번호 → 과목번호. 1~20=1과목, 21~40=2과목, 41~60=3과목, 61~80=4과목.
+    """문항번호 → 과목번호. 경계는 **시험정보의 과목 문항수 누적**이다.
 
     ★ 내용이 아니라 **번호에서** 나온다. `pr_key` 가 번호에서 파생되는 것과 같은
       이유다 — 다시 만들어도 같은 값이 나와야 임포트가 UPSERT 로 맞아 들어간다.
+
+    ★ 전에는 `(n-1)//20 + 1` 이었다. 빅분기(4과목 × 20)에서만 맞는 식이고,
+      SQLD(10 / 40)에서는 11번을 1과목으로 봤다 — 과목 경계가 20번이 아니라 10번이다.
     """
-    if not 1 <= question_no <= 80:
-        raise ValueError(f"문항번호가 1~80 밖입니다: {question_no}")
-    return (question_no - 1) // 20 + 1
+    from services.authoring import parts
+
+    spec = parts.active()
+    total = parts.round_size(spec)
+    if not 1 <= question_no <= total:
+        raise ValueError(f"문항번호가 1~{total} 밖입니다: {question_no}")
+    no = parts.subject_no_for(spec, question_no)
+    if not no:
+        raise ValueError(f"과목을 정할 수 없습니다(시험정보에 과목이 없습니다): {question_no}")
+    return no

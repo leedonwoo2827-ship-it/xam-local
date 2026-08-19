@@ -15,13 +15,17 @@ import json
 import os
 from typing import Any, Dict, List, Tuple
 
-from core.constants import BOOK_DIR
+# ★ `BOOK_DIR` 을 **모듈 상수로 잡지 않는다.** 그것은 `.env` 의 첫 실행 기본값이고,
+#   실제로 쓰는 폴더는 작업 폴더 화면에서 고른 것이다(`paths.book_dir()`).
+#   상수로 잡아 두니 폴더를 SQLD 로 바꿔도 화면이 시작할 때의 빅분기를 계속 읽었다
+#   — 집필 화면에 SQLD 시험정보와 빅분기 회차가 함께 뜬 원인이다(2026-08-19).
 
 from . import render, theme
+from services.book import paths
 
 
 def _bundles() -> List[str]:
-    d = os.path.join(BOOK_DIR, "05")
+    d = os.path.join(paths.book_dir(), "05")
     if not os.path.isdir(d):
         return []
     return sorted(x for x in os.listdir(d)
@@ -30,7 +34,7 @@ def _bundles() -> List[str]:
 
 def _load(b: str) -> Tuple[Dict[str, Any], str]:
     """번들의 lesson JSON 과 그림 폴더 상대경로."""
-    src = os.path.join(BOOK_DIR, "05", b, "source")
+    src = os.path.join(paths.book_dir(), "05", b, "source")
     p = os.path.join(src, f"lesson_{b}.json")
     if not os.path.isfile(p):
         raise FileNotFoundError(

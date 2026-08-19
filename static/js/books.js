@@ -434,7 +434,7 @@ async function pickOcr(it) {
       + `지금 쓰는 값: <pre class="pb-cmd">${escapeHtml(it.ocr_effective || "(없음)")}</pre>`
       + (it.ocr ? "" : "<p class='muted'>이 값은 작업 폴더 이름에서 <b>유도</b>한 것입니다.</p>")
       + "<p>도구 #1 의 <code>data\\raw_pages</code> · <code>data\\ocr_draft</code> 가 "
-      + "들어 있는 폴더를 고르세요. 판독은 Claude Code 창이 하고, 이 앱은 그 초안을 "
+      + "들어 있는 폴더를 고르세요. 판독도 이 앱이 합니다([스캔 판독]) — 그 초안을 "
       + "검수해 <code>01/</code> 로 확정합니다.</p>",
     ok: "폴더 고르기", cancel: it.ocr ? "지정 지우기" : "취소",
   });

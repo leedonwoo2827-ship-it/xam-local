@@ -9,7 +9,10 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Request
 
-from core.constants import BOOK_DIR
+# ★ `BOOK_DIR` 을 **모듈 상수로 잡지 않는다.** 그것은 `.env` 의 첫 실행 기본값이고,
+#   실제로 쓰는 폴더는 작업 폴더 화면에서 고른 것이다(`paths.book_dir()`).
+#   상수로 잡아 두니 폴더를 SQLD 로 바꿔도 화면이 시작할 때의 빅분기를 계속 읽었다
+#   — 집필 화면에 SQLD 시험정보와 빅분기 회차가 함께 뜬 원인이다(2026-08-19).
 from services.book import paths, scan
 
 logger = logging.getLogger(__name__)
@@ -37,7 +40,7 @@ def setup_scan_routes() -> APIRouter:
         if not d.get("exists"):
             raise HTTPException(
                 status_code=503,
-                detail=d.get("error") or f"01/ 을 찾을 수 없습니다 ({BOOK_DIR}).")
+                detail=d.get("error") or f"01/ 을 찾을 수 없습니다 ({paths.book_dir()}).")
         return d
 
     @router.get("/verify")

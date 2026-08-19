@@ -45,21 +45,30 @@ from services.book import paths
 
 from .errors import ProviderError
 from .provider import ClaudeAuthor
-from .schema import SUBJECTS
+from .schema import subjects
 
 # ── 과목 ↔ 파일 키 ──────────────────────────────────────────────────────────
 # ★ 키는 **이 PC 의 실제 파일명 규약**이다. 업로드본은 한글 키로 못박아 뒀고
 #   (`분석기획`·`탐색`…) 그것 때문에 요약노트 화면이 404 를 냈다
 #   (`paths.summary_keys()` 머리말). ascii 로 가면 빌더의 한글 파일명 치환
 #   (`summary_koN.html`)도 아예 안 탄다.
-KEYS: Tuple[Tuple[str, int], ...] = (
-    ("planning", 1),
-    ("explore", 2),
-    ("modeling", 3),
-    ("interpret", 4),
-)
-KEY_OF: Dict[int, str] = {n: k for k, n in KEYS}
-NO_OF: Dict[str, int] = {k: n for k, n in KEYS}
+# ★ 과목 키는 **시험정보에서** 온다(`subjects[].key`). 전에는 빅분기 4개가
+#   여기 박혀 있었다(`planning`·`explore`·`modeling`·`interpret`). SQLD 는 2과목이고
+#   이름이 달라서, 그대로 두면 요약노트가 없는 과목 넷을 내놓고 발행 파일명도
+#   빅분기 것이 된다(2026-08-19).
+#   함수다 — 작업 폴더를 바꾸면 즉시 따라야 한다.
+def keys() -> Tuple[Tuple[str, int], ...]:
+    from services.authoring import parts
+
+    return parts.subject_keys()
+
+
+def key_of(no: int) -> str:
+    return dict((n, k) for k, n in keys()).get(int(no), "")
+
+
+def no_of(key: str) -> int:
+    return dict(keys()).get(str(key), 0)
 
 # ★ 모델이 낼 수 있는 최대 분량. **상한만 건다**(위 머리말). 실측 근거: 업로드본
 #   `theory_content.js` 가 4과목 합쳐 81KB 였다 → 과목당 약 20KB. 60KB 면 3배
@@ -92,7 +101,12 @@ def theory_schema() -> Dict[str, Any]:
 # ★ 회차별 값을 넣지 않는다 — 프롬프트 캐시 접두가 고정이어야 4과목 연달아 돌릴 때
 #   33,682토큰이 캐시 읽기로 전환된다(provider.py 실측). 과목 번호는 아래
 #   `theory_prompt()` 쪽에만 둔다.
-SYSTEM = """당신은 빅데이터분석기사 필기 문제집의 요약노트(이론) 집필자다.
+SYSTEM_TEMPLATE = """{머리}
+
+■ ★ 아래 예시의 **개념 이름은 형식을 보이기 위한 것**이다
+예시에 나온 용어(엔트로피·층화추출 같은 것)가 이 시험에 없으면, **이 시험의 개념으로
+바꿔 읽는다.** 예시를 보고 시험에 없는 개념을 이론에 넣지 않는다.
+무엇이 이 시험의 개념인지는 **해설에 실제로 나온 것**이 정한다 — 그것만 쓴다.
 
 ■ 무엇을 만드는가
 **요약 이론**의 본문 HTML 조각이다. 해설 모음집이 아니다.
@@ -101,8 +115,7 @@ SYSTEM = """당신은 빅데이터분석기사 필기 문제집의 요약노트(
 순서가 이렇다:
 
   ① 이 과목 문항의 해설을 **전부** 훑어 **시험에 나오는 키워드**를 뽑는다.
-     키워드 = 용어 · 개념 · 공식 · 분류 이름. (예: DIKW, 층화추출, ROI, k-익명성,
-     CRISP-DM, 정밀도, VIF)
+     키워드 = 용어 · 개념 · 공식 · 분류 이름.{키워드예시}
   ② 같은 키워드가 여러 문항에 흩어져 있다 — **키워드 하나로 합친다.**
      항목 하나에 문번이 여러 개 붙는 것이 정상이고 그것이 목표다.
   ③ 합친 키워드를 **일정한 차례**로 늘어놓는다.
@@ -160,7 +173,7 @@ SYSTEM = """당신은 빅데이터분석기사 필기 문제집의 요약노트(
 
   ① **공부를 처음 시작할 때.** 이 과목을 아무것도 모르는 사람이 첫 교재로 읽는다.
      그래서 용어를 **정의부터** 쓴다. 앞에서 정의하지 않은 말을 뒤에서 쓰지 않는다.
-     약어는 처음 나올 때 풀어 쓴다(예: DIKW — Data·Information·Knowledge·Wisdom).
+     약어는 처음 나올 때 풀어 쓴다(예: `DDL` — Data Definition Language).
   ② **시험 직전 최종정리할 때.** 같은 사람이 다 배운 뒤 한 번에 훑는다.
      그래서 **짧고 구조가 보여야** 한다. 제목만 따라 읽어도 과목 전체가 잡혀야 하고,
      한 항목은 눈에 한 번에 들어와야 한다.
@@ -210,7 +223,7 @@ SYSTEM = """당신은 빅데이터분석기사 필기 문제집의 요약노트(
 
   · 근거는 **우리 모의고사 해설뿐**이다. 해설에 없는 것을 지어내 채우지 말 것.
     분량을 늘리려고 일반론을 붙이면 그것이 어느 문항의 근거도 아니게 된다.
-  · ★ **옳은 문장으로 쓴다.** 문항은 4지선다이므로 해설에는 "정답인 진술" 과
+  · ★ **옳은 문장으로 쓴다.** 문항은 {지선다}지선다이므로 해설에는 "정답인 진술" 과
     "왜 틀렸는지" 가 같이 있다. 이론 노트에는 **옳은 진술**을 서술로 적는다 —
     "①은 틀리다" 같은 보기 번호 이야기를 옮기지 않는다. 보기 번호는 이 문서에서
     아무것도 가리키지 않는다(문항이 옆에 없다).
@@ -235,10 +248,9 @@ SYSTEM = """당신은 빅데이터분석기사 필기 문제집의 요약노트(
          나온 키워드가 한눈에 갈린다 — 그것이 "무엇이 많이 나오는가" 다.
     ★ 그렇다고 "함정 ①②③" 처럼 **따로 딱지를 붙이지 않는다.** 구분해야 할 내용을
       설명 문장 안에 자연스럽게 넣는다(아래 금지 항목 참조).
-  · 계산 공식은 해설에 유도가 있으면 그것을 살린다. 정밀도·재현율·F1·향상도·
-    정보이득·R² 같은 것은 정의만 적지 말 것.
+  · 계산·판정 공식은 해설에 유도가 있으면 그것을 살린다 — 정의만 적지 말 것.
   · 표가 맞는 것은 표로(`<table>`). 비교·분류·장단점이 그렇다.
-  · 헷갈리는 짝은 나란히 둔다(예: 정밀도 ↔ 재현율, 1종 ↔ 2종 오류).
+  · 헷갈리는 짝은 나란히 둔다.{혼동쌍}
   · ★ **표의 행은 "개념" 이다. 절대 "문항" 이 아니다.**
     문항마다 한 행을 만들면 그것은 요약이 아니라 나열이고, 같은 값이 계속 반복된다.
     ✗ 나쁨 — 문항이 행이 되어 같은 계산이 7번 반복된다:
@@ -261,6 +273,40 @@ SYSTEM = """당신은 빅데이터분석기사 필기 문제집의 요약노트(
 """
 
 
+
+def system() -> str:
+    """요약노트 시스템 프롬프트. **품목마다 다르다** — 시험정보에서 조립한다.
+
+    ★ 전에는 첫 줄이 「당신은 빅데이터분석기사 필기 문제집의…」 였고 키워드 예시도
+      빅분기 용어(DIKW·VIF·정밀도)였다. SQLD 요약노트를 그 프롬프트로 만들면 시험에
+      없는 개념이 이론에 섞인다 — 「시험에 나오는 대로 맞춘다」 에 어긋난다.
+    """
+    from services.authoring import parts
+
+    d = parts.active() or {}
+    label = str(d.get("label") or "").strip() or "자격시험"
+    head = f"당신은 {label} 문제집의 요약노트(이론) 집필자다."
+
+    # 키워드 예시 — 이 시험의 오답쌍에서 낱개 용어를 뽑아 쓴다. 없으면 예시를 생략한다.
+    # ★ `↔` 로만 쪼갠다. 공백으로 쪼개면 `INNER JOIN` 이 `INNER`·`JOIN` 으로 갈려
+    #   예시가 낱말 부스러기가 된다(실측).
+    words: list = []
+    for pair in (d.get("distractor_pairs") or []):
+        for w in str(pair).split("↔"):
+            w = w.strip().strip("()·,.").strip()
+            if 1 < len(w) <= 18 and w not in words:
+                words.append(w)
+    ex = f" (예: {', '.join(words[:7])})" if words else ""
+
+    pairs = [str(x) for x in (d.get("distractor_pairs") or [])][:2]
+    dup = f" 예: {' , '.join(pairs)}." if pairs else ""
+    n = int(d.get("choices") or 4)
+    return (SYSTEM_TEMPLATE.replace("{머리}", head)
+            .replace("{키워드예시}", ex)
+            .replace("{혼동쌍}", dup)
+            .replace("{지선다}", str(n)))
+
+
 def theory_prompt(*, subject_no: int, rounds: List[str]) -> str:
     """이 과목 하나를 쓰라는 지시. 읽을 파일을 **경로로** 준다.
 
@@ -274,8 +320,19 @@ def theory_prompt(*, subject_no: int, rounds: List[str]) -> str:
       **우리가 만든 9회 모의고사뿐**이다(2026-08-12 지시). 읽을 파일 목록에서
       아예 빼는 것이 금지 문구보다 확실하다 — 없는 것은 인용할 수 없다.
     """
-    name = SUBJECTS[subject_no]
-    lo, hi = (subject_no - 1) * 20 + 1, subject_no * 20
+    # ★ 과목 이름·문항 범위를 시험정보에서. 상수식은 빅분기에서만 맞았다.
+    from services.authoring import parts as _P
+
+    _spec = _P.active()
+    name = subjects().get(subject_no, "")
+    lo, hi, _acc = 0, 0, 0
+    for _s in (_spec or {}).get("subjects") or []:
+        _c = int(_s.get("count") or 0)
+        if _c > 0:
+            if int(_s.get("no") or 0) == subject_no:
+                lo, hi = _acc + 1, _acc + _c
+                break
+            _acc += _c
     src = "\n".join(f"  · _rounds/{rc}.json" for rc in rounds) or "  · (없음)"
     return f"""■ 이번에 쓸 것: **{subject_no}과목 · {name}**
 
@@ -615,7 +672,7 @@ def validate(got: Dict[str, Any], subject_no: int) -> Tuple[List[str], List[str]
         warns.append(f"대주제가 {n_h2}개뿐입니다 — 과목 하나를 담기에 적습니다")
 
     # 과목이 뒤바뀐 것을 값싸게 잡는다. 다른 과목 이름이 제목에 박혀 있으면 의심이다.
-    for no, nm in SUBJECTS.items():
+    for no, nm in subjects().items():
         if no != subject_no and nm in " ".join(heads):
             warns.append(f"headings 에 다른 과목 이름('{nm}')이 있습니다 — "
                          f"과목이 섞였는지 확인하십시오")
@@ -754,13 +811,13 @@ def render_html(subject_no: int, body_html: str, css: str = "") -> str:
     """발행되는 `.html` 을 조립한다. **LF 로만 만든다** — 개행 변환은 `to_disk()`.
 
     ★ `<h1>{N}과목 · {이름}</h1>` 이 계약이다. 빌더의 `subject_of()` 가 이 한 줄로
-      이론 탭의 순서와 라벨을 정한다. 이름은 `SUBJECTS` 와 **정확히 같아야** 한다 —
+      이론 탭의 순서와 라벨을 정한다. 이름은 시험정보의 과목명과 **정확히 같아야** 한다 —
       요약노트 <h1> 과 문항의 `subject` 문자열이 어긋나면 성적표 링크가 안 붙는다
       (draft.py `_validate` 가 문항 쪽에서 같은 것을 본다).
 
     ★ 문서 끝 "출처:" 줄은 **붙이지 않는다** — 위 머리말 참조.
     """
-    name = SUBJECTS[subject_no]
+    name = subjects().get(subject_no, "")
     return "\n".join([
         "<!DOCTYPE html>",
         '<html lang="ko">',
@@ -828,7 +885,7 @@ class TheoryResult:
     def as_dict(self) -> Dict[str, Any]:
         return {
             "key": self.key, "subject_no": self.subject_no,
-            "subject": SUBJECTS.get(self.subject_no, ""),
+            "subject": subjects().get(self.subject_no, ""),
             "ok": self.ok, "headings": self.headings,
             "problems": self.problems, "warnings": self.warnings,
             "h2_count": self.h2_count, "h3_count": self.h3_count,
@@ -909,12 +966,12 @@ def draft_theory(*, key: str, book_dir: str,
       쓰면 그대로 사이트에 나간다. 문항 쪽은 `_rounds/` 앞에 스테이징이 한 겹
       있어서 그 위험이 없었다.
     """
-    if key not in NO_OF:
+    if not no_of(key):
         raise ValueError(f"알 수 없는 요약노트 키: {key!r} "
-                         f"({' | '.join(k for k, _ in KEYS)})")
+                         f"({' | '.join(k for k, _ in keys())})")
     import shutil
 
-    subject_no = NO_OF[key]
+    subject_no = no_of(key)
     rounds = available_rounds(book_dir)
     res = TheoryResult(key=key, subject_no=subject_no, model=model or "cli-default")
 
@@ -940,7 +997,7 @@ def draft_theory(*, key: str, book_dir: str,
     got: Dict[str, Any] = {}
     try:
         got = author.structured(
-            SYSTEM,
+            system(),
             theory_prompt(subject_no=subject_no, rounds=rounds),
             theory_schema())
     except ProviderError as e:

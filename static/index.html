@@ -27,10 +27,18 @@
       </button>
     </div>
 
-    <!-- 240문항 검수가 이 앱의 존재 이유다. 전역 기본 액션을 그 큐에 붙인다. -->
-    <button class="btn-new" id="btn-next-unreviewed" type="button">
-      <span data-icon="check" data-icon-size="15"></span>
-      <span>다음 미검수 문항</span>
+    <!-- ★ 큰 버튼은 **지금 화면의 주 동작**이다.
+         초심자는 툴바의 작은 버튼을 주 동작으로 읽지 못한다(2026-08-18 지시:
+         "실사용자들이 초심자라 주 버튼이 작은걸 잘 이해를 못해요").
+         그래서 라벨·동작을 화면이 정한다 — `shell.js` 의 PRIMARY 표. -->
+    <button class="btn-new" id="btn-primary" type="button">
+      <span data-icon="check" data-icon-size="15" id="btn-primary-icon"></span>
+      <span id="btn-primary-label">다음 미검수 문항</span>
+    </button>
+    <button class="btn-new" id="btn-primary2" type="button" hidden
+            style="margin-top:6px;background:var(--linen-deep);color:var(--text-1)">
+      <span data-icon="sparkles" data-icon-size="15" id="btn-primary2-icon"></span>
+      <span id="btn-primary2-label"></span>
     </button>
 
     <ul class="side-nav" id="side-nav">

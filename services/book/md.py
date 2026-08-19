@@ -183,6 +183,11 @@ def passage_parts(question: dict) -> list[str]:
     return parts
 
 
+PIPE = chr(124)
+# 이스케이프된 파이프(`\|`)는 셀 내용이다 — 구분자로 세지 않는다.
+_CELL_SPLIT = re.compile(r"(?<!\\)\|")
+
+
 def is_block_choice(text: str) -> bool:
     """이 보기를 `①` 단독 줄 + 빈 줄 + 본문 형태로 써야 하는가.
 
@@ -190,8 +195,19 @@ def is_block_choice(text: str) -> bool:
     같은 문항을 다르게 쓰면 대조가 무의미해진다.
     """
     ex = (text or "").lstrip()
-    return bool(ex) and ("\n" in ex or ex[:2] in ("**", "| ", "``", "![")
-                         or ex.startswith("|"))
+    if not ex:
+        return False
+    if "\n" in ex or ex[:2] in ("**", "``", "!["):
+        return True
+    # ★ 파이프로 시작해도 **표가 아니면** 블록형이 아니다.
+    #   SQL 문자열 결합 연산자 `||` 가 보기 하나로 오는 문항이 있다(SQLD 12번).
+    #   블록형으로 쓰면 글리프만 한 줄 남고 값이 아래로 떨어져 보기가 두 줄로 갈린다.
+    #   표 판정: 양끝 파이프를 뗀 뒤 **칸 하나라도 내용이 있으면** 표다.
+    #   ★ '칸이 둘 이상' 을 요구하면 **1열 표**가 깨진다 — 보기가 1열 표인
+    #     문항이 있다(SQLD 20번: `| MAX(COL1) |` / `|---|` / `| 2 |`).
+    if ex.startswith(PIPE):
+        return any(c.strip() for c in _CELL_SPLIT.split(ex.strip(PIPE)))
+    return False
 
 
 def render(question: dict, round_meta: dict, flags: dict) -> str:

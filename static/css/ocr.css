@@ -15,7 +15,10 @@
   margin-bottom: 12px;
 }
 .oc-book { font-size: var(--t-base); margin-bottom: 8px; word-break: break-all; }
+/* 스크롤은 `.oc-dash` 가 맡는다 — 규칙은 app.css 의 **패널 스크롤러** 절에 있다
+   (`#panel-body` 가 overflow:hidden 이고 지정된 자식 하나만 스크롤한다). */
 .oc-dash { display: flex; flex-direction: column; gap: 18px; }
+.oc-head { flex: none; }
 .oc-round h3 { font-size: var(--t-sm); margin: 0 0 8px; color: var(--text-2); }
 .oc-grid { display: flex; flex-wrap: wrap; gap: 7px; }
 
@@ -200,6 +203,16 @@
   border: 1px solid var(--hairline); padding: 4px 10px; font-size: 13.5px; text-align: left;
 }
 .oc-preview .tbl th { background: var(--bone); }
+/* ★ **빈 셀도 한 줄 높이를 지킨다.**
+ *
+ *   빈 `<td>` 는 줄 상자(line box)가 없어서 높이가 padding 만 남는다 — 행이 실선처럼
+ *   납작해진다. 이 교재에는 **값이 없는 행이 뜻을 갖는** 문항이 있다(실측 SQLD 32번:
+ *   COL1·COL2 가 둘 다 NULL 인 행이 정답 판단의 핵심이다). 납작하면 그 행이 없는 것처럼
+ *   읽힌다.
+ *
+ *   그래서 폭 없는 공백(U+200B)을 넣어 줄 상자를 만든다 — 글자는 보이지 않고 높이만 산다.
+ *   `&nbsp;` 대신 이것을 쓰는 이유는 복사했을 때 공백이 끼지 않게 하려는 것이다. */
+.oc-preview .tbl td:empty::after { content: "\200B"; }
 .oc-preview ol { margin: 4px 0 4px 22px; padding: 0; }
 /* 수식은 넘칠 때 가로로만 스크롤한다 — 세로 스크롤이 생기면 줄 높이가 흔들린다. */
 .oc-preview mjx-container { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
@@ -226,3 +239,33 @@
   font-size: var(--t-sm); color: var(--text-2); white-space: nowrap;
   max-width: 260px; overflow: hidden; text-overflow: ellipsis;
 }
+
+/* ── OCR 실행 화면 (ocrrun.js) ────────────────────────────────────────────
+   PDF 한 줄 = 체크박스 + 파일명 + 상태. 줄이 곧 고르는 단위다. */
+.or-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--hairline);
+  cursor: pointer;
+}
+.or-row:last-child { border-bottom: 0; }
+.or-row:hover { background: var(--linen-deep); }
+.or-row input[type="checkbox"] { flex: none; }
+.or-row b { min-width: 9rem; }
+
+/* 스캔 면 넘기기 — 해설 그림이 다음 면에 있는 문항 때문에 필요하다.
+   ★ sticky 다. 확대해서 아래로 내려가 드래그하는 중에도 면 번호가 보여야 한다 —
+     어느 면을 보고 있는지 모르고 드래그하면 좌표가 조용히 엉뚱한 면의 것이 된다. */
+.oc-pagenav {
+  position: sticky; top: 0; z-index: 3;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 6px 10px; background: #1f1f1d; border-bottom: 1px solid #3a3a36;
+}
+/* ★ 안내는 **한 줄을 통째로** 쓴다. 버튼 사이에 끼면 좁은 창에서 넉 줄로
+   접혀 라벨이 어디 것인지 알 수 없게 된다(실측 2026-08-19 캡처). */
+.oc-pagenav #oc-pghint, .oc-pagenav #oc-armed { flex: 1 0 100%; }
+.oc-pagenav b { color: #f0efe9; font-variant-numeric: tabular-nums; }
+.oc-pagenav .muted { font-size: 12px; }
+.oc-pagenav .muted.warn { color: #f0b429; }

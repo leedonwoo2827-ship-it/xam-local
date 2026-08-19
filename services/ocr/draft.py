@@ -87,6 +87,25 @@ def save(src: str, page: int, data: dict) -> tuple[str, bool]:
     return p, True
 
 
+def remove(src: str, page: int) -> dict:
+    """이 페이지의 초안을 지운다. **`.bak` 은 남긴다.**
+
+    ★ 확정본(`01/*.md`)은 건드리지 않는다. 초안은 중간 산출물이고 확정본이 결과물이다 —
+      초안을 지워도 이미 확정한 문항은 그대로 있다.
+
+    ★ 지운 뒤 그 페이지는 「미판독」으로 돌아간다. [스캔 판독] 을 누르면 다시 읽는다.
+      잘못 읽힌 페이지를 처음부터 다시 읽히려는 용도다.
+    """
+    path = path_of(src, int(page))
+    if not os.path.isfile(path):
+        return {"src": src, "page": int(page), "removed": False,
+                "reason": "초안이 없습니다."}
+    backup_sibling(path)          # 되돌릴 수 있게 — 사람이 손본 초안일 수도 있다
+    os.remove(path)
+    return {"src": src, "page": int(page), "removed": True,
+            "backup": os.path.basename(path) + ".bak"}
+
+
 def all_drafts(src: str | None = None) -> list[tuple[str, int]]:
     """(src, page) 목록 — 디스크를 센다. ★ 캐시하지 않는다.
 

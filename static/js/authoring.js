@@ -9,7 +9,7 @@
  * ★ 바탕(base) 화면이다. 파트 하나가 10분씩 가므로 패널에 두면 Esc·스크림 클릭에
  *   닫히고 돌던 잡의 진행을 놓친다.
  */
-import { $, api, el, escapeHtml, toast } from "./util.js";
+import { $, api, confirmModal, el, escapeHtml, toast } from "./util.js";
 import { hydrateIcons } from "./icons.js";
 // ★ `actionBtn` 은 `panel.js` 에 있다(`icons.js` 가 아니다 — 그렇게 잘못 넣어 화면이
 //   통째로 안 떴다: "does not provide an export named 'actionBtn'").
@@ -36,6 +36,13 @@ let DEFAULT_MULT = 3;       // 처음 열었을 때 각 행의 값
 let PLAN = null;            // /api/authoring/plan 응답
 let EXAMS = [];             // /api/authoring/exams — 시험정보 목록
 let EXAM = "";              // 고른 시험정보 id
+/* ★ 시험정보를 고르고 [불러오기] 를 눌러야 아래가 뜬다.
+ *   전에는 열자마자 아무거나(오류 없는 첫 번째) 골라 두고 회차 표를 그렸다.
+ *   그래서 「시험정보 = SQL 개발자」인데 회차가 80문항(빅분기 크기)으로 뜨는
+ *   화면이 만들어졌다 — 작업 폴더는 빅분기이고 시험정보만 SQLD 였던 것이다.
+ *   그대로 [실행] 을 누르면 몇 시간과 수십 달러가 엉뚱한 규격으로 나간다.
+ *   고르는 것과 불러오는 것을 사람의 손짓 두 번으로 갈라 둔다. */
+let LOADED = false;         // [불러오기] 를 눌렀는가
 
 const multOf = (r) => (r in MULT_BY_ROW ? MULT_BY_ROW[r] : DEFAULT_MULT);
 
@@ -43,11 +50,12 @@ const multOf = (r) => (r in MULT_BY_ROW ? MULT_BY_ROW[r] : DEFAULT_MULT);
 async function loadExams() {
   const r = await api("/api/authoring/exams").catch(() => ({ items: [] }));
   EXAMS = r.items || [];
-  if (!EXAM && EXAMS.length) {
-    // 기본은 **오류 없는 것** 중 첫 번째. 오류 있는 것을 기본으로 고르면
-    // 사람이 모르고 집필을 눌러 수 시간을 태운다.
-    EXAM = (EXAMS.find((e) => e.ok) || EXAMS[0]).id;
-  }
+  // ★ 기본 선택은 **작업 폴더의 품목**이다(서버가 `active` 로 준다).
+  //   목록의 첫 번째를 고르면 폴더와 다른 품목이 조용히 잡힌다 — 그건 막아야 한다.
+  //   반대로 늘 비워 두면 새로고침마다 다시 고르게 되고, 그 사이 화면이 규격을
+  //   몰라 진행 칩이 엉뚱한 문항범위로 뜬다(2026-08-20 실측: `12회 41~60번`).
+  //   폴더가 진실이므로 그것을 고른 것으로 본다. 표는 여전히 [불러오기] 뒤에 뜬다.
+  if (!EXAM && r.active && EXAMS.some((e) => e.id === r.active)) EXAM = r.active;
   return EXAMS;
 }
 
@@ -55,7 +63,10 @@ async function loadExams() {
 async function loadPlan() {
   const spec = (PLAN && PLAN.rows ? PLAN.rows : []).map(
     (r) => `${r.pool_round}:${multOf(r.pool_round)}`).join(",");
-  PLAN = await api(`/api/authoring/plan?spec=${encodeURIComponent(spec)}`)
+  // ★ 고른 시험정보를 **서버에 넘긴다.** 안 넘기면 서버가 `exams/` 의 첫 번째로
+  //   회차 크기·과목 수를 잡는다 — 화면이 SQLD 인데 계산은 빅분기로 갔다.
+  PLAN = await api(`/api/authoring/plan?spec=${encodeURIComponent(spec)}`
+    + `&exam=${encodeURIComponent(EXAM)}`)
     .catch((e) => ({ error: emsg(e), codes: [], rows: [], pool: {} }));
   // 처음 로드면 기본 배수를 각 행에 심는다
   for (const r of PLAN.rows || []) {
@@ -82,7 +93,7 @@ export async function mount(root, ctx) {
       <div id="au-conn"><div class="empty">확인 중…</div></div>
     </div>
     <div class="card">
-      <div class="card-title">① 집필 — 과목 하나가 한 번의 호출입니다</div>
+      <div class="card-title">① 집필 — 한 번의 호출이 한 과목 안에서 끝납니다</div>
       <div id="au-plan"><div class="empty">확인 중…</div></div>
     </div>
     <div class="card">
@@ -221,30 +232,65 @@ async function drawRound() {
   }).join("");
   const cur = (EXAMS || []).find((e) => e.id === EXAM);
 
+  /* ★ 기출 회차 크기와 시험정보가 어긋나면 **말한다.**
+   *   실측(2026-08-19 캡처): 시험정보는 SQL 개발자(50문항)인데 회차가 80문항으로
+   *   떴다. 작업 폴더가 빅분기(`ocr-output-260730`)였던 것이다. 그대로 실행하면
+   *   50문항 규격으로 80문항 기출을 증폭하는 일이 몇 시간 돈다. */
+  const poolSize = (P.rows || [])[0]?.pool_items || 0;
+  const sizeClash = cur && poolSize && cur.round_size
+    && Number(cur.round_size) !== Number(poolSize);
+
   plan.innerHTML = `
-    <div class="row" style="gap:8px;align-items:center;margin-bottom:12px">
+    <div class="row" style="gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
       <span class="dim">시험정보</span>
-      <select id="au-exam">${ex || "<option>없음</option>"}</select>
+      <select id="au-exam">
+        <option value=""${EXAM ? "" : " selected"}>— 고르십시오 —</option>
+        ${ex}</select>
+      <button class="btn${EXAM && !LOADED ? " primary" : ""}" id="au-exam-load"
+        type="button" ${EXAM ? "" : "disabled"}>불러오기</button>
       <a href="#" id="au-exam-jump">관리 ↓</a>
       ${cur ? `<span class="dim">회차 ${cur.round_size}문항 ·
-        과목 ${(cur.subjects || []).map((s) => s.count).join("/")} ·
-        파트 ${cur.part_size}</span>` : ""}
+        과목 ${(cur.subjects || []).map((s) => s.count).join("/")}</span>
+        ${LOADED && (P.part_labels || []).length
+          ? `<span class="dim">· 한 회차 ${P.part_labels.length}번 호출
+              <span title="${escapeHtml(P.part_labels.join(" / "))}">(${
+                escapeHtml(P.part_labels.join(" / "))})</span></span>` : ""}` : ""}
       ${cur && !cur.ok ? `<b class="bad">이 시험정보는 오류가 있어 집필에 쓸 수 없습니다</b>`
         : cur && !cur.confirmed ? `<b class="warn">확인되지 않은 값입니다
           ${cur.checked_at ? "(확인 " + escapeHtml(cur.checked_at) + ")" : "(확인일 없음)"}</b>`
         : ""}
     </div>
+    ${!EXAM ? `<div class="empty" style="text-align:left">
+        <b>시험정보를 고르십시오.</b><br>
+        <span class="dim">회차당 문항수·과목 구성이 그 파일에서 옵니다 —
+          고르지 않은 채로 회차를 보여 주면 어느 규격으로 집필되는지 알 수 없습니다.</span>
+      </div>`
+      : !LOADED ? `<div class="empty" style="text-align:left">
+        <b>${escapeHtml(cur ? cur.label : EXAM)}</b> 로 계획을 잡으려면
+        위 <b>[불러오기]</b> 를 누르십시오.
+      </div>` : `
+    ${sizeClash ? `<div class="empty" style="text-align:left;border-color:#f0b429">
+        <b class="warn">시험정보와 기출이 맞지 않습니다.</b><br>
+        <span class="dim">시험정보 <b>${escapeHtml(cur.label)}</b> 는 회차
+          <b>${cur.round_size}문항</b> 인데, 작업 폴더의 기출 회차는
+          <b>${poolSize}문항</b> 입니다. 작업 폴더가 다른 품목일 수 있습니다 —
+          확인하고 실행하십시오.</span>
+      </div>` : ""}
     <table class="tbl"><tbody>${rows}</tbody></table>
     <div class="row" style="justify-content:flex-end;align-items:center;gap:14px;margin-top:12px">
       <span class="dim">총 <b>${nR}회차</b> · <b>${(nR * perRound).toLocaleString()}문항</b>
+        ${P.remaining_count != null && P.remaining_count < nR * partCount(P)
+          ? `<b class="warn">· 남은 ${P.remaining_count}파트만 집필</b>` : ""}
         · 예상 <b>${money(est.usd)} · ${hours(est.minutes)}</b>
         <span title="${escapeHtml(est.note)}">(문항당 ${perItem(est)})</span></span>
       ${(P.overwrites || []).length
         ? `<b class="bad">이미 있는 회차를 덮습니다</b>` : ""}
       <button class="btn primary" id="au-go" type="button" ${nR ? "" : "disabled"}>실행</button>
     </div>
-    <div class="field-hint" style="text-align:right">${escapeHtml(est.note)}</div>`;
+    <div class="field-hint" style="text-align:right">${escapeHtml(est.note)}</div>`}`;
 
+  // ★ 아래가 안 그려졌으면 그 안의 위젯도 없다. `$("#au-go")` 가 null 인 채로
+  //   `.onclick` 을 달면 거기서 멈춰 시험정보 콤보까지 죽는다.
   plan.querySelectorAll(".au-mult").forEach((s2) => {
     s2.onchange = () => { MULT_BY_ROW[s2.dataset.r] = Number(s2.value); drawRound(); };
   });
@@ -254,14 +300,30 @@ async function drawRound() {
   plan.querySelectorAll(".au-pick").forEach((cb) => {
     cb.onchange = () => { PICK_BY_ROW[cb.dataset.r] = cb.checked; drawRound(); };
   });
-  $("#au-exam").onchange = (e) => { EXAM = e.target.value; drawRound(); };
+  // ★ 고르는 것만으로는 아래가 뜨지 않는다. 고르면 오히려 **비운다** —
+  //   앞 시험정보로 잡힌 표가 남아 있으면 그것이 새 시험정보의 계획으로 읽힌다.
+  $("#au-exam").onchange = (e) => {
+    EXAM = e.target.value;
+    LOADED = false;
+    drawRound();
+  };
+  const load = $("#au-exam-load");
+  if (load) load.onclick = async () => {
+    if (!EXAM) return;
+    load.disabled = true;
+    load.textContent = "불러오는 중…";
+    await loadPlan();          // 고른 시험정보를 서버에 넘겨 규격을 다시 받는다
+    LOADED = true;
+    await drawRound();
+  };
   const jump = $("#au-exam-jump");
   if (jump) jump.onclick = (e) => {
     e.preventDefault();
     const t = $("#au-exams");
     if (t) t.scrollIntoView({ behavior: "smooth", block: "center" });
   };
-  $("#au-go").onclick = () => start();
+  const go = $("#au-go");
+  if (go) go.onclick = () => start();
 
   await drawNext();
 }
@@ -311,16 +373,17 @@ async function start() {
   // ★ 총계 줄과 **같은 값**을 쓴다. 예전엔 확인창이 자기 상수로 다시 곱해서
   //   같은 화면의 두 숫자가 서로 달랐다($62 와 $71).
   const nParts = partCount(PLAN);
-  const nCall = items.length * nParts;
-  const e = scaleEst(PLAN.est, items.length, nParts, PLAN.round_size || 80);
+  // ★ **실제로 돌 파트 수**로 묻는다. `회차 × 파트` 로 물었더니 「60회」라고 묻고
+  //   29번만 돌았고, 그 차이 때문에 사람이 계획을 잘못 읽었다(2026-08-20).
+  const nCall = PLAN.remaining_count != null
+    ? PLAN.remaining_count : items.length * nParts;
+  const done = items.length * nParts - nCall;
+  const e = scaleEst(PLAN.est, nCall / nParts, nParts, PLAN.round_size || 80);
   if (!window.confirm(
-      `${items.length}회차 × ${nParts}과목 = ${nCall}회 호출입니다.
-` +
-      `예상 ${hours(e.minutes)} · 약 ${money(e.usd)} 상당의 구독 사용량입니다.
-` +
-      `문항당 ${perItem(e)} — ${e.note}
-
-진행하시겠습니까?`)) return;
+      `${items.length}회차 중 아직 안 된 ${nCall}파트를 집필합니다.\n`
+      + (done > 0 ? `이미 합격한 ${done}파트는 건너뜁니다.\n` : "")
+      + `예상 ${hours(e.minutes)} · 약 ${money(e.usd)} 상당의 구독 사용량입니다.\n`
+      + `문항당 ${perItem(e)} — ${e.note}\n\n진행하시겠습니까?`)) return;
 
   const r = await api("/api/authoring/draft", { method: "POST", body: { items } })
     .catch((e) => ({ error: emsg(e) }));
@@ -380,6 +443,9 @@ async function drawExams() {
         ${(e.warnings || []).slice(0, 2).map((x) =>
           `<div class="small dim">${escapeHtml(x)}</div>`).join("")}</td>
       <td style="white-space:nowrap">
+        <button class="btn${e.confirmed ? "" : " primary"} au-ex-conf"
+          data-id="${escapeHtml(e.id)}" data-on="${e.confirmed ? "0" : "1"}"
+          type="button">${e.confirmed ? "미확인으로" : "확인 처리"}</button>
         <button class="btn au-ex-dl" data-id="${escapeHtml(e.id)}" type="button">JSON 내보내기</button>
       </td>
     </tr>`;
@@ -400,6 +466,65 @@ async function drawExams() {
       매년 또는 시험이 개정될 때 이 파일을 고치고 <code>revision.checked_at</code> 을 채웁니다.
     </div>
     <pre class="job-log" id="au-ex-out" hidden></pre>`;
+
+  /* ★ 「공고 확인」 버튼은 **두었다가 걷어냈다**(2026-08-19).
+
+     앱이 띄우는 Claude 세션은 비대화형이라 `WebFetch`/`WebSearch` 승인을 받을 수
+     없다 — 실행하면 「도구가 없습니다」 로 끝난다. 승인을 우회하도록 설정을 건드리는
+     것은 이 앱이 할 일이 아니다.
+
+     그래서 공고 대조는 **사람이 밖에서** 한다: `[JSON 내보내기]` 로 꺼내
+     Claude 데스크탑에 주고, 시행처 페이지(`reference.official_url`)와 대조한 뒤
+     여기서 `[확인 처리]` 를 누른다. 켜는 손짓이 사람 것이라는 원칙은 그대로다. */
+  /* ★ 확인/미확인 — `revision.confirmed` 를 사람이 누른다.
+
+     코드는 이 값을 알 수 없다. 「회차 50문항 · 2과목 10:40」 이 **올해 시행처 공고와
+     같은가** 는 공고를 봐야 아는 것이라, 검증은 오류가 아니라 경고로만 남긴다.
+     그래서 경고가 지워지지 않고 사람은 무엇을 해야 할지 모르는 자리가 됐다.
+
+     ★ 누르기 전에 **무엇을 보증하는지** 먼저 보여 준다. 그냥 켜는 버튼이면
+       아무도 공고를 안 보고 켜고, 그 순간 이 값은 뜻을 잃는다. */
+  box.querySelectorAll(".au-ex-conf").forEach((b2) => {
+    b2.onclick = async () => {
+      const id = b2.dataset.id;
+      const on = b2.dataset.on === "1";
+      const e = items.find((x) => x.id === id) || {};
+      const subs = (e.subjects || []).map((s) => `${s.no}과목 ${s.count}문항`).join(" · ");
+      const ok = await confirmModal(on ? {
+        title: `${e.label || id} — 시행처 공고와 같습니까?`,
+        body: `<div style="text-align:left;line-height:1.7">
+          아래 값이 <b>올해 공고와 같은지</b> 확인하셨다는 표시입니다.
+          집필은 이 값으로 몇 시간을 돕니다.
+          <ul style="margin:10px 0 10px 18px">
+            <li>회차 <b>${e.round_size ?? "-"}문항</b> · 파트 <b>${e.part_size ?? "-"}문항</b></li>
+            <li>${escapeHtml(subs || "과목 없음")}</li>
+          </ul>
+          누르면 <code>revision.confirmed = true</code> 이고
+          <code>checked_at</code> 에 <b>오늘 날짜</b>가 박힙니다.
+          <br><span class="dim">시험이 개정되면 다시 미확인으로 돌리십시오 —
+          작년에 확인한 값은 올해 아무 뜻이 없습니다.</span></div>`,
+        ok: "확인했습니다", cancel: "아직입니다",
+      } : {
+        title: `${e.label || id} — 미확인으로 되돌릴까요?`,
+        body: `개정 공고를 아직 못 보셨다면 이쪽이 맞습니다.
+          집필 화면에 <b>확인되지 않은 값입니다</b> 경고가 다시 뜹니다.`,
+        ok: "미확인으로", cancel: "그대로",
+      });
+      if (!ok) return;
+      const r2 = await api(`/api/authoring/exams/${encodeURIComponent(id)}/confirm`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmed: on }),
+      }).catch((err) => ({ error: emsg(err) }));
+      if (r2.error) { toast(r2.error, "err"); return; }
+      toast(on ? `확인 처리했습니다 — ${r2.checked_at}` : "미확인으로 되돌렸습니다.");
+      await drawExams();
+      // ★ `EXAMS` 를 **다시 받아야** 한다. 위 집필 줄은 그 캐시로 그려지므로,
+      //   빼먹으면 관리 표는 「확인됨」인데 위는 「확인되지 않은 값입니다」로 남는다
+      //   (실측 2026-08-19). 같은 값이 두 자리에서 다르게 보이면 어느 쪽도 못 믿는다.
+      await loadExams();
+      await drawRound();
+    };
+  });
 
   // 내보내기 — 서버 응답의 doc 을 그대로 파일로 내린다(왕복 손실 0).
   box.querySelectorAll(".au-ex-dl").forEach((b) => {
@@ -565,17 +690,20 @@ function drawJob(j) {
    *   규칙인데("m10은 뭐에요?", 2026-08-10) 진행 칩만 옛 형태로 남아 있었다.
    *   "1과목" 도 지웠다 — 어느 과목인지보다 **몇 번 문항인지**가 훨씬 쓸모 있다
    *   (요청 그대로: "1회 1~10.. 1회 11~20... 이런식으로").
-   *   범위는 화면이 지어내지 않고 회차 규격(`part_size`)에서 계산한다 — 시험마다
-   *   다르다(빅분기 20문항, SQLD 25문항). */
-  const ps = (PLAN && PLAN.part_size) || 20;
+   *   ★ 범위를 **화면이 계산하지 않는다.** `(p-1)*part_size+1 ~ p*part_size` 로
+   *   지어냈더니 SQLD(part_size 25)에서 `12회 51~75` 가 됐다 — 50문항 시험에 75번은
+   *   없다(2026-08-20 실측). 파트는 **과목에서** 만들어져 크기가 파트마다 다르다
+   *   (1과목 10 / 2과목 20 / 2과목 20). 서버가 준 `part_labels` 를 쓴다. */
+  const labels = (PLAN && PLAN.part_labels) || [];
   const items = Object.entries(j.items || {}).map(([k, v]) => {
     const cls = v.status === "done" ? "ok" : v.status === "error" ? "bad"
       : v.status === "running" ? "warn" : "dim";
     const p = Number(String(k).split("-p")[1] || 0);
     const n = Number(String(k).split("-p")[0].replace(/^m/, "")) || 0;
-    const nm = (p && n)
-      ? `${n}회 ${(p - 1) * ps + 1}~${p * ps}`
-      : k;
+    // 서버 라벨은 「1과목 · 1~10번」 꼴이다 — 회차를 앞에 붙이고 문항범위만 남긴다.
+    const lab = labels[p - 1] || "";
+    const rng = lab.includes("·") ? lab.split("·").pop().trim() : lab;
+    const nm = (p && n) ? `${n}회 ${rng || "p" + p}` : k;
     return `<span class="chip ${cls}" title="${escapeHtml(k + " · " + (v.error || v.status))}">${
       escapeHtml(nm)}</span>`;
   }).join(" ");

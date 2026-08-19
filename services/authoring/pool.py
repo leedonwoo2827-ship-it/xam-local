@@ -121,10 +121,37 @@ def plan_rounds(book_dir: str, multiple: int, start: str = "",
             raise ValueError(f"시작 회차 코드가 올바르지 않습니다: {start} (m01 형태)")
         first = int(start[1:])
     else:
-        first = (max((int(x[1:]) for x in have), default=0) + 1)
+        # ★ 배수는 **총량**이다. 「이미 있는 회차 다음부터」 로 잡으면 안 된다.
+        #
+        #   실측(2026-08-20): m01~m10 을 만든 뒤 같은 화면에서 [실행] 하니 계획이
+        #   `m11~m30` 으로 잡혔다. 6×3 + 1×2 = 20 은 **총 20회차**라는 뜻인데,
+        #   20개를 *더* 만들어 30회차 1,500문항이 되는 계획이었다. 사람은 화면의
+        #   「총 20회차 · 1,000문항」 을 보고 [확인] 을 눌렀다.
+        #
+        #   그래서 **늘 m01 부터** 잡는다. 이미 끝난 파트는 `draft.is_done` 이
+        #   건너뛰므로 다시 만들지 않고, 덮을 것이 있으면 `overwrites` 로 화면이
+        #   경고한다. 회차를 **더** 얹고 싶을 때만 `start` 를 준다.
+        first = 1
 
     codes = [f"m{first + i:02d}" for i in range(n)]
-    over = [c for c in codes if c in have]
+    # ★ 「덮습니다」 는 **실제로 다시 만들 회차**만 센다. 계획이 늘 m01 부터
+    #   잡으므로, 이미 다 끝난 회차까지 세면 화면이 빨간 경고를 늘 달고 있게 된다 —
+    #   경고가 늘 켜져 있으면 아무 신호도 아니게 된다.
+    from services.authoring import draft as _D
+
+    def _will_redo(c: str) -> bool:
+        try:
+            return any(not _D.is_done(c, i) for i in range(1, _D.n_parts() + 1))
+        except Exception:                                    # noqa: BLE001
+            return True
+
+    over = [c for c in codes if c in have and _will_redo(c)]
+    # 실제로 돌 파트 수 — 화면의 확인창이 이 값을 쓴다(60회라고 묻고 29번 도는 일을 막는다).
+    try:
+        remaining = [f"{c}-p{i}" for c in codes
+                     for i in range(1, _D.n_parts() + 1) if not _D.is_done(c, i)]
+    except Exception:                                        # noqa: BLE001
+        remaining = []
 
     # ── 기출 ↔ 자사 대응 ────────────────────────────────────────────────────
     # ★ 화면의 **행이 기출 회차**다(2026-08-10: *"ocr을 3회 했으니 행은 3개가 나옵니다"*).
@@ -175,6 +202,8 @@ def plan_rounds(book_dir: str, multiple: int, start: str = "",
         "n_items": len(codes) * 80,
         # ★ 겹치면 조용히 덮지 않는다. 화면이 경고하고 사람이 결정한다.
         "overwrites": over,
+        "remaining_parts": remaining,
+        "remaining_count": len(remaining),
         # 예상 소모 — 구독 한도의 대리 지표. 정가 환산이고 청구가 아니다.
         # ★ `est` 를 통째로 넘긴다. 화면이 문항당 단가·표본 수까지 그대로 쓴다.
         "est": est,

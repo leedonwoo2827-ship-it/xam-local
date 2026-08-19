@@ -19,8 +19,9 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 
 from services.book import paths
+from services.jobs import registry
 from services.ocr import answers as ocr_answers
-from services.ocr import checks, draft, finalize, pdfrender, project
+from services.ocr import checks, draft, finalize, pdfrender, project, readpage
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,20 @@ def setup_ocr_routes() -> APIRouter:
                               f"{project.ocr_dir() or '(미지정)'}")}
 
         pm = project.page_map()
+
+        # ★ '이어지는 면' — 문항이 0개인데 **다른 페이지의 문항이 이 쪽을 물고 있는** 면.
+        #   걸친 문항은 시작한 쪽이 갖는다(`readpage` 규칙). 그래서 뒷부분만 있는 면은
+        #   판독이 끝났어도 문항이 0개다. 그걸 「초안」으로 표시하면 미완처럼 보여서
+        #   사람이 없애려 한다(2026-08-18: "이걸 없앨려면 어떻게 해야 해요?").
+        #   ★ 모델이 준 플래그를 쓰지 않는다 — source_pages 는 코드가 쓴 값이라 더 믿을 만하다.
+        carried: set = set()
+        for _s in project.visible_srcs():
+            for _p in project.list_pages(_s):
+                for q in ((draft.load(_s, _p) or {}).get("questions") or []):
+                    for sp in (q.get("source_pages") or []):
+                        if int(sp) != int(_p):
+                            carried.add((_s, int(sp)))
+
         pages = []
         for src in project.visible_srcs():
             entry = project.source_entry(src)
@@ -67,6 +82,8 @@ def setup_ocr_routes() -> APIRouter:
                     "has_draft": d is not None,
                     "n_questions": len(qs),
                     "n_verified": sum(1 for q in qs if q.get("verified")),
+                    # 앞 면 문항의 뒷부분만 있는 면 — 문항 0개가 정상이다
+                    "continuation": (not qs) and (src, page) in carried,
                 })
 
         # 확정 현황 — 01/ 의 {RR}-{NN}.md 를 회차별로 센다(상수 없음).
@@ -114,6 +131,12 @@ def setup_ocr_routes() -> APIRouter:
                 "편집기에서 열어 두었다면 닫고 다시 시도하세요.")) from e
         return {"ok": True, "path": p, "wrote": wrote}
 
+    @router.delete("/draft/{src}/{page}")
+    async def delete_draft(src: str, page: int):
+        """이 페이지 초안 삭제. 확정본(01/*.md)은 건드리지 않는다."""
+        _need_project()
+        return draft.remove(src, page)
+
     # ── 스캔 이미지 · 크롭 미리보기 ─────────────────────────────────────────
     @router.get("/scan/{src}/{page}")
     async def scan_image(src: str, page: int):
@@ -153,16 +176,18 @@ def setup_ocr_routes() -> APIRouter:
           검수해 둔 01/*.md 가 조용히 바뀐다.
         """
         _need_project()
-        ok, msg = checks.gate_ok()
-        if not ok:
-            raise HTTPException(status_code=409, detail=msg)
-
         body = await request.json()
         src = str(body.get("src") or "")
         page = int(body.get("page") or 0)
         questions = body.get("questions") or []
         if not src or not page:
             raise HTTPException(status_code=400, detail="src · page 가 필요합니다.")
+        # ★ 게이트는 **이 면을 빼고** 본다. 이 면이 달라지는 것은 사람이 방금 고친
+        #   것이고, 확정은 이 면의 문항만 쓴다. 전체로 보면 25번에 그림 하나 넣은 것이
+        #   26번 확정까지 막는다 — 빠져나갈 길이 없는 자리였다(2026-08-19 실측).
+        ok, msg = checks.gate_ok((src, page))
+        if not ok:
+            raise HTTPException(status_code=409, detail=msg)
         try:
             return finalize.finalize_page(src, page, questions)
         except finalize.LockedError as e:
@@ -184,10 +209,53 @@ def setup_ocr_routes() -> APIRouter:
 
     @router.post("/render")
     async def do_render(request: Request):
-        """00/*.pdf → raw_pages/*.png. 이미 있는 소스는 건너뛴다(force 로 강제)."""
-        _need_project()
+        """00/*.pdf → raw_pages/*.png. 이미 있는 소스는 건너뛴다(force 로 강제).
+
+        ★ 여기만 `_need_project()` 를 쓰지 않는다. 이 단계는 판독 폴더를 **만드는**
+          쪽이다 — 요구하면 닭-달걀이 된다. 판독 폴더를 지우고 `00/`+`01/` 만 남긴
+          뒤 스캔을 다시 뜨려 할 때, 폴더가 없어서 503 이고 폴더는 이 버튼으로만
+          생긴다(실측 2026-08-18: 판독 폴더를 지워도 되는지 물어보다 발견).
+          `pdfrender.run()` 이 raw_pages 를 makedirs 하고, `plan()` 은 `00/` 만 본다.
+        """
+        if not project.ocr_dir():
+            raise HTTPException(
+                status_code=503,
+                detail=("판독 폴더 위치가 정해지지 않았습니다 — 작업 폴더 패널에서 "
+                        "지정하거나 .env 의 XAM_OCR 을 채우세요."))
         body = await request.json() if await request.body() else {}
         return pdfrender.run(force=bool(body.get("force")))
+
+    @router.post("/read")
+    async def do_read(request: Request):
+        """**판독** — 스캔 PNG 를 읽어 초안을 쓴다. 잡으로 돈다(한 장 40~60초).
+
+        `pages` 를 주면 그 페이지만, 없으면 **아직 판독되지 않은 페이지 전부**다 —
+        151장을 매번 다시 읽지 않게 기본을 그렇게 둔다.
+        """
+        _need_project()
+        body = await request.json() if await request.body() else {}
+        src = str(body.get("src") or "").strip()
+        if not src:
+            raise HTTPException(status_code=400, detail="src 가 없습니다.")
+        pages = [int(p) for p in (body.get("pages") or [])]
+        overwrite = bool(body.get("overwrite"))
+        if not pages:
+            all_pages = project.list_pages(src)
+            done = {p for s, p in draft.all_drafts(src)
+                    if (draft.load(s, p) or {}).get("questions")}
+            pages = [p for p in all_pages if overwrite or p not in done]
+        if not pages:
+            raise HTTPException(status_code=400,
+                                detail="판독할 페이지가 없습니다 — 이미 다 읽었습니다.")
+        try:
+            job = readpage.start(src, pages, model=str(body.get("model") or ""),
+                                 effort=(body.get("effort") or None),
+                                 overwrite=overwrite)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except RuntimeError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+        return registry.view(job)
 
     @router.post("/answers/merge")
     async def merge_answers(request: Request):

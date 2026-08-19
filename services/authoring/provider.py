@@ -136,6 +136,12 @@ class ClaudeAuthor:
     #   아래 `_structured` 머리말 참조. CLI 가 한 글자도 안 보내고 멈추면 이 상한은
     #   안 걸린다. 실측에서는 시도마다 13분에 한 번씩 응답이 왔다.
     timeout_sec: float = 3600.0
+    # ★ CLI stdout 버퍼 상한(바이트). 기본 1MB 로는 **스캔 이미지를 읽는 호출이 죽는다** —
+    #   `Read` 가 PNG 를 base64 로 실어 보내므로 500KB 그림 한 장이 ~700KB 가 되고,
+    #   OCR 판독은 걸친 문항 때문에 두 장을 준다. 실측으로 20장 중 4장이
+    #   "JSON message exceeded maximum buffer size of 1048576 bytes" 로 실패했다.
+    #   집필(텍스트만)은 이 값이 필요 없지만, 같은 provider 를 쓰므로 여기에 둔다.
+    max_buffer_size: Optional[int] = None
     exe: Optional[Path] = field(default=None)
     # ★ 모델이 도구를 쓸 때마다 부른다. 파트 1개가 몇 분씩 가는데 화면이 한 글자도
     #   안 바뀌면 **멈춘 것으로 보인다.** 답변초안 화면에서 이미 같은 말을 들었다
@@ -184,6 +190,8 @@ class ClaudeAuthor:
             kw["effort"] = self.effort
         if self.cwd:
             kw["cwd"] = str(self.cwd)
+        if self.max_buffer_size:
+            kw["max_buffer_size"] = int(self.max_buffer_size)
         return ClaudeAgentOptions(**kw)
 
     # ── 지금 무엇을 읽고 있는가 ──

@@ -19,11 +19,14 @@ from typing import Any, Dict, List, Tuple
 
 from core.atomic_io import atomic_write_json, backup_sibling
 
-from .draft import ROUND_SIZE, n_parts, staging_path
+from .draft import n_parts, round_size, staging_path
 
 # 회차 머리 기본값 — **실측**이다. `_rounds/m01.json` ~ `m09.json` 이 전부 같았다
 # (2026-08-10). 발명하면 렌더의 목소리·속도·카운트다운이 회차마다 갈린다.
 ROUND_DEFAULTS: Dict[str, Any] = {
+    # ★ 아래 둘은 **되돌림값**이다. 실제 값은 시험정보에서 온다
+    #   (`round_defaults()`). 품목이 바뀌면 과목명·테마가 바뀌는데 상수로 두면
+    #   SQLD 회차에 「빅데이터분석기사 · teal」 이 박힌다.
     "subject_default": "빅데이터분석기사",
     "theme": "teal",
     "voice": "F2",
@@ -32,6 +35,23 @@ ROUND_DEFAULTS: Dict[str, Any] = {
     "gap_seconds": 1.5,
     "ai_reading": False,
 }
+
+def round_defaults() -> Dict[str, Any]:
+    """회차 머리 기본값 — 시험정보의 값을 덮어씌운 것.
+
+    ★ 목소리·속도·카운트다운은 렌더 설정이라 실측 상수 그대로 쓴다.
+      **과목명(`subject_default`)과 테마(`theme`)는 시험의 정체**라 품목에서 온다.
+    """
+    from services.authoring import parts
+
+    d = parts.active() or {}
+    out = dict(ROUND_DEFAULTS)
+    if str(d.get("label") or "").strip():
+        out["subject_default"] = str(d["label"]).strip()
+    if str(d.get("theme") or "").strip():
+        out["theme"] = str(d["theme"]).strip()
+    return out
+
 
 # `_rounds` 문항 키 순서 — 실측 순서 그대로. `build.py` 는 순서를 안 보지만,
 # 사람이 diff 를 읽는다. 회차마다 키 순서가 흔들리면 diff 가 통째로 붉어진다.
@@ -47,7 +67,13 @@ def rounds_path(book_dir: str, round_code: str) -> str:
 def _round_head(round_code: str) -> Dict[str, Any]:
     n = int(round_code.lstrip("m") or 0)
     return {"round_code": round_code, "round": n,
-            "round_label": f"자사 모의고사 {n:02d}회", **ROUND_DEFAULTS}
+            # ★ **「자사」 를 넣지 않는다.** 이 값이 vendor 빌더를 지나
+            #   `04/lesson_*.json` 의 title·round·**narration** 으로 들어간다 —
+            #   즉 음성과 자막에 그대로 나간다(실측: 빅분기 `04/lesson_m01.json` 의
+            #   narration 이 「자사 모의고사 01회 빅데이터 분석 기획 문제입니다」).
+            #   `bake.py` 는 2026-08-12 에 고쳤는데 이 값이 남아 다른 길로 새고 있었다.
+            #   「자사·타사」 는 프롬프트·문서에서만 쓰는 말이다.
+            "round_label": f"모의고사 {n:02d}회", **round_defaults()}
 
 
 def _ordered(item: Dict[str, Any]) -> Dict[str, Any]:
@@ -124,7 +150,8 @@ def merge_round(*, book_dir: str, round_code: str,
         "added": sorted(added),
         "replaced": sorted(replaced),
         "total": total,
-        "complete": total == ROUND_SIZE,
+        # ★ 회차 크기는 시험정보에서. 상수(80)로 보면 SQLD(50) 는 영원히 미완성이다.
+        "complete": total == round_size(),
         "blocked": blocked,
         "dry_run": dry_run,
     }

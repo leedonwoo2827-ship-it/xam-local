@@ -77,9 +77,16 @@ def _build_records(series: dict, cid: str) -> list[dict]:
         kind = s.get("kind", "content")
         capture = bool(s.get("capture"))
         narration = (s.get("narration_text") or s.get("narration") or "").strip()
+        # ★ 자막은 **원문**이다. `narration_text` 는 TTS 입력이라 숫자가 소리로 바뀌어
+        #   있고(「이천칠 년」) 사람이 발음만 고쳐 놓기도 한다. 그걸 그대로 자막에
+        #   쓰면 화면에 「이천칠 년 삼 월」이 뜬다. voicewright 는 원래 두 트랙을
+        #   받는다(`schemas.ScriptScene.srt_text` · `batch.py` 의 `srt_text or
+        #   narration_text`) — 여기서 나르지 않아 쓰이지 못하고 있었다.
+        srt = (s.get("srt_text") or s.get("narration") or "").strip()
         rec = {
             "si": si, "idx": idx, "kind": kind, "capture": capture,
             "number": s.get("number"), "heading": s.get("heading") or "",
+            "srt_text": srt,
             "image_filename": f"{cid}_{idx:02d}_{kind}.png",
             "video_filename": f"{cid}_{idx:02d}.mp4",
         }
@@ -105,6 +112,9 @@ def _scratch_script(series: dict, recs: list[dict], chap: int) -> dict:
             "video_filename": r["video_filename"],
             "narration_text": r["narration_text"],
         }
+        # 발음과 자막이 다를 때만 넘긴다 — 같으면 배치가 알아서 폴백한다
+        if r.get("srt_text") and r["srt_text"] != r["narration_text"]:
+            sc["srt_text"] = r["srt_text"]
         if r.get("silent"):
             sc["silent"] = True
             sc["narration_seconds"] = int(r["seconds"])

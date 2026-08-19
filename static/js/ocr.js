@@ -29,6 +29,8 @@ const S = {
   draft: null,           // 지금 편집 중인 초안
   dirty: false,
   pendingBox: null,      // 스캔에서 드래그한 [x,y,w,h] (원본 픽셀)
+  scanPage: 0,           // 스캔 보기가 지금 **어느 면**을 띄우고 있나
+  pendingPage: 0,        // 그 드래그가 어느 면의 좌표인가
   ctx: null,
   showScan: false,
   hideOcr: false,
@@ -39,12 +41,15 @@ export const meta = {
   title: (ctx) => (ctx.panel ? "OCR 검수 · 페이지"
     : `OCR 검수 · ${ctx.args[0] || ""} p.${ctx.args[1] || ""}`),
   subtitle: (ctx) => (ctx.panel
-    ? "고르면 이 창이 닫히고 아래 바탕에서 열립니다. 판독은 Claude Code 창에서 합니다."
+    ? "왼쪽 큰 버튼으로 실행합니다 — [＋ OCR] 이 스캔을 뜨고 [OCR 실행] 이 읽습니다. 여기 [OCR 검수] 는 확정 상태를 검산합니다."
     : "좌 OCR 원문 / 우 문제 카드. 확정하면 01/{회차}-{문항}.md 로 기록됩니다."),
   actions: (ctx) => (ctx.panel
     ? [
-      actionBtn("검증", () => runVerify(), { iconName: "check" }),
-      actionBtn("PDF 렌더", () => runRender(), { iconName: "folder" }),
+      // ★ 툴바에는 **검수만** 둔다. 실행 계열(렌더·판독)은 좌측 상단 **큰 버튼**이다 —
+      //   초심자가 툴바의 작은 버튼을 주 동작으로 읽지 못하고, 검수 화면에 실행 버튼이
+      //   같이 보이면 무엇을 눌러야 하는지 흐려진다(2026-08-18 지시:
+      //   "OCR 검수를 누르면 OCR 실행은 안보여야").
+      actionBtn("OCR 검수", () => runVerify(), { iconName: "check" }),
     ]
     : [
       actionBtn("← 페이지 목록", () => S.ctx.navigate("/ocr"), { iconName: "folder" }),
@@ -58,6 +63,7 @@ export const meta = {
       zoomControl(),
       actionBtn("＋ 문제 추가", () => addQuestion()),
       actionBtn("초안 저장", () => saveDraft()),
+      actionBtn("초안 삭제", () => deleteDraft(), { iconName: "close" }),
       actionBtn("확정(MD 저장)", () => finalize(), { primary: true, iconName: "check" }),
     ]),
 };
@@ -115,6 +121,13 @@ function zoomControl() {
 
 export async function mount(root, ctx) {
   S.ctx = ctx;
+  /* ★ 좌측 상단 **큰 버튼**이 부를 함수를 걸어 둔다(`shell.js` 의 PRIMARY).
+     초심자가 툴바의 작은 버튼을 주 동작으로 읽지 못해서, 같은 동작을 큰 버튼으로도
+     낸다 — 로직은 여기 하나뿐이고 두 자리에서 같은 것을 부른다. */
+  window.XAM_PRIMARY = Object.assign(window.XAM_PRIMARY || {}, {
+    render: () => runRender(),
+    read: () => runRead(),
+  });
   return ctx.panel ? mountList(root, ctx) : mountWork(root, ctx);
 }
 
@@ -227,17 +240,22 @@ function renderDash(ctx) {
       const n = p.n_questions || 0;
       const v = p.n_verified || 0;
       // app.css 의 상태 3색 규칙을 그대로 쓴다 — 화면마다 색을 새로 정하지 않는다.
-      const cell = el("button", "oc-cell " + stateClass(n, v, p.has_draft));
+      // 이어지는 면은 '완료' 색으로 둔다 — 앞 면이 그 내용을 이미 가져갔다
+      const cell = el("button", "oc-cell "
+        + (p.continuation ? stateClass(1, 1, true) : stateClass(n, v, p.has_draft)));
       cell.type = "button";
       cell.appendChild(el("span", "oc-cell-id st-title",
         `${p.src}-${String(p.page).padStart(3, "0")}`));
+      // 이어지는 면은 문항 0개가 정상이다 — 미완으로 보이면 안 된다
       const note = n
         ? (v >= n ? `${n}문 · ✓${v}` : v > 0 ? `${n}문 · ✓${v}/${n}` : `${n}문`)
-        : p.has_draft ? "초안" : "·";
+        : p.continuation ? "이어짐" : p.has_draft ? "초안" : "·";
       cell.appendChild(el("small", null, note));
       cell.title = n
         ? `문항 ${n}개 · 대조완료 ${v}개` + (v >= n ? "" : ` · 남은 ${n - v}개`)
-        : "판독된 문항이 없습니다.";
+        : p.continuation
+          ? "앞 면에서 시작한 문항의 뒷부분입니다 — 그 문항이 이 쪽까지 갖고 있습니다."
+          : "판독된 문항이 없습니다.";
       if (p.role === "해설") cell.appendChild(el("span", "qz-mark", "해설"));
       // ★ 고르면 패널이 닫히고 바탕이 열린다
       cell.addEventListener("click", () =>
@@ -251,7 +269,11 @@ function renderDash(ctx) {
 
 /* ══════════ 아래층: 바탕 — 페이지 작업 (첨부 2번 화면) ══════════ */
 async function mountWork(root, ctx) {
-  S.showScan = getPref("ocrShowScan", false);
+  /* ★ 스캔을 **기본으로 펴 둔다.** 페이지를 눌러 들어왔는데 판독 전이면 OCR 원문도
+     문제 카드도 비어서 화면에 아무것도 없다 — 그 상태에서 유일하게 볼 것이 스캔이다
+     (2026-08-18: "현황판을 클릭하면 body가 나오는걸로"). 접어 둔 적이 있으면
+     그 선택을 존중한다. */
+  S.showScan = getPref("ocrShowScan", true);
   S.hideOcr = getPref("ocrHideOcr", false);
   S.zoom = Number(getPref("ocrZoom", 0.9)) || 0.9;
 
@@ -259,6 +281,13 @@ async function mountWork(root, ctx) {
   page.innerHTML = `
     <div class="oc-work" id="oc-work">
       <div class="oc-pane oc-img" id="oc-imgpane">
+        <div class="oc-pagenav" id="oc-pagenav">
+          <button class="btn sm" id="oc-pgprev" type="button">◀ 앞 면</button>
+          <b id="oc-scanpg"></b>
+          <span class="status-chip" id="oc-armed" hidden></span>
+          <button class="btn sm" id="oc-pgnext" type="button">다음 면 ▶</button>
+          <span class="muted" id="oc-pghint"></span>
+        </div>
         <div class="oc-imgwrap" id="oc-imgwrap">
           <img id="oc-scan" alt="스캔 페이지" />
           <div class="oc-sel" id="oc-sel"></div>
@@ -292,6 +321,7 @@ async function mountWork(root, ctx) {
   hydrateIcons(page);
 
   bindDrag();
+  bindPageNav();
   $("#oc-applykey").addEventListener("click", applyKey);
   document.addEventListener("keydown", onKey);
   applyLayout();
@@ -310,6 +340,60 @@ function applyLayout() {
   if (b2 && b2.lastChild) b2.lastChild.textContent = S.showScan ? "스캔 숨기기" : "스캔 보기";
   const img = $("#oc-scan");
   if (img) img.style.width = (S.zoom * 100) + "%";
+}
+
+/* ★ 스캔 보기의 **면 넘기기.**
+ *   해설 그림이 다음 면에 있는 문항이 있다(발문·보기는 이 면, 그림은 다음 면).
+ *   지금까지는 이 면만 띄웠으니 그 그림을 지정할 방법이 아예 없었다.
+ *   ★ 넘긴 면에서 드래그하면 좌표와 **함께 그 면 번호**를 기억한다 — 좌표만
+ *     들고 가면 확정 때 이 면에서 같은 자리를 잘라 엉뚱한 그림이 실린다.
+ */
+function showScanPage(n) {
+  const img = $("#oc-scan");
+  if (!img || !S.cur) return;
+  S.scanPage = Math.max(1, Number(n) || S.cur.page);
+  img.src = `/api/ocr/scan/${encodeURIComponent(S.cur.src)}/${S.scanPage}`;
+  // 면을 넘기면 그 전 드래그는 버린다 — 다른 면의 좌표를 물려주면 조용히 틀린다.
+  S.pendingBox = null;
+  S.pendingPage = 0;
+  const sel = $("#oc-sel");
+  if (sel) sel.style.display = "none";
+  syncPageNav();
+}
+
+function syncPageNav() {
+  if (!S.cur) return;
+  const own = Number(S.cur.page);
+  // ★ 툴바에도 `oc-pglabel` 이 있다. 같은 id 를 쓰면 `querySelector` 가 먼저 만난
+  //   쪽에만 써서 두 라벨의 글씨가 서로 자리를 바꾼다(실측: 툴바가 p.56, 스캔
+  //   머리가 「2.pdf p.55 · 7회」). 스캔 창 라벨은 `oc-scanpg` 다.
+  const lab = $("#oc-scanpg");
+  if (lab) lab.textContent = `p.${S.scanPage}`;
+  const hint = $("#oc-pghint");
+  if (hint) {
+    hint.textContent = S.scanPage === own ? "이 문항의 면"
+      : `다른 면 — 여기서 드래그하면 그림이 p.${S.scanPage} 좌표로 남습니다`;
+    hint.classList.toggle("warn", S.scanPage !== own);
+  }
+  // ★ 드래그가 살아 있는지 화면이 말해야 한다. 안 보이면 사람은 눌러 보고
+  //   거절당하는 것으로만 알게 된다 — 그게 「스캔을 켜라」 는 엉뚱한 안내였다.
+  const arm = $("#oc-armed");
+  if (arm) {
+    arm.hidden = !S.pendingBox;
+    if (S.pendingBox) {
+      arm.className = "status-chip ok";
+      arm.textContent = `영역 선택됨 p.${S.pendingPage || own}` +
+        ` ${S.pendingBox[2]}×${S.pendingBox[3]} → 문항의 [영역지정] 을 누르세요`;
+    }
+  }
+  const prev = $("#oc-pgprev");
+  if (prev) prev.disabled = S.scanPage <= 1;
+}
+
+function bindPageNav() {
+  const prev = $("#oc-pgprev"), next = $("#oc-pgnext");
+  if (prev) prev.addEventListener("click", () => showScanPage(S.scanPage - 1));
+  if (next) next.addEventListener("click", () => showScanPage(S.scanPage + 1));
 }
 
 function toggleScan() {
@@ -345,7 +429,9 @@ async function open(src, page, ctx) {
   }
   S.dirty = false;
   const m = S.draft._meta || {};
+  S.scanPage = Number(page);
   $("#oc-scan").src = m.scan || "";
+  syncPageNav();
   $("#oc-round").value = S.draft.round ?? "";
   $("#oc-key").value = S.draft.answer_key_line ?? "";
   $("#oc-ocrtext").value = S.draft.ocr_text || "";
@@ -369,6 +455,14 @@ async function open(src, page, ctx) {
   const i = pages.indexOf(page);
   if (prev) prev.disabled = i <= 0;
   if (next) next.disabled = i < 0 || i >= pages.length - 1;
+
+  /* ★ 판독 전 페이지는 **스캔을 강제로 펴 준다.** 문제 카드도 OCR 원문도 비어 있어서
+     그대로 두면 빈 화면이 뜬다 — 접어 둔 기록(pref)이 남아 있으면 기본값만으로는
+     안 펴진다. 볼 것이 있는 페이지에서는 사람의 선택을 그대로 존중한다.
+     pref 를 덮어쓰지 않는다 — 이 페이지에서만 펴는 것이다. */
+  const empty = !(S.draft.questions || []).length && !(S.draft.ocr_text || "").trim();
+  if (empty && m.has_scan) S.showScan = true;
+
   applyLayout();
   renderQuestions();
   status(m.has_scan ? "불러옴" : "불러옴 (스캔 이미지 없음)");
@@ -397,7 +491,9 @@ function nextAssetId(q, prefix) {
 function figSrc(q, a) {
   if (a.bbox) {
     const [x, y, w, h] = a.bbox;
-    return `/api/ocr/crop?src=${encodeURIComponent(S.cur.src)}&page=${S.cur.page}`
+    // ★ `a.page` 가 있으면 **그 면**에서 자른다(해설 그림이 다음 면인 문항).
+    const pg = Number(a.page) || S.cur.page;
+    return `/api/ocr/crop?src=${encodeURIComponent(S.cur.src)}&page=${pg}`
       + `&x=${x}&y=${y}&w=${w}&h=${h}`;
   }
   if (a.path) return "/api/ocr/figure/" + encodeURIComponent(a.path.split("/").pop());
@@ -478,6 +574,19 @@ function assetsBox(q, i) {
       setb.type = "button";
       setb.addEventListener("click", () => setFigBox(i, id));
       fr.appendChild(setb);
+      // ★ 다른 면의 그림이면 **말한다.** 안 보이면 다음에 그 자리를 다시
+      //   드래그해 이 면 좌표로 덮어써 버린다.
+      if (a.page && S.cur && Number(a.page) !== Number(S.cur.page)) {
+        const gob = el("button", "btn sm", `p.${a.page} 보기`);
+        gob.type = "button";
+        gob.title = "이 그림이 있는 면으로 스캔을 넘깁니다";
+        gob.addEventListener("click", () => {
+          if (!S.showScan) toggleScan();
+          showScanPage(Number(a.page));
+        });
+        fr.appendChild(el("span", "status-chip info", `다른 면 p.${a.page}`));
+        fr.appendChild(gob);
+      }
       fr.appendChild(input(a.note || "", "설명",
         (v) => { a.note = v; markDirty(); }));
       row.appendChild(fr);
@@ -495,6 +604,7 @@ function addAsset(i, act) {
   const a = kind[3]();
   if (a.type === "figure" && S.pendingBox) {
     a.bbox = S.pendingBox;
+    stampFigPage(a);
     S.pendingBox = null;
     $("#oc-sel").style.display = "none";
   }
@@ -525,12 +635,32 @@ function delAsset(i, id) {
   renderQuestions();
 }
 
+/* ★ 문항의 면과 **같으면 새기지 않는다.** 344문항 전부가 같은 면이고,
+ *   여기에 `page` 를 넣기 시작하면 이미 확정한 초안과 바이트가 갈린다.
+ *   `finalize.fig_page()` 가 없을 때를 문항의 면으로 읽는다 — 그것이 기본값이다. */
+function stampFigPage(a) {
+  const pg = Number(S.pendingPage) || 0;
+  if (pg && S.cur && pg !== Number(S.cur.page)) a.page = pg;
+  else delete a.page;
+  S.pendingPage = 0;
+}
+
 function setFigBox(i, id) {
   if (!S.pendingBox) {
-    toast("먼저 상단 [스캔 보기] 로 이미지를 켜고 영역을 드래그하세요.", "err");
+    // ★ 없는 것이 무엇인지 **그대로** 말한다. 스캔이 켜져 있는데도 「스캔을
+    //   켜세요」 라고 해서, 사람이 앱이 상태를 잘못 안다고 읽었다(실측 2026-08-19).
+    if (!S.showScan) {
+      toggleScan();                       // 꺼져 있으면 꾸짖지 않고 켜 준다
+      toast("스캔을 켰습니다 — 그림을 감싸도록 드래그한 뒤 다시 누르세요.");
+    } else {
+      toast("드래그한 영역이 없습니다 — 왼쪽 스캔에서 그림을 감싸도록"
+        + " 드래그한 뒤 다시 누르세요.", "err");
+    }
     return;
   }
-  S.draft.questions[i].assets[id].bbox = S.pendingBox;
+  const a = S.draft.questions[i].assets[id];
+  a.bbox = S.pendingBox;
+  stampFigPage(a);
   S.pendingBox = null;
   $("#oc-sel").style.display = "none";
   markDirty();
@@ -802,7 +932,12 @@ function bindDrag() {
     if (w < 8 || h < 8) { sel.style.display = "none"; return; }
     S.pendingBox = [Math.round(x * scale), Math.round(y * scale),
       Math.round(w * scale), Math.round(h * scale)];
-    status(`영역 선택됨 ${S.pendingBox.join(",")} → 문제의 [그림 추가]`);
+    S.pendingPage = S.scanPage || (S.cur ? S.cur.page : 0);
+    const other = S.cur && S.pendingPage !== Number(S.cur.page);
+    status(`영역 선택됨 ${S.pendingBox.join(",")}`
+      + (other ? ` · p.${S.pendingPage} 의 좌표` : "")
+      + " → 문제의 [그림 추가]");
+    syncPageNav();
   });
 }
 
@@ -963,6 +1098,123 @@ async function runRender() {
   }
 }
 
+
+/* 이 페이지 초안 삭제 — 잘못 읽힌 면을 처음부터 다시 읽히려는 용도.
+ *
+ * ★ 확정본(01/*.md)은 건드리지 않는다. 초안은 중간 산출물이고 확정본이 결과물이다 —
+ *   지워도 이미 확정한 문항은 남는다. 그 사실을 확인창에 적는다(안 적으면 확정까지
+ *   지워지는 줄 알고 못 누른다).
+ * ★ `.bak` 을 남긴다. 사람이 손본 초안일 수도 있다.
+ */
+async function deleteDraft() {
+  if (!S.cur) return;
+  const n = (S.draft?.questions || []).length;
+  const ok = await confirmModal({
+    title: `${S.cur.src} p.${S.cur.page} 의 초안을 지울까요?`,
+    body: (n ? `<p>문항 <b>${n}개</b>가 이 초안에 있습니다.</p>` : "<p>이 초안에는 문항이 없습니다.</p>")
+      + "<p class='muted'>확정본(<code>01/*.md</code>)은 지우지 않습니다 — 이미 확정한 문항은 남습니다."
+      + " <code>.bak</code> 을 남기므로 되돌릴 수 있습니다.</p>"
+      + "<p class='muted'>지운 뒤 이 면은 미판독으로 돌아갑니다. [스캔 판독] 을 누르면 다시 읽습니다.</p>",
+    ok: "초안 삭제", cancel: "취소", danger: true,
+  });
+  if (!ok) return;
+  try {
+    const r = await api(
+      `/api/ocr/draft/${encodeURIComponent(S.cur.src)}/${S.cur.page}`,
+      { method: "DELETE" });
+    if (!r.removed) { toast(r.reason || "지울 초안이 없습니다."); return; }
+    S.dirty = false;
+    toast(`초안을 지웠습니다 (${r.backup} 남김).`);
+    S.ctx.navigate("/ocr");
+  } catch (e) {
+    toast("지우지 못했습니다: " + e.message, "err");
+  }
+}
+
+/* ── 판독 ────────────────────────────────────────────────────────────────
+ *
+ * 스캔 이미지를 읽어 초안을 만든다. 전에는 이 일을 사람이 Claude Code 창에 말로
+ * 시켰다(`services/ocr/readpage.py` 머리말 참조).
+ *
+ * ★ 잡으로 돈다 — 실측 한 장 43초다. 151장이면 두 시간에 가깝다. 그래서 확인창에
+ *   **몇 장인지와 대략 얼마나 걸리는지**를 먼저 보여 준다. 눌러 놓고 기다리는 사람이
+ *   "멈췄나" 를 의심하지 않게, 시작한 뒤에는 잡 로그로 넘긴다.
+ */
+async function runRead() {
+  const d = S.overview;
+  if (!d || !d.exists) { toast("판독 폴더가 없습니다.", "err"); return; }
+
+  /* 소스(PDF)별로 묶어 **체크박스로 고르게** 한다.
+   *
+   * ★ 전에는 확인창이 "첫 소스의 미판독 전부" 를 통째로 잡았다. 소스가 둘이면 한 번에
+   *   하나만 되고, 몇 장인지도 시작한 뒤에야 보였다(2026-08-18: "pdf갯수를 불러와서
+   *   거기에 체크박스를 넣을 순없나").
+   * ★ 이어지는 면(`continuation`)은 대상에서 뺀다 — 문항 0개가 정상이라 넣으면 매번
+   *   다시 읽는다.
+   */
+  const groups = new Map();
+  for (const p of d.pages || []) {
+    if (!groups.has(p.src)) groups.set(p.src, { all: [], todo: [] });
+    const g = groups.get(p.src);
+    g.all.push(p);
+    if (!p.n_questions && !p.continuation) g.todo.push(p.page);
+  }
+  const live = [...groups.entries()].filter(([, g]) => g.todo.length);
+  if (!live.length) { toast("판독할 페이지가 없습니다 — 이미 다 읽었습니다."); return; }
+
+  const box = el("div");
+  const picked = new Map();
+  for (const [src, g] of live) {
+    const row = el("label", "oc-pick");
+    row.style.display = "flex";
+    row.style.gap = "8px";
+    row.style.alignItems = "baseline";
+    row.style.margin = "6px 0";
+    const cb = el("input");
+    cb.type = "checkbox";
+    cb.checked = true;
+    picked.set(src, cb);
+    row.appendChild(cb);
+    const lo = g.todo[0], hi = g.todo[g.todo.length - 1];
+    row.appendChild(el("b", null, `${src}.pdf`));
+    row.appendChild(el("span", null,
+      `미판독 ${g.todo.length}장 (p.${lo}~${hi}) · 전체 ${g.all.length}장`));
+    row.appendChild(el("span", "muted", `· 대략 ${Math.max(1, Math.round(g.todo.length * 45 / 60))}분`));
+    box.appendChild(row);
+  }
+  const total = live.reduce((n, [, g]) => n + g.todo.length, 0);
+  box.appendChild(el("div", "field-hint",
+    `한 장에 40~60초입니다. 이미 판독된 페이지와 '이어짐' 면은 건너뜁니다. `
+    + `중간에 취소할 수 있고, 읽은 페이지는 남습니다.`));
+
+  const go = await confirmModal({
+    title: `판독할 PDF 를 고르세요 (미판독 ${total}장)`,
+    bodyNode: box,
+    ok: "판독 시작", cancel: "취소",
+  });
+  if (!go) return;
+
+  const srcs = [...picked.entries()].filter(([, cb]) => cb.checked).map(([src]) => src);
+  if (!srcs.length) { toast("고른 PDF 가 없습니다."); return; }
+
+  // 잡은 소스 단위다 — 고른 것을 순서대로 하나씩 띄운다(첫 잡으로 이동한다).
+  let firstId = null;
+  for (const src of srcs) {
+    try {
+      const job = await api("/api/ocr/read", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ src }),
+      });
+      firstId = firstId || job.id;
+      toast(`${src}.pdf 판독을 시작했습니다.`);
+      break;      // 동시에 하나만 돈다 — 나머지는 끝난 뒤 다시 누르면 된다
+    } catch (e) {
+      toast(`${src}.pdf 를 시작하지 못했습니다: ` + e.message, "err");
+    }
+  }
+  if (firstId) location.hash = "#/job/" + firstId;
+}
+
 /* ── 단축키 ── */
 function onKey(e) {
   if (!location.hash.startsWith("#/ocr/")) return;
@@ -1007,13 +1259,30 @@ function expandTokens(text, q) {
   return (text || "").replace(/\{\{([A-Za-z]+-\d+)\}\}/g, (m, id) => assetMd(q, id));
 }
 
+/** 이 보기를 `①` 단독 줄 + 빈 줄 + 본문으로 써야 하는가.
+ *
+ * ★ `services/book/md.py` 의 `is_block_choice()` 와 **같은 규칙**이어야 한다.
+ *   갈리면 미리보기와 확정본이 다른 모양이 된다.
+ * ★ 파이프로 시작해도 표가 아니면 블록형이 아니다 — SQL 문자열 결합 연산자
+ *   `||` 가 보기 하나로 오는 문항이 있다(실측 SQLD 12번). 블록형으로 쓰면
+ *   글리프만 한 줄 남고 값이 아래로 떨어져 보기가 두 줄로 갈린다.
+ */
+function isBlockChoice(ex) {
+  const t = (ex || "").replace(/^\s+/, "");
+  if (!t) return false;
+  if (t.includes("\n")) return true;
+  if (t.startsWith("**") || t.startsWith("```") || t.startsWith("![")) return true;
+  if (t.startsWith("|")) return isTableLine(t);   // 표일 때만 블록형
+  return false;
+}
+
 function questionToMd(q) {
   let s = "## 문제\n" + expandTokens(q.stem || "", q) + "\n\n";
   const jm = expandTokens(q.jimun || "", q);
   if (jm.trim()) s += "## 지문\n" + jm + "\n\n";
   s += "## 보기\n" + [0, 1, 2, 3].map((c) => {
     const ex = expandTokens((q.choices && q.choices[c]) || "", q);
-    return /\n|^\s*(\*\*|\||```|!\[)/.test(ex) ? `${CIRC[c]}\n\n${ex}` : `${CIRC[c]} ${ex}`;
+    return isBlockChoice(ex) ? CIRC[c] + "\n\n" + ex : CIRC[c] + " " + ex;
   }).join("\n\n") + "\n\n";
   const ex = expandTokens(q.explanation || "", q);
   if (ex.trim()) s += "## 해설\n" + ex;
@@ -1047,8 +1316,35 @@ function inl(s) {
     .replace(/&lt;br\s*\/?&gt;/gi, "<br>");
 }
 
+/** 이 줄이 **진짜 표 행**인가.
+ *
+ * ★ `|` 로 시작하는지만 보면 안 된다. SQL 문자열 결합 연산자 `||` 가 **보기 하나**로
+ *   오는 문항이 있다(실측 12번: `① =` `② ||` `③ &&` `④ -`). 그걸 표로 보면 빈 칸
+ *   하나짜리 표가 렌더되고 **보기 내용이 사라진다** — 화면에 ② 아래 빈 상자만 남았다.
+ *
+ * 표라고 보는 조건: 양끝 파이프를 뗀 뒤 **칸 하나라도 내용이 있다.**
+ *   ★ '칸이 둘 이상' 을 요구하면 **1열 표**가 깨진다 — 보기가 1열 표인 문항이 있다
+ *     (실측 SQLD 20번: `| MAX(COL1) |` / `| --- |` / `| 2 |` 네 개가 보기다).
+ *   `| a | b |`   → 표 (칸 2개, 내용 있음)
+ *   `|---|---|`   → 표 (구분선)
+ *   `||`          → 표 아님 (칸 1개, 내용 없음)
+ *   `| |`         → 표 아님 (같은 이유 — 원문의 `| |` 도 보기다)
+ */
+function isTableLine(ln) {
+  const t = (ln || "").trim();
+  if (!t.startsWith("|")) return false;
+  const cells = t.replace(/^\||\|$/g, "").split(/(?<!\\)\|/);
+  return cells.some((c) => c.trim() !== "");
+}
+
 function renderTable(rows) {
-  const cells = rows.map((r) => r.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim()));
+  /* ★ `\|` 는 **셀 내용**이다 — 열 구분자가 아니다.
+     SQL 문법에 파이프가 들어가는 표가 있다(실측 31번:
+     `EXTRACT('YEAR' \| 'MONTH' \| 'DAY' from d)`). 그냥 split("|") 하면 한 셀이
+     네 조각으로 갈라지고 백슬래시가 글자로 남는다 — 표 전체가 무너진다.
+     이스케이프를 넣어도 화면이 그대로 쪼개서, 사람이 표를 포기하고 줄글로 풀었다. */
+  const cells = rows.map((r) => r.trim().replace(/^\||\|$/g, "")
+    .split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|")));
   const body = cells.filter((r, i) => !(i === 1 && r.every((c) => /^:?-+:?$/.test(c))));
   if (!body.length) return "";
   const head = body[0], rest = body.slice(1);
@@ -1100,8 +1396,10 @@ function mdToHtml(md) {
       h += `<img src="${m[2]}">` + (m[1] ? `<div class="cap">${escapeHtml(m[1])}</div>` : "");
       i++; continue;
     }
-    if (ln.trim().startsWith("|")) {
+    if (isTableLine(ln)) {
       const t = [];
+      // ★ 진입은 엄격, **이어지는 행은 느슨**하다. 원본 표에 빈 행이 있다
+      //   (실측 32번: `|   |   |`). 빈 행에서 끊으면 표가 둘로 갈린다.
       while (i < L.length && L[i].trim().startsWith("|")) { t.push(L[i]); i++; }
       h += renderTable(t); continue;
     }

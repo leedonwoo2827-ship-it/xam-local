@@ -27,7 +27,7 @@ export const GROUPS = {
   },
   ocr: {
     title: "OCR 검수 · 페이지",
-    subtitle: "스캔 페이지를 고르면 아래 작업창에서 열립니다. 판독은 Claude Code 창에서 합니다.",
+    subtitle: "00/ 의 PDF → [PDF 렌더] 로 스캔을 뜨고 → [스캔 판독] 으로 읽습니다. 고르면 아래 작업창에서 열립니다.",
     sections: [],
   },
   scan: {

@@ -37,7 +37,11 @@ SEC_J = "## 지문"
 SEC_C = "## 보기"
 SEC_E = "## 해설"
 
-NEWLINE = "\r\n"          # ★ 01/ 은 CRLF
+# ★ 개행을 상수로 두지 않는다. `01/` 이 늘 CRLF 라고 본 것이 틀렸다 —
+#   빅분기 폴더는 CRLF 인데 SQLD 폴더는 LF 다(`finalize.py` 가 `paths.to_disk()` 로
+#   파일의 규약을 따라 썼기 때문이다). 상수로 박아 두니 SQLD 에서 337개가 전부
+#   첫 줄에서 어긋나 「바이트 충실도 0/337」 로 저장이 통째로 막혔다(2026-08-19).
+#   렌더러는 **LF 로만** 조립하고, 개행은 `paths.to_disk()` 한 곳만 지난다.
 _ID_RE = re.compile(r"^(\d{2})-(\d{2})$")
 
 
@@ -63,6 +67,17 @@ def _read(path: str) -> str | None:
 
 
 # ── 파서 ────────────────────────────────────────────────────────────────────
+def _join_choice(buf: list, bare: bool) -> str:
+    """보기 한 개의 줄들 → 본문. 앞뒤 빈 줄만 떼고 **안쪽은 건드리지 않는다.**"""
+    out = list(buf)
+    while out and not out[0].strip():
+        out.pop(0)
+    while out and not out[-1].strip():
+        out.pop()
+    return "\n".join(out)
+
+
+
 def parse(text: str) -> dict:
     """01/*.md → {fm, question, jimun, choices, explanation}"""
     if not text.startswith("---"):
@@ -90,27 +105,59 @@ def parse(text: str) -> dict:
     raw_ch = sec(SEC_C, (SEC_E,))
     explanation = sec(SEC_E, ())
 
-    choices = []
-    for line in raw_ch.split("\n"):
-        line = line.strip()
-        if not line:
-            continue
-        if line[0] in ANSWER_GLYPHS:
-            choices.append(line[1:].strip())
-        else:
-            # 블록형 보기(표·코드)는 앞 줄에 붙인다
-            if choices:
-                choices[-1] = (choices[-1] + "\n" + line).strip()
-            else:
-                choices.append(line)
+    # ★ 보기를 **글자 그대로** 뜬다. 다듬지 않는다.
+    #
+    #   전에는 줄마다 `strip()` 하고 이어 붙였다. 그래서 SQL 블록 보기의 들여쓰기가
+    #   사라지고(`  from (` → `from (`), 「글리프 + 여러 줄」 인 보기가 블록형으로
+    #   바뀌어 왕복 검증이 깨졌다(실측 SQLD 01-31·01-32). 01/ 은 파이프라인의
+    #   시작점이라 여기서 한 글자만 달라도 뒤 단계가 전부 그 값을 쓴다.
+    #
+    #   보기마다 **어느 꼴이었는지**(`① 본문` 인가 `①` 뒤 빈 줄 + 블록인가)를 함께
+    #   남긴다. 렌더러가 추측하면 같은 실수를 반복한다.
+    choices: list[str] = []
+    blocks: list[bool] = []
+    _cur: list[str] | None = None
+    _bare = False
+    for raw in raw_ch.split("\n"):
+        _t = raw.strip()
+        if _t[:1] in ANSWER_GLYPHS and _t[:1]:
+            if _cur is not None:
+                choices.append(_join_choice(_cur, _bare))
+                blocks.append(_bare)
+            _rest = _t[1:]
+            _bare = not _rest.strip()
+            _cur = [] if _bare else [_rest.lstrip()]
+        elif _cur is not None:
+            _cur.append(raw)          # ★ 원문 그대로 — 들여쓰기가 내용이다
+        elif _t:
+            _cur, _bare = [raw], False
+    if _cur is not None:
+        choices.append(_join_choice(_cur, _bare))
+        blocks.append(_bare)
 
+    # ★ 보기 사이 간격을 **파일에서 읽는다.** 추측하지 않는다.
+    #
+    #   전에는 「지문이 있으면 빈 줄」 로 갈랐다. 빅분기 80문항에서 우연히 맞았을 뿐이고
+    #   (지문이 있는 01-17 만 빈 줄이었다), SQLD 337개 중 57개가 그 규칙과 어긋나
+    #   왕복 검증이 0/337 로 떨어졌다. 실제 기준은 `finalize.py` 의 **자산 유무** 인데
+    #   파일만 보고는 자산이 있었는지 알 수 없다 — 그래서 **결과를 보존한다.**
+    #   내용은 원천이고 형식은 파일에서 온다. 그것이 바이트 충실도의 원칙이다.
+    _gl = "".join(ANSWER_GLYPHS)
+    _blank = bool(re.search(r"\n[ \t]*\n[ \t]*[" + re.escape(_gl) + r"]", "\n" + raw_ch))
     return {"fm": fm, "question": question, "jimun": jimun,
-            "choices": choices, "explanation": explanation}
+            "choices": choices, "explanation": explanation,
+            "choice_sep": "\n\n" if _blank else "\n",
+            "choice_blocks": blocks,
+            # ★ 본문 끝의 빈 줄까지 보존한다. 확정(`finalize`)이 빈 토큰을 펼치면
+            #   꼬리에 빈 줄이 남는다 — 실측 8문항이 그렇다. 여기서 다듬으면
+            #   그 8개가 왕복 검증에서 떨어지고 저장이 통째로 막힌다.
+            "body_tail": body[len(body.rstrip()):] or "\n"}
 
 
 # ── 렌더러 ──────────────────────────────────────────────────────────────────
 def render(fm: dict, question: str, jimun: str, choices: list[str],
-           explanation: str) -> str:
+           explanation: str, choice_sep: str = "",
+           choice_blocks: list | None = None, body_tail: str = "") -> str:
     """도구 #1 의 write_question 과 같은 바이트를 낸다."""
     ordered = {k: fm[k] for k in FM_ORDER if k in fm}
     front = yaml.safe_dump(ordered, allow_unicode=True, sort_keys=False).strip()
@@ -119,26 +166,33 @@ def render(fm: dict, question: str, jimun: str, choices: list[str],
     if (jimun or "").strip():
         parts.append(SEC_J + "\n" + jimun.strip())
 
-    lines = []
+    # ★ **기록된 꼴**을 그대로 쓴다(`parse` 의 `choice_blocks`). 추측은 되돌림용이다.
+    #   추측식(`\n` 이 있으면 블록)은 「글리프 + 여러 줄」 보기를 블록으로 바꿔 버렸다.
+    out_lines = []
     for i, c in enumerate(choices or []):
-        ex = (c or "").strip()
+        ex = (c or "").rstrip()
         mark = ANSWER_GLYPHS[i] if i < len(ANSWER_GLYPHS) else f"{i + 1}."
-        blocky = ("\n" in ex or ex.lstrip()[:2] in ("**", "| ", "``", "![")
-                  or ex.lstrip().startswith("|"))
-        lines.append(f"{mark}\n\n{ex}" if blocky else f"{mark} {ex}")
+        if choice_blocks is not None and i < len(choice_blocks):
+            blocky = bool(choice_blocks[i])
+        else:
+            _s = ex.lstrip()
+            blocky = ("\n" in ex or _s[:2] in ("**", "| ", "``", "![")
+                      or _s.startswith("|"))
+        out_lines.append(f"{mark}\n\n{ex}" if blocky else f"{mark} {ex}")
     # ★ 보기 줄 사이 간격이 문항에 따라 다르다. 도구 #1 의 _body() 가 두 경로로
     #   갈리기 때문이다 — 자산(지문)이 있으면 _body_tokens 로 가서 "\n\n".join,
     #   없으면 legacy 경로로 "\n".join 이다.
     #   실측: 80문항 중 지문이 있는 01-17 만 "\n\n" 이고 나머지 79개는 "\n".
-    sep = "\n\n" if (jimun or "").strip() else "\n"
-    parts.append(SEC_C + "\n" + sep.join(lines))
+    # ★ 파일에서 읽은 간격을 그대로 쓴다. 없을 때(새 파일)만 추정한다.
+    sep = choice_sep or ("\n\n" if (jimun or "").strip() else "\n")
+    parts.append(SEC_C + "\n" + sep.join(out_lines))
 
     if (explanation or "").strip():
         parts.append(SEC_E + "\n" + explanation.strip())
 
-    text = f"---\n{front}\n---\n\n" + "\n\n".join(parts) + "\n"
-    # ★ 마지막에 한 번에 CRLF 로 바꾼다 — 중간에 섞이면 바이트가 어긋난다.
-    return text.replace("\n", NEWLINE)
+    # ★ **LF 로 낸다.** 디스크 개행은 `paths.to_disk(path, text)` 가 파일마다 정한다.
+    return (f"---\n{front}\n---\n\n" + "\n\n".join(parts)
+            + (body_tail or "\n"))
 
 
 def render_from_file(question_id: str, *, overrides: dict | None = None) -> str:
@@ -150,7 +204,12 @@ def render_from_file(question_id: str, *, overrides: dict | None = None) -> str:
     fm = dict(d["fm"])
     if overrides:
         fm.update(overrides)
-    return render(fm, d["question"], d["jimun"], d["choices"], d["explanation"])
+    text = render(fm, d["question"], d["jimun"], d["choices"], d["explanation"],
+                  d.get("choice_sep") or "", d.get("choice_blocks"),
+                  d.get("body_tail") or "")
+    # ★ 왕복 검증은 **디스크에 들어갈 모양**과 비교해야 한다. 렌더러 출력(LF)을
+    #   그대로 비교하면 CRLF 로 저장된 책이 전부 불일치로 뜬다.
+    return paths.to_disk(md_path(question_id), text)
 
 
 # ── 목록 · 읽기 ─────────────────────────────────────────────────────────────
@@ -345,12 +404,17 @@ def save(question_id: str, values: dict, *, flags: dict | None = None,
     if errs:
         raise ValueError(" / ".join(errs))
 
-    text = render(fm, question, jimun, choices, explanation)
+    # ★ 저장도 **원래 간격을 지킨다.** 여기서 바꾸면 고친 문항 하나 때문에
+    #   그 파일이 왕복 검증에서 떨어지고, 다음 저장이 통째로 막힌다.
+    text = paths.to_disk(path, render(fm, question, jimun, choices, explanation,
+                                      d.get("choice_sep") or "",
+                                      d.get("choice_blocks"),
+                                      d.get("body_tail") or ""))
     written = []
     if text != cur:
         try:
             backup_sibling(path)
-            # newline="" — render() 가 이미 CRLF 를 넣었다. 여기서 또 변환하면 CRCRLF 가 된다.
+            # newline="" — `to_disk()` 가 개행을 정했다. 여기서 또 변환하면 CRCRLF 가 된다.
             with open(path + f".tmp.{os.getpid()}", "w", encoding="utf-8", newline="") as f:
                 f.write(text)
                 f.flush()

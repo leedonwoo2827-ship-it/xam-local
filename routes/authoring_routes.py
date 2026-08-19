@@ -19,11 +19,22 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter, Body, HTTPException
 
-from core.constants import BOOK_DIR
-from services.authoring import cost, derive, draft, examspec, merge, pool, provider
+# ★ `BOOK_DIR` 을 **모듈 상수로 잡지 않는다.** 그것은 `.env` 의 첫 실행 기본값이고,
+#   실제로 쓰는 폴더는 작업 폴더 화면에서 고른 것이다(`paths.book_dir()`).
+#   상수로 잡아 두니 폴더를 SQLD 로 바꿔도 화면이 시작할 때의 빅분기를 계속 읽었다
+#   — 집필 화면에 SQLD 시험정보와 빅분기 회차가 함께 뜬 원인이다(2026-08-19).
+from datetime import date
+
+# ★ `parts` 로 들여오면 안 된다 — `start_draft` 안에 **파트 번호 목록**이라는
+#   지역 변수 `parts` 가 있어서 모듈이 가려진다. 그 상태로 `parts.require()` 를
+#   부르면 리스트에서 메서드를 찾아 500 이 난다(2026-08-19 실측: 「서버 내부 오류」).
+from services.authoring import (cost, derive, draft, examspec, merge, pool,
+                                 provider)
+from services.authoring import parts as examparts
 # ★ 라우트 인자 이름이 `spec` 이라 모듈을 그 이름으로 두면 가려진다 — 별칭으로 받는다.
 from services.authoring import spec as authspec
 from services.jobs import registry
+from services.book import paths
 
 KIND = "authoring"
 
@@ -67,9 +78,14 @@ def setup_authoring_routes() -> APIRouter:
         """★ 모델을 부르지 않는다(무료·즉시). 화면을 열 때마다 $0.25 를 태울 수 없다."""
         st = provider.status()
         job = registry.running(KIND)
-        return {**st, "book": BOOK_DIR,
+        return {**st, "book": paths.book_dir(),
                 "running_job": job["id"] if job else None,
-                "part_size": draft.PART_SIZE, "parts": draft.n_parts()}
+                # ★ 시험정보에서 온다 — 상수가 아니다(품목마다 다르다).
+                "part_size": examparts.part_size(examparts.active()),
+                "parts": draft.n_parts(),
+                "round_size": draft.round_size(),
+                "part_labels": [draft.part_label(i)
+                                for i in range(1, draft.n_parts() + 1)]}
 
     @router.post("/ping")
     async def ping():
@@ -82,7 +98,11 @@ def setup_authoring_routes() -> APIRouter:
     #   SME 가 할 수 없다. 파일로 두고 화면에서 고치고 주고받게 한다.
     @router.get("/exams")
     async def exams():
-        return {"dir": examspec.EXAMS_DIR, "items": examspec.listing()}
+        # ★ 작업 폴더의 품목을 함께 준다. 화면이 그것을 기본 선택으로 쓴다 —
+        #   「고르십시오」로 비워 두면 새로고침마다 다시 고르게 되고, 목록 첫 번째를
+        #   기본으로 두면 폴더와 다른 품목이 조용히 잡힌다. 폴더가 진실이다.
+        return {"dir": examspec.EXAMS_DIR, "items": examspec.listing(),
+                "active": (examparts.active() or {}).get("id") or ""}
 
     @router.get("/exams/{exam_id}")
     async def exam_get(exam_id: str):
@@ -103,6 +123,40 @@ def setup_authoring_routes() -> APIRouter:
         except (OSError, ValueError) as e:
             raise HTTPException(400, str(e))
 
+    @router.post("/exams/{exam_id}/confirm")
+    async def exam_confirm(exam_id: str, body: Dict[str, Any] = Body(default={})):
+        """★ 「확인했다」 를 사람이 누른 기록.
+
+        `revision.confirmed` 는 코드가 알 수 없는 값이다 — 이 파일의 회차 문항수·과목
+        구성이 **시행처 공고와 같은가** 는 사람이 공고를 보고 판단한다. 그래서 검증이
+        오류가 아니라 경고로 남기고, 여기서 사람의 손짓으로 바꾼다.
+
+        누른 날짜를 `checked_at` 에 박는다 — 「언제 기준의 값인가」 가 이 값의 전부다.
+        해마다 개정되므로 작년에 확인한 true 는 올해 아무 뜻이 없다.
+        """
+        try:
+            d = examspec.load(exam_id)
+        except (OSError, ValueError) as e:
+            raise HTTPException(404, str(e))
+        on = bool(body.get("confirmed", True))
+        rev = dict(d.get("revision") or {})
+        rev["confirmed"] = on
+        # 확인일은 **누른 날**이다. 끌 때는 남겨 둔다 — 언제까지 유효했는지가 단서다.
+        if on:
+            rev["checked_at"] = date.today().isoformat()
+            if body.get("checked_by"):
+                rev["checked_by"] = str(body["checked_by"])[:80]
+            if body.get("source_url"):
+                rev["source_url"] = str(body["source_url"])[:400]
+        d["revision"] = rev
+        try:
+            r = examspec.save(exam_id, d)
+        except (OSError, ValueError) as e:
+            raise HTTPException(400, str(e))
+        r["confirmed"] = on
+        r["checked_at"] = rev.get("checked_at") or ""
+        return r
+
     @router.get("/plan")
     async def plan(multiple: int = 0, start: str = "", spec: str = "",
                    exam: str = ""):
@@ -122,7 +176,7 @@ def setup_authoring_routes() -> APIRouter:
                 if k.strip() and v.strip().isdigit():
                     per[k.strip()] = int(v)
         try:
-            p = pool.plan_rounds(BOOK_DIR, multiple or 3, start, per_round=per)
+            p = pool.plan_rounds(paths.book_dir(), multiple or 3, start, per_round=per)
         except ValueError as e:
             raise HTTPException(400, str(e))
 
@@ -133,15 +187,22 @@ def setup_authoring_routes() -> APIRouter:
         except (OSError, ValueError):
             d = None
         if d is None:
-            ok = [e for e in examspec.listing() if e["ok"]]
-            d = examspec.load(ok[0]["id"]) if ok else None
+            # ★ 폴백은 **작업 폴더의 품목**이다. 「목록의 첫 번째」로 떨어지면
+            #   SQLD 폴더를 열어 놓고 빅분기 규격이 나온다 — 진행 칩이 `1~20 / 21~40 /
+            #   41~60` 으로 떴다(2026-08-20 실측). 폴더가 진실이다.
+            d = examparts.active()
         p["exam"] = (d or {}).get("id") or ""
         p["round_size"] = ((d or {}).get("round") or {}).get("size") or 80
         p["part_size"] = ((d or {}).get("round") or {}).get("part_size") or 20
         # ★ 과목 수는 **시험정보에서** 나온다. 빅분기 80/20 = 4과목, SQLD 50/25 = 2과목.
         #   화면이 `part_count` 를 읽는데 서버가 그 키를 준 적이 없어 늘 4 로 떨어지고
         #   있었다 — 빅분기라 우연히 맞았을 뿐이다(2026-08-10).
-        p["part_count"] = max(1, -(-p["round_size"] // p["part_size"]))
+        # ★ 파트는 **과목에서** 만든다 — 나눗셈이 아니다(`services/authoring/parts.py`).
+        #   전에는 회차÷상한 이었고, SQLD 는 그 값이 2 인데 실제 집필은 4파트를
+        #   돌려 없는 문항 61~80 을 부르려 했다(2026-08-19 실측).
+        _ps = examparts.parts_of(d)
+        p["part_count"] = len(_ps) or 1
+        p["part_labels"] = [examparts.label(d, x["index"]) for x in _ps]
         # 예상 소모량을 여기서 다시 잡는다. `plan_rounds` 는 시험정보를 모르고
         # 기본 4과목으로 계산한다 — 과목 수가 다른 시험이면 그 값이 틀린다.
         p["est"] = cost.estimate(p["n_rounds"], part_count=p["part_count"])
@@ -159,8 +220,8 @@ def setup_authoring_routes() -> APIRouter:
         return {
             "round": code, "parts": staged,
             "ready_items": len(items), "blocked": blocked,
-            "rounds_path": merge.rounds_path(BOOK_DIR, code),
-            "local_edits": derive.guard_local_edits(BOOK_DIR, code),
+            "rounds_path": merge.rounds_path(paths.book_dir(), code),
+            "local_edits": derive.guard_local_edits(paths.book_dir(), code),
             "staged_cost_usd": round(
                 sum(float(p.get("cost_usd") or 0) for p in staged), 4),
         }
@@ -207,6 +268,14 @@ def setup_authoring_routes() -> APIRouter:
         if bad:
             raise HTTPException(400, f"파트 번호가 1~{draft.n_parts()} 밖입니다: {bad}")
 
+        # ★ 시험정보가 없으면 **시작하지 않는다.** 없으면 빅분기 규격(80문항·4파트)으로
+        #   조용히 돌아 1,000문항이 틀린 규격으로 만들어진다 — 되돌림값이 하필
+        #   그럴듯한 값이라 아무 신호도 나지 않는다(`parts.require` 머리말).
+        try:
+            examparts.require()
+        except examparts.NoExamSpec as e:
+            raise HTTPException(409, str(e)) from e
+
         if (busy := registry.running(KIND)):
             raise HTTPException(
                 409, f"집필이 이미 돌고 있습니다 (job {busy['id'][:8]}). "
@@ -252,10 +321,14 @@ def setup_authoring_routes() -> APIRouter:
         job = registry.create(
             KIND, label, keys,
             note=" · ".join([authspec.MODE_LABEL.get(m, m) for m in modes_used]
-                            + [f"{len(todo)}과목", f"{len(todo) * draft.PART_SIZE}문항"]
+                            # ★ 파트 크기가 파트마다 다를 수 있다(과목을 쪼갠 경우).
+                            #   `len × 상수` 로 세면 SQLD 에서 문항수가 틀린다.
+                            + [f"{len(todo)}파트",
+                               f"{sum(len(draft.part_numbers(i)) for i in todo)}문항"
+                               if all(isinstance(i, int) for i in todo) else ""]
                             + ([f"{len(skipped)}과목은 이미 있어 건너뜀"] if skipped else [])))
         # 연습문제화가 하나라도 있으면 기출 목록을 준비한다(시험기준 회차는 안 쓴다).
-        hint = _derive_hint(BOOK_DIR) if "derive" in modes_used else ""
+        hint = _derive_hint(paths.book_dir()) if "derive" in modes_used else ""
         # ★ 건너뛴 것을 조용히 넘기지 않는다. 사람이 "9회차 시켰는데 왜 20과목만
         #   도나" 를 물을 때 짚을 곳이 있어야 한다.
         if skipped:
@@ -276,19 +349,19 @@ def setup_authoring_routes() -> APIRouter:
                 staged = draft.list_staged(rc)
                 ok_n = sum(1 for s in staged if s.get("exists") and s.get("ok"))
                 if ok_n < draft.n_parts():
-                    bad = [f"파트 {s['part']}" for s in staged
+                    bad = [draft.part_label(s["part"]) for s in staged
                            if not (s.get("exists") and s.get("ok"))]
-                    registry.log(j, f"[{rc}] 반입 보류 — {draft.n_parts()}과목 중 "
-                                    f"{ok_n}과목만 합격했습니다 ({', '.join(bad)}). "
-                                    f"실패한 과목을 다시 돌린 뒤 화면에서 반입하십시오.",
+                    registry.log(j, f"[{rc}] 반입 보류 — {draft.n_parts()}파트 중 "
+                                    f"{ok_n}파트만 합격했습니다 ({', '.join(bad)}). "
+                                    f"실패한 파트를 다시 돌린 뒤 화면에서 반입하십시오.",
                                  force=True)
                     return
 
-                m = merge.merge_round(book_dir=BOOK_DIR, round_code=rc)
+                m = merge.merge_round(book_dir=paths.book_dir(), round_code=rc)
                 registry.log(j, f"[{rc}] 반입 완료 — {m.get('total')}문항 → "
                                 f"{m.get('path')}", force=True)
 
-                edits = derive.guard_local_edits(BOOK_DIR, rc)
+                edits = derive.guard_local_edits(paths.book_dir(), rc)
                 if edits:
                     registry.log(j, f"[{rc}] 파생 건너뜀 — `02/` 에 더 새로운 파일이 "
                                     f"{len(edits)}개 있습니다. 파생하면 그 교정이 "
@@ -296,7 +369,7 @@ def setup_authoring_routes() -> APIRouter:
                                  force=True)
                     return
 
-                d = derive.derive_round(BOOK_DIR, rc)
+                d = derive.derive_round(paths.book_dir(), rc)
                 if d.get("ok"):
                     registry.log(j, f"[{rc}] 파생 완료 — 02/ · 04/ 가 만들어졌습니다.",
                                  force=True)
@@ -331,7 +404,7 @@ def setup_authoring_routes() -> APIRouter:
                 registry.log(j, f"[{key}] {nums[0]}~{nums[-1]}번 집필 시작", force=True)
 
                 res = draft.draft_part(
-                    round_code=rc, part_index=p, book_dir=BOOK_DIR,
+                    round_code=rc, part_index=p, book_dir=paths.book_dir(),
                     derive_hint=(hint if md == "derive" else ""), mode=md,
                     round_index=codes.index(rc) + 1, round_total=len(codes),
                     model=model, effort=effort,
@@ -394,7 +467,7 @@ def setup_authoring_routes() -> APIRouter:
     async def do_merge(body: Dict[str, Any] = Body(...)):
         """스테이징 → `_rounds/mNN.json`. 검증에 걸린 파트가 하나라도 있으면 멈춘다."""
         code = _round_ok(body.get("round") or "")
-        return merge.merge_round(book_dir=BOOK_DIR, round_code=code,
+        return merge.merge_round(book_dir=paths.book_dir(), round_code=code,
                                  dry_run=bool(body.get("dry_run")))
 
     # ── 파생 ────────────────────────────────────────────────────────────────
@@ -402,10 +475,10 @@ def setup_authoring_routes() -> APIRouter:
     async def do_derive(body: Dict[str, Any] = Body(...)):
         """`_rounds` → `02/`·`04/`. ★ 덮어쓰기다 — 로컬 교정이 있으면 막는다."""
         code = _round_ok(body.get("round") or "")
-        out = derive.derive_round(BOOK_DIR, code,
+        out = derive.derive_round(paths.book_dir(), code,
                                   dry_run=bool(body.get("dry_run")),
                                   force=bool(body.get("force")))
-        out["validate"] = derive.validate_round(BOOK_DIR, code)
+        out["validate"] = derive.validate_round(paths.book_dir(), code)
         return out
 
     return router

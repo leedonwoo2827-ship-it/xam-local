@@ -33,7 +33,7 @@ from typing import Any, Dict, List
 
 from core.constants import DATA_DIR
 
-from .draft import PART_SIZE, ROUND_SIZE, n_parts
+from .draft import PART_SIZE, n_parts, round_size
 
 # ── 폴백 상수 ───────────────────────────────────────────────────────────────
 # 실측이 하나도 없을 때만 쓴다(새 PC·새 품목). 기출을 읽는 연습문제화 기준의
@@ -109,7 +109,8 @@ def estimate(n_rounds: int, mode: str = "", part_count: int = 0) -> Dict[str, An
     n_calls = max(0, int(n_rounds)) * parts
     return {
         "n_calls": n_calls,
-        "n_items": max(0, int(n_rounds)) * ROUND_SIZE,
+        # ★ 회차 크기는 시험정보에서 — 상수(80)면 SQLD 예상 문항수가 1.6배로 뜬다.
+        "n_items": max(0, int(n_rounds)) * round_size(),
         "usd": round(p["usd"] * n_calls, 2),
         "minutes": int(round(p["sec"] * n_calls / 60)),
         "per_part_usd": round(p["usd"], 3),

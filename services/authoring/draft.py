@@ -27,8 +27,8 @@ from core.constants import DATA_DIR
 
 from .errors import ProviderError
 from .provider import ClaudeAuthor
-from .schema import SUBJECTS, part_schema, subject_no_for
-from .spec import SYSTEM, difficulty_plan, part_prompt
+from .schema import part_schema, subject_no_for, subjects
+from .spec import difficulty_plan, part_prompt, system
 
 # ★ 집필 단위는 **과목(20문항)** 이다. 번들(10문항)이 아니다.
 #
@@ -41,8 +41,12 @@ from .spec import SYSTEM, difficulty_plan, part_prompt
 #
 #   분량 상한을 걸었기 때문에 20문항도 한 응답에 들어간다(문항당 약 900자).
 #   상한 없이 두면 20 × 2,900자여서 안 됐다 — 그것이 처음 10 을 고른 실제 이유였다.
-PART_SIZE = 20          # 1파트 = 1과목 = 20문항
-ROUND_SIZE = 80         # 회차당 80문항 = 4과목 × 20
+# ★ 회차·파트 크기는 **시험정보 파일**에서 온다(`services/authoring/parts.py`).
+#   아래 둘은 시험정보를 못 읽을 때의 되돌림값이다 — 빅분기 값이라 옛 동작과 같다.
+#   전에는 이 둘이 상수였고, SQLD(50문항)에 그대로 쓰여 없는 문항 61~80 을 집필하려
+#   했다(2026-08-19 실측). 새 값을 여기 박지 말 것 — 품목마다 다르다.
+PART_SIZE = 20          # 되돌림값. 실제 상한은 parts.part_size(spec)
+ROUND_SIZE = 80         # 되돌림값. 실제 회차 크기는 parts.round_size(spec)
 
 # ── 분량 기준 ───────────────────────────────────────────────────────────────
 # ★ 검증된 회차(m01 80문항)의 **실측 중앙값**이다. 프롬프트 문서의 "3~4배" 라는
@@ -54,10 +58,35 @@ CHARS_PER_SEC = 5.5                          # 한국어 낭독 환산(speed 1.0
 
 
 # ── 스테이징 경로 ───────────────────────────────────────────────────────────
+def _pd() -> str:
+    """지금 작업 폴더의 품목 코드. 스테이징을 품목별로 가르는 데 쓴다."""
+    try:
+        from services.authoring import parts
+
+        pd = str((parts.active() or {}).get("pd_id") or "").strip()
+        if pd:
+            return pd
+    except Exception:                                        # noqa: BLE001
+        pass
+    try:
+        from core.constants import PD_CODE
+
+        return str(PD_CODE or "unknown").strip() or "unknown"
+    except Exception:                                        # noqa: BLE001
+        return "unknown"
+
+
 def staging_dir(round_code: str) -> str:
-    """`data/authoring/<회차>/`. 책 폴더 밖에 둔다 — 검증 전 산출물이 책에 섞이면
-    `scan`·`verify` 가 그것을 진짜 문항으로 세기 시작한다."""
-    return os.path.join(DATA_DIR, "authoring", round_code)
+    """`data/authoring/<품목>/<회차>/`. 책 폴더 밖에 둔다 — 검증 전 산출물이 책에
+    섞이면 `scan`·`verify` 가 그것을 진짜 문항으로 세기 시작한다.
+
+    ★ **품목별로 가른다.** 전에는 `data/authoring/<회차>/` 였다. 회차 코드가
+      `m01`~`m09` 로 품목마다 같아서, 빅분기로 집필해 둔 스테이징이 SQLD 를 열어도
+      「1회차 60문항 대기 합격」 으로 보였다(2026-08-19 실측). 그 상태로 [반입] 을
+      누르면 **빅분기 문항이 SQLD 회차로 들어간다** — 과목명·문항수가 다르니 뒤
+      단계에서 걸리겠지만, 걸리기 전에 `_rounds/` 가 덮인다.
+    """
+    return os.path.join(DATA_DIR, "authoring", _pd(), round_code)
 
 
 def staging_path(round_code: str, part_index: int) -> str:
@@ -100,19 +129,44 @@ class PartResult:
 
 
 # ── 파트 범위 ───────────────────────────────────────────────────────────────
-def part_numbers(part_index: int, part_size: int = PART_SIZE) -> List[int]:
-    """파트 번호(1-based) → 문항번호 목록. `bundle` 의 파트 나누기와 같은 식이다."""
-    if part_index < 1:
-        raise ValueError("파트 번호는 1 부터입니다")
-    lo = (part_index - 1) * part_size + 1
-    hi = min(lo + part_size - 1, ROUND_SIZE)
-    if lo > ROUND_SIZE:
-        raise ValueError(f"파트 {part_index} 는 회차 범위({ROUND_SIZE}문항) 밖입니다")
-    return list(range(lo, hi + 1))
+def part_numbers(part_index: int, part_size: int = 0) -> List[int]:
+    """파트 번호(1-based) → 문항번호 목록.
+
+    ★ 파트는 **과목에서** 만든다 — 한 파트가 두 과목을 걸치지 않는다.
+      `parts.parts_of()` 에 그 이유가 적혀 있다. `part_size` 인자는 옛 호출부를
+      위해 남겨 두었고, 주면 그 값을 상한으로 본다.
+    """
+    from services.authoring import parts as _P
+
+    spec = _P.active()
+    if part_size:
+        spec = dict(spec or {})
+        spec["round"] = {**(spec.get("round") or {}), "part_size": int(part_size)}
+    return _P.part_numbers(spec, part_index)
 
 
-def n_parts(part_size: int = PART_SIZE) -> int:
-    return (ROUND_SIZE + part_size - 1) // part_size
+def n_parts(part_size: int = 0) -> int:
+    from services.authoring import parts as _P
+
+    spec = _P.active()
+    if part_size:
+        spec = dict(spec or {})
+        spec["round"] = {**(spec.get("round") or {}), "part_size": int(part_size)}
+    return _P.n_parts(spec)
+
+
+def round_size() -> int:
+    """회차 문항수 — 시험정보에서."""
+    from services.authoring import parts as _P
+
+    return _P.round_size(_P.active())
+
+
+def part_label(part_index: int) -> str:
+    """사람이 읽는 파트 이름 — 「2과목 (1/2) · 11~30번」."""
+    from services.authoring import parts as _P
+
+    return _P.label(_P.active(), part_index)
 
 
 # ── 검증 ────────────────────────────────────────────────────────────────────
@@ -154,8 +208,8 @@ def _validate(items: List[Dict[str, Any]], numbers: List[int]) -> tuple[List[str
         if int(it.get("subject_no", 0)) != want:
             problems.append(f"{tag}: subject_no={it.get('subject_no')} "
                             f"인데 번호상 {want} 과목입니다")
-        if it.get("subject") != SUBJECTS.get(want):
-            problems.append(f"{tag}: subject 문자열이 '{SUBJECTS.get(want)}' 가 "
+        if it.get("subject") != subjects().get(want):
+            problems.append(f"{tag}: subject 문자열이 '{subjects().get(want)}' 가 "
                             f"아닙니다 (요약노트 <h1> 과 일치해야 성적표 링크가 붙습니다)")
 
         # 낭독 — 여기가 자막으로도 나간다
@@ -206,13 +260,16 @@ def _validate(items: List[Dict[str, Any]], numbers: List[int]) -> tuple[List[str
         #   `schema.py` 가 "그림 0개로 나오는 회귀" 는 못박아 뒀지만 **부분적으로
         #   비는 경우**가 비어 있었다. 0개는 눈에 띄고 7개는 안 띈다.
         names = {str((a or {}).get("name") or "") for a in (it.get("assets") or [])}
-        linked = set(re.findall(r"\]\(assets/([^)]+?)\.svg\)", ex))
+        # ★ **지문도 본다.** 조건 그림(ERD·테이블 구조)은 지문에 놓이므로,
+        #   해설만 훑으면 그 그림이 「안 쓰인 자산」 으로 잡히고 깨진 링크를 못 잡는다.
+        _where = ex + "\n" + str(it.get("passage") or "")
+        linked = set(re.findall(r"\]\(assets/([^)]+?)\.svg\)", _where))
         if miss := sorted(linked - names):
-            problems.append(f"{tag}: 해설이 그림 {miss} 을 링크하는데 assets 에 그 SVG 가 "
+            problems.append(f"{tag}: 본문이 그림 {miss} 을 링크하는데 assets 에 그 SVG 가 "
                             f"없습니다 — 사이트에서 깨진 이미지가 됩니다")
         # 반대쪽은 경고다. 그림을 넣고 안 쓴 것은 낭비지 고장이 아니다.
         if unused := sorted(names - linked):
-            warns.append(f"{tag}: assets 의 {unused} 이 해설에서 쓰이지 않습니다")
+            warns.append(f"{tag}: assets 의 {unused} 이 본문에서 쓰이지 않습니다")
 
     # 정답 위치 편중 — 파트 단위로는 표본이 작으므로 경고만
     if items:
@@ -225,7 +282,7 @@ def _validate(items: List[Dict[str, Any]], numbers: List[int]) -> tuple[List[str
 
 # ── 집필 ────────────────────────────────────────────────────────────────────
 def draft_part(*, round_code: str, part_index: int, book_dir: str,
-               part_size: int = PART_SIZE,
+               part_size: int = 0,          # 0 = 시험정보의 상한을 쓴다
                derive_hint: str = "",
                mode: str = "derive",
                round_index: int = 0, round_total: int = 0,
@@ -255,7 +312,8 @@ def draft_part(*, round_code: str, part_index: int, book_dir: str,
     #   시각이 바뀌면(NTP 보정·서머타임) 음수 초가 남는다.
     t0 = time.monotonic()
     try:
-        got = author.structured(SYSTEM, prompt, part_schema(subj_nos, numbers))
+        # ★ 시스템 프롬프트도 **품목마다 다르다** — 시험정보에서 조립한다.
+        got = author.structured(system(), prompt, part_schema(subj_nos, numbers))
         res.items = list(got.get("items") or [])
     except ProviderError as e:
         res.problems.append(str(e))

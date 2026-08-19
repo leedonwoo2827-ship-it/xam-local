@@ -1628,9 +1628,11 @@ table.data tr.on b { color: var(--brand); }
 #panel-body > .qz-bar { flex: none; }
 #panel-body > .sc-list,
 #panel-body > .qz-list,
+#panel-body > .oc-dash,
 #panel-body > .table-wrap { flex: 1 1 auto; min-height: 0; }
 #panel-body .sc-list,
 #panel-body .qz-list,
+#panel-body .oc-dash,
 #panel-body .table-wrap {
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1638,14 +1640,17 @@ table.data tr.on b { color: var(--brand); }
 }
 #panel-body .sc-list::-webkit-scrollbar,
 #panel-body .qz-list::-webkit-scrollbar,
+#panel-body .oc-dash::-webkit-scrollbar,
 #panel-body .table-wrap::-webkit-scrollbar { width: 12px; }
 #panel-body .sc-list::-webkit-scrollbar-track,
 #panel-body .qz-list::-webkit-scrollbar-track,
+#panel-body .oc-dash::-webkit-scrollbar-track,
 #panel-body .table-wrap::-webkit-scrollbar-track {
   background: var(--linen); border-radius: var(--r-pill);
 }
 #panel-body .sc-list::-webkit-scrollbar-thumb,
 #panel-body .qz-list::-webkit-scrollbar-thumb,
+#panel-body .oc-dash::-webkit-scrollbar-thumb,
 #panel-body .table-wrap::-webkit-scrollbar-thumb {
   background: rgb(var(--brand-rgb) / .45); border-radius: var(--r-pill);
   border: 3px solid var(--linen); background-clip: padding-box; min-height: 44px;

@@ -17,6 +17,7 @@ import re
 
 from core.constants import ENGINE_DIR
 from services.book import paths
+from services.render import speech
 
 # 옛 번들(review.json 에 timebase 가 없는 것)을 보정할 때 쓰는 기본값.
 # 지금 chodangi 는 make_bundle_video.CROSSFADE_SEC 를 review.json 의 crossfadeSec 에
@@ -188,6 +189,9 @@ def scenes(bundle: str) -> dict:
     compensated = (rvdoc.get("timebase") == "video")
     xf = float(rvdoc.get("crossfadeSec") or CROSSFADE_SEC)
 
+    # 사람이 발음을 고쳐 둔 씬 — 화면이 「손수정」 배지를 띄운다
+    hand = speech.overrides(bundle)
+
     out = []
     for s in doc.get("scenes") or []:
         si = int(s.get("scene", len(out)))
@@ -200,8 +204,13 @@ def scenes(bundle: str) -> dict:
             "kind": s.get("kind"),
             "capture": bool(s.get("capture")),
             "heading": s.get("heading") or "",
-            # 낭독문 — TTS 가 읽는 문장. 슬라이드 해설보다 길게 쓸 수 있다.
-            "narration": s.get("narration_text") or s.get("narration") or "",
+            # ★ **두 트랙이다.** 전에는 한 값으로 합쳐 내려서 화면이 자막과 발음을
+            #   구별할 수 없었다(둘 다 같은 값이었으니 문제가 없어 보였다).
+            #     narration  자막 — 화면에 뜨는 원문
+            #     speech     발음 — TTS 가 읽는 글(숫자가 소리로 바뀌어 있고 손수정이 얹힌다)
+            "narration": s.get("narration") or "",
+            "speech": s.get("narration_text") or s.get("narration") or "",
+            "speech_edited": si in hand,
             "silent": s.get("kind") in ("countdown", "gap"),
             "countdown_seconds": s.get("countdown_seconds"),
             "gap_seconds": s.get("gap_seconds"),
@@ -233,6 +242,8 @@ def scenes(bundle: str) -> dict:
         "scenes": out,
         "info": info,
         "subtitles": _subtitle_text(bundle),
+        # 씬 재합성으로 wav 만 갱신된 씬 — mp4 가 그만큼 낡았다는 뜻이다
+        "stale_scenes": speech.stale_scenes(bundle),
     }
 
 

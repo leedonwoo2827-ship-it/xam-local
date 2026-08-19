@@ -408,6 +408,8 @@ function renderStage() {
     return;
   }
   const pad = (n) => String(n).padStart(2, "0");
+  // ★ 자막은 **원문**(narration)으로 쪼갠다. 발음(speech)은 숫자가 소리로 바뀌어
+  //   있어서 그걸로 자막을 만들면 화면에 「이 번입니다」가 뜬다.
   const cueTexts = splitCues(s.narration, Math.max(1, s.cues.length));
 
   // ── 머리줄
@@ -417,6 +419,7 @@ function renderStage() {
   head.appendChild(el("span", "badge", s.kind || ""));
   if (s.dur_sec != null) head.appendChild(el("span", "badge info", fmtSec(s.dur_sec)));
   if (s.silent) head.appendChild(el("span", "badge idle", "무음"));
+  if (s.speech_edited) head.appendChild(el("span", "badge ok", "발음 손수정"));
   stage.appendChild(head);
 
   // ── 1) 자막 / 발음 2단
@@ -439,7 +442,7 @@ function renderStage() {
 
   const narCol = el("div");
   narCol.appendChild(el("label", "qz-label",
-    "발음 — TTS 가 읽는 문장. 슬라이드 해설보다 길게 써도 됩니다 (고치면 재합성 + 재렌더)"));
+    "발음 — TTS 가 실제로 읽는 글. 자막은 그대로 두고 여기만 고칩니다"));
   if (s.silent) {
     const info = el("div", "qz-warn info");
     info.appendChild(icon("bulb", 15));
@@ -451,9 +454,31 @@ function renderStage() {
     const narTa = el("textarea");
     narTa.id = "vd-narration";
     narTa.rows = 5;
-    narTa.value = s.narration || "";
+    narTa.value = s.speech || "";
     narTa.addEventListener("input", () => { markStageDirty(); renderSpeechChips(); });
     narCol.appendChild(narTa);
+
+    /* 숫자를 소리대로 — **이 칸 안에서만** 바꾼다. 자막에서 다시 만들지 않는다:
+       발음 칸에는 손으로 고친 것이 이미 얹혀 있어서 다시 만들면 통째로 날아간다.
+       (showcase 의 static/js/deck.js 가 같은 이유로 같은 규칙을 쓴다) */
+    const nb = miniBtn("숫자를 소리대로", async () => {
+      const before = narTa.value;
+      if (!/\d/.test(before)) { toast("바꿀 숫자가 없습니다."); return; }
+      try {
+        const r = await api("/api/render/speak-numbers", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: before }),
+        });
+        if (r.text === before) { toast("바꿀 숫자가 없습니다."); return; }
+        narTa.value = r.text;
+        markStageDirty();
+        renderSpeechChips();
+        toast("바꿨습니다 — 읽어 보고 [발음 저장] 하세요.");
+      } catch (e) { toast("바꾸지 못했습니다: " + e.message, "err"); }
+    });
+    nb.title = "2007년 → 이천칠 년 · 8.2% → 팔 쩜 이 퍼센트\n숫자만 바꿉니다";
+    narCol.appendChild(nb);
+
     const chips = el("div", "qz-speech-check");
     chips.id = "vd-speech-chips";
     narCol.appendChild(chips);
@@ -481,18 +506,21 @@ function renderStage() {
 
   // ── 2) 버튼들
   const foot = el("div", "qz-foot");
-  const save = el("button", "btn primary", "자막 저장 (mp4 유지)");
+  const save = el("button", "btn primary", "발음 저장");
   save.type = "button";
   save.id = "vd-save";
   save.disabled = true;
-  save.addEventListener("click", () => notYet("자막 저장"));
+  save.title = "05/" + V.bundle + "/script/" + V.bundle + "_speech.json 에 남습니다 — "
+    + "다시 구워도 지워지지 않습니다";
+  save.addEventListener("click", () => saveSpeech());
   foot.appendChild(save);
 
   const resynth = el("button", "btn", "이 씬 재합성 (발음 반영)");
   resynth.type = "button";
   resynth.id = "vd-resynth";
-  resynth.disabled = true;
-  resynth.addEventListener("click", () => notYet("씬 재합성"));
+  resynth.disabled = !!s.silent;
+  resynth.title = "지금 발음 칸에 적힌 대로 이 씬 음성만 다시 만듭니다 (mp4 는 그대로)";
+  resynth.addEventListener("click", () => resynthScene(resynth));
   foot.appendChild(resynth);
 
   foot.appendChild(miniBtn("이 번들 재렌더", () => startRender([V.bundle]),
@@ -504,9 +532,14 @@ function renderStage() {
 
   const hint = el("span", "field-hint qz-foot-hint");
   hint.id = "vd-stage-hint";
-  hint.textContent = `05/${V.bundle}/ · 씬 ${s.scene}`;
   foot.appendChild(hint);
   stage.appendChild(foot);
+  // 낡음은 씬을 열 때부터 보여야 한다 — 재합성한 뒤에만 뜨면 새로 고치면 사라진다
+  V.staleScenes = (V.data && V.data.stale_scenes) || [];
+  renderStaleNote(null);
+
+  // ── 2.5) 용어 사전 — 되풀이되는 용어는 씬마다 고치지 말고 여기 한 줄로
+  stage.appendChild(lexiconBox());
 
   // ── 3) 자막 미리보기
   const pv = el("div", "qz-field");
@@ -713,14 +746,212 @@ function markStageDirty() {
   if (h) h.textContent = "저장하지 않은 수정이 있습니다.";
 }
 
-function notYet(what) {
-  confirmModal({
-    title: `${what} — 아직 연결되지 않았습니다`,
-    body: "이 화면의 읽기·확인은 동작합니다. 쓰기(자막 저장 · 씬 재합성)는 "
-      + "chodangi 의 TTS(<code>Engine.synth</code>)를 호출해야 해서 다음 단계에서 붙입니다.<br><br>"
-      + "지금은 낭독문을 고치신 뒤 <b>[이 번들 재렌더]</b> 로 전체를 다시 만드시면 됩니다.",
-    ok: "닫기", cancel: "",
+/* ── 발음 저장 · 씬 재합성 ────────────────────────────────────────────
+ *
+ * 자막은 건드리지 않는다. 발음(`narration_text`)만 `<번들>_speech.json` 에 남고,
+ * bake 가 다시 구울 때 병합한다 — 그래서 재베이크·재렌더에 지워지지 않는다.
+ *
+ * ★ 자막 칸은 아직 저장 통로가 없다. review.json 의 `slides` 가 모든 번들에서
+ *   비어 있어서 큐를 저장할 대상이 없다 — 지금 할 일은 발음이라 그쪽만 살렸다.
+ */
+async function saveSpeech() {
+  const s = V.scene;
+  const ta = $("#vd-narration");
+  if (!s || !ta) return;
+  const btn = $("#vd-save");
+  if (btn) btn.disabled = true;
+  try {
+    const r = await api(
+      `/api/render/bundles/${encodeURIComponent(V.bundle)}/speech`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        // 자막 원문을 함께 보낸다 — 나중에 "무엇을 고쳤나" 를 읽어내는 근거다
+        body: JSON.stringify({ scene: s.scene, text: ta.value,
+                               subtitle: s.narration || "" }),
+      });
+    s.speech = ta.value;
+    s.speech_edited = !r.removed;
+    toast(r.removed
+      ? "덮어쓰기를 지웠습니다 — 원문을 그대로 읽습니다."
+      : `발음을 저장했습니다 (이 번들 ${r.count}개) — [이 씬 재합성] 으로 들어 보세요.`);
+    const h = $("#vd-stage-hint");
+    if (h) h.textContent = `05/${V.bundle}/ · 씬 ${s.scene}`;
+    renderStage();
+  } catch (e) {
+    toast("저장하지 못했습니다: " + e.message, "err");
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function resynthScene(btn) {
+  const s = V.scene;
+  const ta = $("#vd-narration");
+  if (!s || !ta) return;
+  const was = btn.textContent;
+  btn.disabled = true;
+  /* 초가 올라가는 것이 "살아 있다" 의 유일한 증거다 — 씬 하나가 10~90초다. */
+  const t0 = Date.now();
+  const tick = () => {
+    const v = Math.floor((Date.now() - t0) / 1000);
+    btn.textContent = `합성 중 · ${Math.floor(v / 60)}:${String(v % 60).padStart(2, "0")}`;
+  };
+  tick();
+  const iv = setInterval(tick, 1000);
+  try {
+    const r = await api(
+      `/api/render/bundles/${encodeURIComponent(V.bundle)}/resynth`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scene: s.scene, text: ta.value }),
+      });
+    toast(`씬 ${s.scene} 음성을 다시 만들었습니다 (${fmtSec(r.sec)}) — 들어 보세요.`);
+    const a = $("#vd-audio-el");
+    if (a) {
+      // ★ 같은 이름에 다른 소리다 — 꼬리표를 붙여야 옛 소리가 다시 안 난다
+      a.src = a.src.split("?")[0] + "?v=" + Date.now();
+      a.load();
+      a.play().catch(() => { /* 자동재생을 막는 브라우저면 누르면 된다 */ });
+    }
+    /* ★ 길이가 바뀌면 자막 시각이 밀리고 mp4 가 낡는다. 조용히 두면 어긋난 것이
+       그대로 드라이브로 올라간다 — 화면이 말한다. */
+    V.staleScenes = r.stale_scenes || [];
+    renderStaleNote(r);
+  } catch (e) {
+    toast("다시 만들지 못했습니다: " + e.message, "err");
+  } finally {
+    clearInterval(iv);
+    btn.textContent = was;
+    btn.disabled = false;
+  }
+}
+
+/* ── 용어 사전 ────────────────────────────────────────────────────────
+ *
+ * `vendor/chodangi/config/pronunciation_map.yaml` 을 여기서 고친다. 파일을 직접
+ * 열어야 했던 것이 앱에 입구가 없었기 때문이다.
+ *
+ * ★ 씬 발음과 **어느 쪽이 싼가**가 이 칸의 존재 이유다. 한 용어가 여러 번들에
+ *   나오면 씬마다 고치는 것은 그 횟수만큼 일이고, 사전은 한 줄이다. 그래서
+ *   「사전에 없어 낱자로 읽히는 약어」를 빈도와 함께 보여 준다 — 빈 입력칸만 주고
+ *   알아서 채우라고 하지 않는다.
+ *
+ * ★ 읽는 소리는 **채워 넣지 않는다.** 용어 읽는 법은 사람이 정할 일이다
+ *   (2026-08-18 지시: "제가 수정하면서 규칙을 정해야 해요"). 화면은 지금 어떻게
+ *   읽히는지만 보여 주고 빈칸을 둔다.
+ */
+function lexiconBox() {
+  const box = el("details", "pb-paste");
+  box.appendChild(el("summary", null, "용어 사전 — 되풀이되는 용어는 여기 한 줄로"));
+  const body = el("div");
+  body.id = "vd-lex";
+  body.appendChild(el("div", "field-hint", "불러오는 중…"));
+  box.appendChild(body);
+  box.addEventListener("toggle", () => { if (box.open) loadLexicon(); }, { once: true });
+  return box;
+}
+
+async function loadLexicon() {
+  const box = $("#vd-lex");
+  if (!box) return;
+  let d;
+  try {
+    const rn = (V.bundle || "").split("-")[0];      // m01-6 → m01 (이 회차만)
+    d = await api(`/api/render/lexicon?round=${encodeURIComponent(rn)}`);
+  } catch (e) {
+    box.innerHTML = "";
+    box.appendChild(el("div", "empty", "사전을 읽지 못했습니다: " + e.message));
+    return;
+  }
+  box.innerHTML = "";
+  if (d.error) {
+    const w = el("div", "qz-warn err");
+    w.appendChild(icon("alert", 15));
+    w.appendChild(el("span", null, d.error));
+    box.appendChild(w);
+  }
+  box.appendChild(el("div", "field-hint",
+    `${d.count}개 항목 · 저장하면 다음 합성부터 바로 걸립니다(서버 재시작 불필요). `
+    + "자막은 원문을 그대로 지킵니다 — 소리만 바뀝니다."));
+  box.appendChild(el("pre", "pb-cmd", d.path));
+
+  // 새 항목
+  const add = el("div", "qz-foot");
+  const term = el("input");
+  term.placeholder = "용어 (예: CRISP)";
+  term.style.width = "10rem";
+  const say = el("input");
+  say.placeholder = "읽는 소리";
+  say.style.width = "12rem";
+  add.append(term, say, miniBtn("사전에 넣기", async () => {
+    if (!term.value.trim() || !say.value.trim()) {
+      toast("용어와 읽는 소리를 둘 다 넣으세요."); return;
+    }
+    try {
+      const r = await api("/api/render/lexicon", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ term: term.value, say: say.value }),
+      });
+      toast(r.was ? `«${r.key}» 를 «${r.was}» → «${r.value}» 로 바꿨습니다.`
+                  : `«${r.key}» → «${r.value}» 넣었습니다 (${r.count}개).`);
+      loadLexicon();
+    } catch (e) { toast("넣지 못했습니다: " + e.message, "err"); }
+  }));
+  box.appendChild(add);
+
+  // 후보 — 이 회차 낭독문에 있는데 사전에 없는 약어
+  const c = d.candidates || [];
+  if (!c.length) {
+    box.appendChild(el("div", "field-hint",
+      "이 회차의 대문자 약어는 모두 사전에 있습니다."));
+    return;
+  }
+  box.appendChild(el("div", "field-hint",
+    `이 회차 낭독문에 있는데 사전에 없는 약어 ${c.length}종 — 엔진이 낱자로 읽습니다. `
+    + "맞으면 그대로 두고, 틀린 것만 채우세요."));
+  const tbl = el("table", "tbl");
+  tbl.innerHTML = "<thead><tr><th>용어</th><th>횟수</th><th>지금 읽는 소리</th>"
+    + "<th>이렇게 읽어라</th><th></th></tr></thead>";
+  const tb = el("tbody");
+  c.forEach((x) => {
+    const tr = el("tr");
+    tr.appendChild(el("td", null, x.term));
+    tr.appendChild(el("td", "muted", `${x.count}회`));
+    tr.appendChild(el("td", "muted", x.now));
+    const inp = el("input");
+    inp.placeholder = "비우면 그대로";
+    inp.style.width = "100%";
+    inp.title = x.where;
+    const cell = el("td");
+    cell.appendChild(inp);
+    tr.appendChild(cell);
+    tr.appendChild(el("td", null, miniBtn("넣기", async () => {
+      if (!inp.value.trim()) { toast("읽는 소리를 넣으세요."); return; }
+      try {
+        await api("/api/render/lexicon", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ term: x.term, say: inp.value }),
+        });
+        toast(`«${x.term}» → «${inp.value.trim()}» 넣었습니다.`);
+        loadLexicon();
+      } catch (e) { toast("넣지 못했습니다: " + e.message, "err"); }
+    })));
+    tb.appendChild(tr);
   });
+  tbl.appendChild(tb);
+  const wrap = el("div", "tbl-wrap");
+  wrap.appendChild(tbl);
+  box.appendChild(wrap);
+}
+
+function renderStaleNote(r) {
+  const hint = $("#vd-stage-hint");
+  if (!hint) return;
+  const n = (V.staleScenes || []).length;
+  const bits = [];
+  if (r && r.shifted && r.was != null) {
+    bits.push(`길이 ${fmtSec(r.was)} → ${fmtSec(r.sec)}`);
+  }
+  if (n) bits.push(`mp4 가 ${n}개 씬보다 낡았습니다 — 다 고치신 뒤 [이 번들 재렌더]`);
+  hint.textContent = bits.length ? bits.join(" · ") : `05/${V.bundle}/ · 씬 ${V.scene?.scene}`;
+  hint.classList.toggle("err", n > 0);
 }
 
 /* ══════════ 렌더 실행 ══════════ */
@@ -983,16 +1214,69 @@ async function mountPrecheck(root, ctx) {
 async function mountJobPanel(root, ctx) {
   const jobId = ctx.args[0];
   root.innerHTML = "";
+
+  /* ★ 살아 있다는 표시가 필요하다. 전에는 한 번 받아 그리고 끝이라, 판독처럼 장당
+     40~60초씩 가는 잡은 **F5 를 눌러야** 새 줄이 보였다 — 사람은 멈춘 줄 안다
+     (2026-08-18: "전자시계라도 넣어주세요").
+     그래서 셋을 둔다: 경과 시계(1초) · 진행 카운터 · 로그 이어붙이기(폴링). */
+  const head = el("div", "vd-env");
+  const badge = el("span", "status-chip", "불러오는 중…");
+  const clock = el("span", "status-chip info", "0:00");
+  const prog = el("span", "status-chip", "");
+  head.append(badge, clock, prog);
+  root.appendChild(head);
+
   const pre = el("pre", "log-pane");
   pre.style.maxHeight = "60vh";
   root.appendChild(pre);
-  try {
-    const job = await api(`/api/jobs/${encodeURIComponent(jobId)}`);
+  const a = el("a", "btn sm", "전체 로그 내려받기");
+  a.href = `/api/jobs/${encodeURIComponent(jobId)}/log`;
+  root.appendChild(a);
+
+  const t0 = Date.now();
+  let live = true;
+  const tick = () => {
+    if (!live || !clock.isConnected) return;
+    const v = Math.floor((Date.now() - t0) / 1000);
+    clock.textContent = `${Math.floor(v / 60)}:${String(v % 60).padStart(2, "0")}`;
+  };
+  const iv = setInterval(tick, 1000);
+  tick();
+
+  const drawHead = (job) => {
+    badge.textContent = `${job.label || job.kind || "작업"} · ${STATUS_KO[job.status] || job.status}`;
+    badge.className = "status-chip " + (STATUS_TONE[job.status] || "");
+    const done = job.done_count || 0, tot = job.total_count || 0;
+    prog.textContent = tot ? `${done} / ${tot}` + (job.current ? ` · ${job.current}` : "") : "";
+    if (job.status !== "running" && job.status !== "queued") {
+      live = false;
+      clearInterval(iv);
+    }
+  };
+  const drawLogs = (job) => {
+    // ★ 커서(log_from)는 pollJob 이 관리한다 — **받은 줄만** 이어붙인다.
     (job.log?.lines || []).forEach((l) => pre.appendChild(el("span", null, l + "\n")));
-    const a = el("a", "btn sm", "전체 로그 내려받기");
-    a.href = `/api/jobs/${encodeURIComponent(jobId)}/log`;
-    root.appendChild(a);
+    pre.scrollTop = pre.scrollHeight;
+  };
+
+  try {
+    const first = await api(`/api/jobs/${encodeURIComponent(jobId)}`);
+    drawHead(first);
+    const alive = first.status === "running" || first.status === "queued";
+    if (alive) {
+      // ★ 여기서 로그를 그리지 않는다. pollJob 이 커서 0 부터 다시 받아 첫 틱에 같은
+      //   줄을 또 붙인다(같은 사고가 mountRun 에서 이미 있었다 — 그 주석 참조).
+      pollJob(jobId, (j) => { drawHead(j); drawLogs(j); }).then((f) => {
+        live = false;
+        clearInterval(iv);
+        if (f) drawHead(f);
+      });
+    } else {
+      drawLogs(first);          // 끝난 잡은 폴링이 없으니 여기서 한 번 그린다
+    }
   } catch (e) {
+    live = false;
+    clearInterval(iv);
     pre.textContent = "로그를 불러오지 못했습니다: " + e.message;
   }
 }

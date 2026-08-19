@@ -60,11 +60,10 @@ def validate(d: Dict[str, Any]) -> Tuple[List[str], List[str]]:
         errs.append("round.size 가 0 입니다.")
     if part <= 0:
         errs.append("round.part_size 가 0 입니다.")
-    elif size % part:
-        # ★ 균등 분할만 지원한다(`draft.part_numbers`). 나누어떨어지지 않으면 마지막
-        #   파트가 짧아지고, 그 사실이 스키마의 개수 강제와 충돌한다.
-        errs.append(f"round.size({size}) 가 part_size({part}) 로 나누어떨어지지 "
-                    f"않습니다 — 지금 코드는 균등 분할만 합니다.")
+    # ★ `part_size` 는 **나눗수가 아니라 한 호출의 상한**이다(2026-08-19).
+    #   전에는 `size % part == 0` 을 오류로 막았는데, 그것은 파트를 회차에서 균등
+    #   분할하던 때의 제약이다. 지금은 과목마다 그 과목 안에서 고르게 쪼개므로
+    #   나머지가 남지 않는다 — SQLD 40문항을 상한 25로 주면 20+20 이 된다.
 
     # ★ 이 검산이 이 파일의 존재 이유다. 합이 틀리면 과목 비율이 조용히 어긋난다.
     tot = sum(int(s.get("count") or 0) for s in subs)
@@ -99,9 +98,12 @@ def validate(d: Dict[str, Any]) -> Tuple[List[str], List[str]]:
         for s in subs:
             acc += int(s.get("count") or 0)
             edges.append(acc)
-        if any(e % part for e in edges[:-1]):
-            warns.append(f"파트({part}문항)가 과목 경계를 넘습니다 — 한 호출이 두 과목을 "
-                         f"함께 씁니다. 첫 회차를 돌려 과목 비율이 유지되는지 확인하십시오.")
+        # ★ 「파트가 과목 경계를 넘습니다」 경고를 없앴다(2026-08-19).
+        #   `parts.parts_of()` 가 파트를 **과목에서** 만들도록 바뀌어, 한 파트가 두
+        #   과목을 걸치는 일이 구조적으로 생기지 않는다. 남겨 두면 사람이 고칠 수 없는
+        #   경고가 된다 — SQLD 에서 실제로 「part_size 를 몇으로 해야 하나」 를
+        #   사람이 떠안았고, 그것은 과목 구성을 보면 코드가 아는 값이었다.
+        del edges
 
     rev = d.get("revision") or {}
     if not rev.get("confirmed"):

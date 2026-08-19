@@ -167,6 +167,11 @@ function renderYtmap() {
     d.exists ? `매핑 파일 있음` : "매핑 파일 없음"));
   chips.appendChild(el("span", "status-chip " + (d.empty ? "bad" : "ok"),
     `링크 ${d.filled} / ${d.bundles}`));
+  if (d.theory_total) {
+    chips.appendChild(el("span",
+      "status-chip " + (d.theory_filled < d.theory_total ? "bad" : "ok"),
+      `이론 ${d.theory_filled} / ${d.theory_total}`));
+  }
   if (d.provider) chips.appendChild(el("span", "status-chip", `provider=${d.provider}`));
   const leaky = (d.items || []).filter((i) => i.leaky && i.id);
   if (leaky.length) {
@@ -211,6 +216,34 @@ function renderYtmap() {
       + "예전 회차라면 남겨도 되고, 지워도 빌드에 영향이 없습니다."));
   }
 
+  // 이론 강의 표 — 과목 수만큼(보통 2~4줄)이라 번들 표보다 위에 둔다.
+  // 회차 영상과 달리 레벨 제한이 없다. 링크는 공개 theory.js 에 실린다.
+  if (d.theory_total) {
+    const th = el("table", "tbl");
+    th.innerHTML = `<thead><tr><th>과목</th><th>요약노트</th><th>버튼 이름</th>
+      <th>링크</th></tr></thead>`;
+    const thb = el("tbody");
+    (d.theory || []).forEach((t) => {
+      const tr = el("tr", t.id ? "" : "state-todo");
+      tr.appendChild(el("td", null, `${t.sub}과목 · ${t.name || ""}`));
+      tr.appendChild(el("td", "muted", `summary_${t.key}.html`));
+      tr.appendChild(el("td", "muted", t.label || ""));
+      const link = el("td");
+      link.appendChild(el("span", "status-chip " + (t.id ? "ok" : ""),
+        t.id ? (t.provider === "drive" ? "드라이브" : t.provider) : "비어 있음"));
+      tr.appendChild(link);
+      thb.appendChild(tr);
+    });
+    th.appendChild(thb);
+    const thw = el("div", "tbl-wrap");
+    thw.appendChild(th);
+    box.appendChild(el("div", "field-hint", "이론 탭 — 과목별 강의 1개씩."));
+    box.appendChild(thw);
+    box.appendChild(el("div", "field-hint",
+      "★ 이론 링크에는 min_level 이 없습니다 — 공개 theory.js 에 실려 누구나 받습니다. "
+      + "회차 영상처럼 레벨로 가릴 통로(api/videos.php)가 이론 탭에는 없습니다."));
+  }
+
   // 번들 표 — 링크 유무와 문항 시작점을 함께 본다.
   const tbl = el("table", "tbl");
   tbl.innerHTML = `<thead><tr><th>번들</th><th>문항</th><th>길이</th>
@@ -239,13 +272,19 @@ function renderYtmap() {
   box.appendChild(wrap);
 
   // 붙여넣기 — 72개를 손으로 넣으면 한 줄 밀려 영상이 엉뚱한 회차에 붙는다.
+  const tEmpty = (d.theory_total || 0) - (d.theory_filled || 0);
   const pd = el("details", "pb-paste");
-  pd.open = d.empty > 0;
-  const sm = el("summary", null, `링크 붙여넣기 (${d.empty}개 비어 있음)`);
+  pd.open = d.empty > 0 || tEmpty > 0;
+  const sm = el("summary", null, `링크 붙여넣기 (${d.empty + tEmpty}개 비어 있음)`);
   pd.appendChild(sm);
   pd.appendChild(el("div", "field-hint",
     "번들코드와 링크가 같은 줄에 있으면 됩니다 — 파일명·URL·따옴표 섞여도 잡습니다. "
     + "예: m01-1.static.mp4  https://drive.google.com/file/d/1AbC.../view"));
+  if (d.theory_total) {
+    pd.appendChild(el("div", "field-hint",
+      "이론 강의도 같은 칸에 넣습니다. 렌더 파일명이 그대로 통하고 「2과목」·「t3」 도 됩니다. "
+      + "예: 1summary-planning.mp4  https://drive.google.com/file/d/1AbC.../view"));
+  }
   const ta = el("textarea");
   ta.rows = 8;
   ta.placeholder = "m01-1.static.mp4  https://drive.google.com/file/d/1AbC.../view";
@@ -261,11 +300,16 @@ function renderYtmap() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
+      const nt = r.matched_theory?.length || 0;
       const bits = [`${r.matched.length}개 채움`];
+      if (nt) bits.push(`이론 ${nt}개`);
       if (r.overwrote?.length) bits.push(`${r.overwrote.length}개 교체`);
       if (r.unknown?.length) bits.push(`모르는 번들 ${r.unknown.length}개`);
+      if (r.unknown_theory?.length) {
+        bits.push(`03/ 에 없는 과목 ${r.unknown_theory.join("·")}`);
+      }
       if (r.skipped?.length) bits.push(`건너뜀 ${r.skipped.length}줄`);
-      toast(bits.join(" · "), r.matched.length ? "" : "err");
+      toast(bits.join(" · "), (r.matched.length || nt) ? "" : "err");
       await refresh();
     } catch (e) { toast("채우지 못했습니다: " + e.message, "err"); }
   });
@@ -284,7 +328,10 @@ async function syncYtmap() {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ provider: P.ytmap?.provider || "drive" }),
     });
-    toast(r.added?.length ? `번들 ${r.added.length}개를 추가했습니다.` : "이미 다 있습니다.");
+    const bits = [];
+    if (r.added?.length) bits.push(`번들 ${r.added.length}개`);
+    if (r.added_theory?.length) bits.push(`이론 ${r.added_theory.length}과목`);
+    toast(bits.length ? bits.join(" · ") + " 추가했습니다." : "이미 다 있습니다.");
     await refresh();
   } catch (e) {
     toast("매핑을 만들지 못했습니다: " + e.message, "err");

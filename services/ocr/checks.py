@@ -36,19 +36,61 @@ def _read(path: str) -> str | None:
         return f.read()
 
 
+def _draft_is_newer(src_: str, page_: int, md_path: str) -> bool:
+    """이 초안이 확정본보다 **나중에 고쳐졌는가.**
+
+    ★ 게이트가 사람의 편집과 렌더러의 어긋남을 가리는 유일한 단서다.
+
+      · 초안이 더 새롭다 → 확정한 뒤 사람이 고쳤다. 달라지는 것이 **당연하다.**
+        (실측 2026-08-19: 25번 해설에 그림을 하나 넣었을 뿐인데 게이트가 전체
+         확정을 막았다. 고친 면을 먼저 확정하지 않으면 빠져나갈 수 없었다.)
+      · 초안이 더 낡았다 → 초안은 그대로인데 나오는 바이트가 달라졌다.
+        렌더러가 어긋난 것이고, 이것이 게이트가 실제로 막아야 하는 것이다.
+
+    시각을 못 읽으면 **막는 쪽**으로 답한다 — 모르는 채로 240개를 덮어쓰는 것보다 낫다.
+    """
+    try:
+        return os.path.getmtime(draft.path_of(src_, page_)) > os.path.getmtime(md_path)
+    except OSError:
+        return False
+
+
+# 사람의 검수 플래그. **게이트의 비교 대상이 아니다.**
+#
+# ★ 왜 빼는가 — 게이트가 지키려는 것은 "다시 확정하면 **검수한 내용**이 바뀌는가" 다.
+#   그런데 이 셋은 확정·대조완료가 **바꾸라고 있는 값**이다. 같이 비교하면 정상 작업이
+#   게이트를 켠다: p.3 을 확정(verified=false)한 뒤 대조완료를 체크하면 초안이
+#   true 가 되어 불일치가 뜨고, 그걸 푸는 유일한 방법인 '다시 확정' 을 게이트가 막는다
+#   — 빠져나갈 수 없는 자리였다(2026-08-18 실측, 사용자가 세 번 막혔다).
+#
+#   플래그만 다른 것은 `flag_only` 로 세어 따로 보여 준다. 내용이 다른 것만 막는다.
+_FLAG_RE = re.compile(r"^(verified|reviewed|needs_review): .*$", re.M)
+
+
+def _content(text: str) -> str:
+    """검수 플래그를 지운 본문 — 게이트가 실제로 비교하는 것."""
+    return _FLAG_RE.sub(lambda m: m.group(0).split(":")[0] + ": ~", text or "")
+
+
 # ── 확정 왕복 (게이트) ──────────────────────────────────────────────────────
-def refinalize() -> dict:
+def refinalize(skip: tuple | None = None) -> dict:
     """모든 초안을 확정했을 때의 바이트 = 지금 01/*.md 인가.
 
     · same     이미 확정돼 있고 바이트가 같다            → 정상
     · new      아직 01/ 에 없다 (판독했지만 미확정)       → 정상. 게이트를 막지 않는다
     · differ   있는데 바이트가 다르다                     → ★ 게이트 실패
+
+    `skip=(src, page)` 는 **그 면을 빼고** 본다 — 지금 확정하려는 면이다.
     """
     if not project.exists():
         return {"ok": False, "total": 0, "same": 0, "new": 0,
                 "error": f"OCR 판독 폴더를 찾을 수 없습니다: {project.ocr_dir() or '(미지정)'}"}
 
     same, new, differ, errors = 0, [], [], []
+    flag_only: list[str] = []
+    skip_at = (str(skip[0]), int(skip[1])) if skip else None
+    mine: list[str] = []          # 지금 확정하려는 면에서 달라지는 것
+    edited: list[dict] = []       # 확정 뒤 사람이 고친 면 — 다시 확정하면 반영된다
     for src, page in draft.all_drafts():
         d = draft.load(src, page)
         for q in (d or {}).get("questions") or []:
@@ -66,10 +108,23 @@ def refinalize() -> dict:
                 new.append(os.path.basename(path)[:-3])
             elif cur == text:
                 same += 1
+            elif _content(cur) == _content(text):
+                # 내용은 같고 검수 플래그만 다르다 — 확정이 바꿀 값이라 막지 않는다
+                flag_only.append(os.path.basename(path)[:-3])
             else:
                 i = next((i for i, (a, b) in enumerate(zip(cur, text)) if a != b),
                          min(len(cur), len(text)))
+                # ★ 지금 확정하려는 면이면 막지 않는다 — 사람이 방금 고친 그 면이다.
+                if skip_at and (str(src), int(page)) == skip_at:
+                    mine.append(os.path.basename(path)[:-3])
+                    continue
+                # ★ 확정한 뒤 초안을 고쳤으면 달라지는 것이 당연하다 — 막지 않고 센다.
+                if _draft_is_newer(src, page, path):
+                    edited.append({"id": os.path.basename(path)[:-3],
+                                   "src": src, "page": page})
+                    continue
                 differ.append({
+                    "src": src, "page": page,
                     "id": os.path.basename(path)[:-3],
                     "path": paths.rel(path),
                     "at_char": i,
@@ -87,6 +142,12 @@ def refinalize() -> dict:
         "total": total, "same": same,
         "new": new[:40], "new_count": len(new),
         "differ": differ[:20], "differ_count": len(differ),
+        # 플래그만 다른 것 — 게이트를 막지 않는다. 다시 확정하면 맞춰진다.
+        "flag_only": flag_only[:20], "flag_only_count": len(flag_only),
+        # 지금 확정하려는 면에서 달라지는 것 — 막지 않고 **말한다.**
+        "mine": mine[:20], "mine_count": len(mine),
+        # 확정 뒤 초안을 고친 면 — 막지 않는다. 그 면에서 다시 확정하면 반영된다.
+        "edited": edited[:40], "edited_count": len(edited),
         "errors": errors[:20], "error_count": len(errors),
         "gate": ("확정(MD 저장) 을 쓸 수 있습니다." if not differ and not errors else
                  "★ 확정을 막았습니다 — 지금 렌더러로 확정하면 이미 검수한 "
@@ -94,9 +155,18 @@ def refinalize() -> dict:
     }
 
 
-def gate_ok() -> tuple[bool, str]:
-    """UI·라우터가 쓰는 짧은 형태."""
-    r = refinalize()
+def gate_ok(skip: tuple | None = None) -> tuple[bool, str]:
+    """UI·라우터가 쓰는 짧은 형태.
+
+    ★ `skip=(src, page)` — **지금 확정하려는 면은 빼고** 본다.
+
+      확정은 그 면의 문항만 쓴다(`finalize_page`). 그런데 게이트가 전체를 보고 막아서,
+      25번에 해설 그림을 하나 넣은 것이 26번 확정까지 막았다(2026-08-19 실측).
+      사람이 방금 그 면을 고쳤으니 그 면이 달라지는 것은 **의도한 일**이다.
+      게이트가 지켜야 하는 것은 그 면이 아니라, 손대지 않은 **다른 면**이 덩달아
+      바뀌는 것이다 — 렌더러가 어긋난 신호이고, 그것만 막는다.
+    """
+    r = refinalize(skip)
     if r.get("error"):
         return False, r["error"]
     if r["ok"]:
@@ -106,9 +176,18 @@ def gate_ok() -> tuple[bool, str]:
         parts.append(f"바이트 불일치 {r['differ_count']}건")
     if r["error_count"]:
         parts.append(f"렌더 오류 {r['error_count']}건")
+    # ★ 어디가 문제인지 **여기서 말한다.** 앱만 쓰는 사람에게 CLI 명령을 안내하면
+    #   막힌 채로 남는다 — 실제로 그랬다.
+    where = ""
+    if r.get("differ"):
+        ds = r["differ"][:3]
+        where = " 문제가 된 곳: " + ", ".join(
+            f"{d['id']} ({d.get('src', '?')} p.{d.get('page', '?')} {d['at_line']}줄)"
+            for d in ds) + ("…" if r["differ_count"] > len(ds) else "")
     return False, (
-        f"확정 왕복 검증이 통과하지 않아 저장을 막았습니다 ({' · '.join(parts)}). "
-        "`python -m services.ocr.checks --refinalize` 로 원인을 확인하세요.")
+        f"확정을 막았습니다 ({' · '.join(parts)}) — 손대지 않은 다른 면의 "
+        f"확정본이 바뀝니다.{where} 그 면을 열어 초안을 확인하시거나, "
+        "바뀐 내용이 맞다면 그 면에서 다시 확정하세요.")
 
 
 # ── 회차 정합성 ─────────────────────────────────────────────────────────────
@@ -249,7 +328,11 @@ def _main() -> int:
         print(f"  초안 → 01/*.md 확정 왕복      "
               f"일치 {r['same']}/{r['total']}"
               + (f"  ·  미확정(신규) {r['new_count']}" if r["new_count"] else "")
+              + (f"  ·  확정 뒤 고침 {r['edited_count']}" if r["edited_count"] else "")
               + (f"  ·  불일치 {r['differ_count']}" if r["differ_count"] else ""))
+        for e in r["edited"]:
+            print(f"  [edited] {e['id']}  ({e['src']} p.{e['page']}) "
+                  f"— 그 면에서 다시 확정하면 반영됩니다")
         for d in r["differ"]:
             print(f"  [differ] {d['id']}  line {d['at_line']}")
             print(f"           기대={d['expected']}")

@@ -263,7 +263,7 @@ export function formModal({ title, body = "", fields = [], ok = "저장", cancel
  *
  * @returns {Promise<boolean>}
  */
-export function confirmModal({ title, body = "", ok = "확인", cancel = "취소", danger = false }) {
+export function confirmModal({ title, body = "", bodyNode = null, ok = "확인", cancel = "취소", danger = false }) {
   return new Promise((resolve) => {
     const overlay = $("#app-overlay");
     const modal = $("#app-modal");
@@ -271,7 +271,11 @@ export function confirmModal({ title, body = "", ok = "확인", cancel = "취소
 
     modal.innerHTML = "";
     modal.appendChild(el("h2", null, title));
-    if (body) {
+    // ★ `bodyNode` 는 **살아 있는 DOM** 이다 — 체크박스·입력칸을 넣을 때 쓴다.
+    //   `body`(innerHTML)로는 이벤트와 참조가 끊긴다(실측: 판독 대상 고르기 창).
+    if (bodyNode) {
+      modal.appendChild(bodyNode);
+    } else if (body) {
       const p = el("p", "modal-sub");
       p.innerHTML = body;          // 호출자가 escapeHtml 로 조립한다
       modal.appendChild(p);

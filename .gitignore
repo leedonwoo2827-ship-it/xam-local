@@ -21,3 +21,9 @@ vendor/chodangi/assets/
 # munje/   렌더 스크래치(번들당 수백 MB). 매 실행이 비우고 시작한다.
 vendor/chodangi/munje/
 vendor/chodangi/work/
+
+# 사내 문서. 저장소에 올리지 않는다(2026-08-13 지시).
+_docs/
+
+# 원자적 쓰기가 남기는 사본. 내용은 원본이 진실이다.
+*.bak

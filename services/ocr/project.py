@@ -38,6 +38,7 @@ DEFAULT_BOOK = {
     "subject_bounds": [],
     "questions_per_round": 0,
     "round_label": "제{n}회",
+    "difficulty_rubric": [],
 }
 
 
@@ -109,6 +110,7 @@ def book_config() -> dict:
     묶었는데, 이 앱은 작업 폴더가 요청마다 바뀔 수 있어 그 방식이 위험하다.
     """
     cfg = dict(DEFAULT_BOOK)
+    cfg.update(_from_examspec())
     for path in (os.path.join(ocr_dir(), "book.json") if ocr_dir() else "",
                  os.path.join(paths.book_dir(), "_book.json")):
         if not path or not os.path.isfile(path):
@@ -117,13 +119,65 @@ def book_config() -> dict:
             with open(path, encoding="utf-8") as f:
                 d = json.load(f)
             if isinstance(d, dict):
+                # ★ `difficulty_rubric` 도 받는다. 난이도 기준은 **문제집별로 다르다**
+                #   (2026-08-18 지시) — 코드에 박으면 폴더를 바꿔도 옛 기준이 쓰인다.
                 for k in ("title", "subjects", "subject_bounds",
-                          "questions_per_round", "round_label"):
+                          "questions_per_round", "round_label", "difficulty_rubric"):
                     if d.get(k):
                         cfg[k] = d[k]
         except (OSError, ValueError):
             continue
     return cfg
+
+
+def _from_examspec() -> dict:
+    """시험정보(`exams/<pd>.json`)에서 과목 체계·난이도를 가져온다.
+
+    ★ **여기가 원천이다.** 문항 집필 화면 하단의 「시험정보 관리」가 이 파일을 고치고,
+      문제집이 추가되거나 시험이 개정되면 사람이 그것을 갱신한다(2026-08-18 지시).
+      전에는 OCR 쪽이 `book.json` 을 따로 봤다 — 같은 사실을 두 곳에 두면 개정 때
+      한쪽만 고쳐지고, 어느 쪽이 맞는지 알 수 없다.
+
+    ★ `book.json` · `_book.json` 은 **여전히 읽는다**(이 함수 뒤에서 덮어쓴다).
+      시험정보에 없는 폴더별 예외를 둘 자리가 필요하고, 옛 폴더의 호환도 지킨다.
+    """
+    try:
+        from services.book import books
+        from services.authoring import examspec
+        pd = (books.active_meta() or {}).get("pd") or ""
+        if not pd:
+            return {}
+        d = examspec.load(pd)
+    except Exception:                                  # noqa: BLE001 — 없으면 조용히 건너뛴다
+        return {}
+    if not isinstance(d, dict):
+        return {}
+
+    out: dict = {}
+    subs = d.get("subjects") or []
+    if subs:
+        # subjects: [{no, name, count}] → subjects{no: name} + subject_bounds[(누적 상한, no)]
+        names, bounds, acc = {}, [], 0
+        for sv in subs:
+            try:
+                no = int(sv["no"]); cnt = int(sv.get("count") or 0)
+            except (KeyError, TypeError, ValueError):
+                continue
+            names[no] = str(sv.get("name") or "")
+            acc += cnt
+            bounds.append([acc, no])
+        if names:
+            out["subjects"] = names
+        if bounds:
+            out["subject_bounds"] = bounds
+    if (d.get("round") or {}).get("size"):
+        out["questions_per_round"] = int(d["round"]["size"])
+    if d.get("label"):
+        out["title"] = str(d["label"])
+    rub = (d.get("difficulty") or {}).get("rubric")
+    if rub:
+        out["difficulty_rubric"] = rub
+    return out
 
 
 def subject_bounds() -> tuple[tuple[int, int], ...]:

@@ -22,7 +22,10 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter, Body, HTTPException
 
-from core.constants import BOOK_DIR
+# ★ `BOOK_DIR` 을 **모듈 상수로 잡지 않는다.** 그것은 `.env` 의 첫 실행 기본값이고,
+#   실제로 쓰는 폴더는 작업 폴더 화면에서 고른 것이다(`paths.book_dir()`).
+#   상수로 잡아 두니 폴더를 SQLD 로 바꿔도 화면이 시작할 때의 빅분기를 계속 읽었다
+#   — 집필 화면에 SQLD 시험정보와 빅분기 회차가 함께 뜬 원인이다(2026-08-19).
 from services.authoring import theory
 from services.book import paths
 from services.jobs import registry
@@ -51,22 +54,22 @@ def setup_theory_routes() -> APIRouter:
     @router.get("/status")
     async def status() -> Dict[str, Any]:
         """모델을 부르지 않는다(무료·즉시). 화면이 "무엇이 있고 무엇이 없나" 를 그린다."""
-        rounds = theory.available_rounds(BOOK_DIR)
+        rounds = theory.available_rounds(paths.book_dir())
         items: List[Dict[str, Any]] = []
-        for key, no in theory.KEYS:
+        for key, no in theory.keys():
             # ★ `.md` 는 만들지 않으므로 여기서도 말하지 않는다. 있는 것처럼 보고하면
             #   화면이 그 경로를 보여 주고, 사람이 그 파일을 찾으러 간다
             #   (theory.py 의 `.md` 머리말 참조).
             hp = paths.summary_html(key)
             items.append({
-                "key": key, "subject_no": no, "subject": theory.SUBJECTS[no],
+                "key": key, "subject_no": no, "subject": theory.subjects().get(no, ''),
                 "html_path": paths.rel(hp), "html_bytes": paths.size(hp),
                 "exists": os.path.isfile(hp),
             })
         return {
             "provider": "claude", "default_model": DEFAULT_MODEL,
-            "book": BOOK_DIR,
-            "keys": [k for k, _ in theory.KEYS],
+            "book": paths.book_dir(),
+            "keys": [k for k, _ in theory.keys()],
             "items": items,
             "rounds": rounds,
             "rounds_expected": ROUNDS_EXPECTED,
@@ -84,14 +87,14 @@ def setup_theory_routes() -> APIRouter:
         ★ 연달아여야 프롬프트 캐시가 걸린다. 4과목이 같은 `SYSTEM` 접두를 쓰므로
           1시간 안에 이어 돌리면 접두가 캐시 읽기로 전환된다(provider.py 실측).
         """
-        raw = body.get("keys") or [k for k, _ in theory.KEYS]
+        raw = body.get("keys") or [k for k, _ in theory.keys()]
         keys: List[str] = []
         for k in raw:
             k = str(k or "").strip()
-            if k not in theory.NO_OF:
+            if not theory.no_of(k):
                 raise HTTPException(
                     400, f"알 수 없는 요약노트 키: {k!r} "
-                         f"({' | '.join(x for x, _ in theory.KEYS)})")
+                         f"({' | '.join(x for x, _ in theory.keys())})")
             if k not in keys:          # 같은 과목을 두 번 돌리지 않는다
                 keys.append(k)
         if not keys:
@@ -120,7 +123,7 @@ def setup_theory_routes() -> APIRouter:
 
         model = (body.get("model") or DEFAULT_MODEL).strip()
         effort = (body.get("effort") or "").strip() or None
-        rounds = theory.available_rounds(BOOK_DIR)
+        rounds = theory.available_rounds(paths.book_dir())
 
         note = " · ".join(
             [f"{len(todo)}과목", f"소스 {len(rounds)}회차",
@@ -146,7 +149,7 @@ def setup_theory_routes() -> APIRouter:
             # ★ 읽을 것만 담은 폴더를 **잡이 한 번** 만들어 4과목이 나눠 쓴다.
             #   과목마다 새로 만들면 `cwd` 가 매번 달라져 프롬프트 캐시 접두가 갈린다
             #   (theory.draft_theory 의 `view` 머리말). 실측 차이가 4배다.
-            view = theory.source_view(BOOK_DIR)
+            view = theory.source_view(paths.book_dir())
             try:
                 _run_all(j, view)
             finally:
@@ -158,14 +161,14 @@ def setup_theory_routes() -> APIRouter:
                 if j.get("cancel_requested"):
                     registry.item(j, key, status="skipped", error="취소됨")
                     continue
-                no = theory.NO_OF[key]
+                no = theory.no_of(key)
                 registry.update(j, current=key)
                 registry.item(j, key, status="running")
-                registry.log(j, f"[{key}] {no}과목 · {theory.SUBJECTS[no]} 집필 시작",
+                registry.log(j, f"[{key}] {no}과목 · {theory.subjects().get(no, '')} 집필 시작",
                              force=True)
                 try:
                     res = theory.draft_theory(
-                        key=key, book_dir=BOOK_DIR, model=model, effort=effort,
+                        key=key, book_dir=paths.book_dir(), model=model, effort=effort,
                         view=view,
                         on_activity=lambda s, j=j, k=key: registry.log(j, f"[{k}] {s}"))
                 except Exception as e:            # noqa: BLE001

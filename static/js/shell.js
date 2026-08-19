@@ -25,6 +25,8 @@ const routes = [
   { re: /^\/home$/,             nav: "",   layer: "base",  load: () => import("./home.js") },
   // OCR 검수(도구 #1) — 페이지 단위. 좌 OCR 원문 / 우 문제 카드 / 스캔 드래그.
   { re: /^\/ocr\/([^/]+)\/(\d+)$/, nav: "oc", layer: "base", load: () => import("./ocr.js") },
+  // OCR 실행 — PDF 고르고 돌리는 **바탕** 화면. 로그가 아래로 흐르므로 패널이 아니다.
+  { re: /^\/ocr-run$/, nav: "oc", layer: "base", load: () => import("./ocrrun.js") },
   { re: /^\/scan\/(.+)$/,       nav: "sc", layer: "base",  load: () => import("./scan.js") },
   { re: /^\/questions\/(.+)$/,  nav: "q",  layer: "base",  load: () => import("./questions.js") },
   { re: /^\/video\/(.+)$/,      nav: "v",  layer: "base",  load: () => import("./video.js") },
@@ -76,6 +78,8 @@ export function navigate(path) {
 async function render() {
   const { path, rt, args, params } = parseHash();
   $$("#side-nav a").forEach((a) => a.classList.toggle("active", a.dataset.nav === rt.nav));
+  // 큰 버튼은 화면이 바뀔 때마다 다시 정한다 — 지금 화면의 주 동작이어야 한다.
+  try { renderPrimary(path); } catch (e) { /* 부팅 중이면 아직 없다 */ }
 
   if (rt.layer === "panel") {
     if (!basePath) await mountBase(HOME, "/home", [], new URLSearchParams());
@@ -232,29 +236,75 @@ export async function renderRecent() {
   });
 }
 
-/* ── 전역 액션: 다음 미검수 문항 ─────────────────────
- * 240개를 도는 것이 이 앱의 핵심 루프다. 어느 화면에서든 한 번에 큐로 돌아온다. */
-async function gotoNextUnreviewed() {
-  try {
-    const { api } = await import("./util.js");
-    // 지금 보고 있는 문항 뒤부터 찾는다 — 같은 문항으로 되돌아오지 않게.
-    const cur = (basePath || "").startsWith("/questions/")
-      ? basePath.slice("/questions/".length) : "";
-    const d = await api("/api/questions/next-unreviewed?after=" + encodeURIComponent(cur));
-    if (!d.id) {
-      toast("미검수 문항이 없습니다. 검수를 모두 마쳤습니다.");
-      return;
-    }
-    navigate("/questions/" + encodeURIComponent(d.id));
-  } catch (e) {
-    toast("미검수 문항을 찾지 못했습니다: " + e.message, "err");
-  }
-}
 
 /* ── 부팅 ─────────────────────────────────────────── */
 hydrateIcons(document);
 
-$("#btn-next-unreviewed").addEventListener("click", gotoNextUnreviewed);
+/* ── 큰 버튼 = 지금 화면의 주 동작 ─────────────────────
+ * 화면마다 사람이 제일 먼저 눌러야 하는 것이 다르다. OCR 화면에서 「다음 미검수 문항」이
+ * 큰 버튼이면, 정작 해야 할 [PDF 렌더]·[OCR 실행] 은 툴바의 작은 버튼으로 밀린다.
+ * 초심자는 그것을 주 동작으로 읽지 못한다(2026-08-18 지시).
+ *
+ * ★ 동작은 **그 화면 모듈이 이미 가진 것**을 부른다 — 로직을 여기 복제하지 않는다.
+ *   화면이 window 에 걸어 둔 함수를 쓴다(`XAM_PRIMARY`).
+ */
+const PRIMARY = {
+  // ★ 주황은 **기본이 ＋ OCR** 이다 — 이 앱의 시작점이 OCR 이고, 큰 버튼이 주 동작이어야
+  //   초심자가 무엇부터 누를지 안다(2026-08-18 지시). 누르면 PDF 목록·체크박스·실행·로그가
+  //   한 화면에 있다("실행버튼 누르면 밑으로 쭈욱").
+  //   ★ 「다음 미검수 문항」은 **없앴다**(2026-08-18 지시: "맨날 미검수 문항이 없데…
+  //     그리고 필요가 없어"). 큐가 비어 있을 때가 대부분이라 큰 버튼이 늘 헛돌았다.
+  //     문항을 도는 화면에는 그 화면 안에 「다음 미검수 →」 버튼이 이미 있다
+  //     (`questions.js`) — 거기서만 쓰면 된다.
+  "/ocr-run": [{ label: "← OCR 검수로", icon: "folder", key: "goto-ocr" }],
+};
+
+function renderPrimary(path) {
+  const b1 = $("#btn-primary"), b2 = $("#btn-primary2");
+  if (!b1 || !b2) return;
+  /* ★ **지금 라우팅된 경로**로 판정한다. `basePath` 를 보면 안 된다 — OCR 목록은
+     패널이라 바탕(`basePath`)은 `/home` 에 머문다. 그래서 `#/ocr` 에서도 큰 버튼이
+     「다음 미검수 문항」으로 남았다(실측 2026-08-18). */
+  const cur = path || (location.hash || "").replace(/^#/, "") || basePath || "";
+  const spec = PRIMARY[cur.split("/").slice(0, 2).join("/")] || null;
+  const set = (btn, lab, ico) => {
+    $("#" + btn.id + "-label").textContent = lab;
+    const i = $("#" + btn.id + "-icon");
+    if (i) i.dataset.icon = ico;
+    btn.hidden = false;
+  };
+  if (!spec) {
+    // 기본값 — 이 앱은 OCR 에서 시작한다
+    set(b1, "＋ OCR", "folder");
+    b1.dataset.act = "goto-run";
+    b2.hidden = true;
+  } else {
+    set(b1, spec[0].label, spec[0].icon);
+    b1.dataset.act = spec[0].key;
+    if (spec[1]) {
+      set(b2, spec[1].label, spec[1].icon);
+      b2.dataset.act = spec[1].key;
+    } else {
+      b2.hidden = true;
+    }
+  }
+  hydrateIcons(document.getElementById("side-rail") || document);
+}
+
+async function runPrimary(act) {
+  if (act === "goto-run") return navigate("/ocr-run");
+  if (act === "goto-ocr") return navigate("/ocr");
+  // 화면 모듈이 걸어 둔 함수 — 없으면 그 화면으로 먼저 데려간다.
+  const fn = (window.XAM_PRIMARY || {})[act];
+  if (typeof fn === "function") return fn();
+  navigate("/ocr");
+  toast("화면을 먼저 엽니다 — 다시 눌러 주세요.");
+}
+
+$("#btn-primary").addEventListener("click", (e) =>
+  runPrimary(e.currentTarget.dataset.act || "goto-run"));
+$("#btn-primary2").addEventListener("click", (e) =>
+  runPrimary(e.currentTarget.dataset.act || ""));
 $("#rail-toggle").addEventListener("click", toggleRail);
 $("#brand-mark").addEventListener("click", () => {
   if (document.body.dataset.rail === "collapsed") toggleRail();

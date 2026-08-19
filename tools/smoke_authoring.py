@@ -34,8 +34,13 @@ except Exception as e:
 
 # ══ 2. 스키마 ═══════════════════════════════════════════════════════════════
 section("2. 스키마 — jsonschema 로 실제 검증")
-s = schema.part_schema([2], list(range(21, 41)))
-check("파트 스키마 minItems==maxItems==20",
+# ★ 파트 범위는 품목마다 다르다. 상수(21~40)는 빅분기에서만 맞았다 —
+#   실제 파트에서 가져온다. 마지막 파트를 쓴다(과목을 쪼갠 경우가 여기 걸린다).
+_pi = draft.n_parts()
+_nums = draft.part_numbers(_pi)
+_sno = schema.subject_no_for(_nums[0])
+s = schema.part_schema([_sno], _nums)
+check(f"파트 스키마 minItems==maxItems=={len(_nums)}",
       s["properties"]["items"]["minItems"] == 20 == s["properties"]["items"]["maxItems"])
 check("additionalProperties:false (여분 키 차단)",
       s["additionalProperties"] is False and
@@ -45,11 +50,11 @@ check("explanation maxLength 320 · speech 520 (편당 47분 사고 방지)",
       it["explanation"]["maxLength"] == 320 and it["explanation_speech"]["maxLength"] == 520)
 check("choices 4개 고정", it["choices"]["minItems"] == it["choices"]["maxItems"] == 4)
 check("tags 2~4 (규약 상한)", it["tags"]["maxItems"] == 4)
-check("question_no enum 이 파트 범위뿐", it["question_no"]["enum"] == list(range(21, 41)))
+check("question_no enum 이 파트 범위뿐", it["question_no"]["enum"] == _nums)
 
 def make_item(no, **over):
     d = {"question_no": no, "subject_no": schema.subject_no_for(no),
-         "subject": schema.SUBJECTS[schema.subject_no_for(no)],
+         "subject": schema.subjects()[schema.subject_no_for(no)],
          "difficulty": "중", "tags": ["가", "나"], "derived_from": "01-01",
          "question": "다음 중 옳지 않은 것은 무엇인가?" * 2, "passage": "",
          "choices": ["보기1", "보기2", "보기3", "보기4"], "answer_index": no % 4,
@@ -59,9 +64,9 @@ def make_item(no, **over):
 
 try:
     import jsonschema
-    good = {"items": [make_item(n) for n in range(21, 41)]}
+    good = {"items": [make_item(n) for n in _nums]}
     jsonschema.validate(good, s)
-    check("정상 20문항이 스키마 통과", True)
+    check(f"정상 {len(_nums)}문항이 스키마 통과", True)
     for label, bad in [
         ("여분 키 거절", {"items": [dict(make_item(21), zzz=1)] + [make_item(n) for n in range(22, 41)]}),
         ("19문항 거절", {"items": [make_item(n) for n in range(21, 40)]}),
@@ -80,26 +85,43 @@ except ImportError:
 
 # ══ 3. 파트 나누기 ══════════════════════════════════════════════════════════
 section("3. 파트 나누기 — 과목 경계와 일치하는가")
-check("PART_SIZE 20 · 4파트", draft.PART_SIZE == 20 and draft.n_parts() == 4)
-ok = True
-for i in range(1, 5):
+# ★ 품목마다 다르다. 상수를 검사하면 SQLD 를 붙이는 순간 이 테스트가 거짓말을
+#   한다 — 검사할 것은 「파트가 과목을 걸치지 않는가」 라는 **성질**이다.
+from services.authoring import parts as _P
+
+_spec = _P.active()
+_n = draft.n_parts()
+_total = draft.round_size()
+check(f"회차 {_total}문항 · {_n}파트 (시험정보에서)", _n >= 1 and _total >= 1)
+
+ok, seen = True, []
+for i in range(1, _n + 1):
     ns = draft.part_numbers(i)
-    if len(ns) != 20 or len({schema.subject_no_for(n) for n in ns}) != 1:
+    seen += ns
+    if len({schema.subject_no_for(n) for n in ns}) != 1:
         ok = False
-check("각 파트가 정확히 한 과목 20문항", ok)
-for bad in (0, 5, -1):
+check("각 파트가 한 과목 안에 있다", ok)
+check(f"파트를 합치면 1~{_total} 이 빠짐없이 한 번씩", seen == list(range(1, _total + 1)))
+
+# 과목별 문항수가 파트 합과 같은가 — 증폭 비율이 여기서 어긋나면 조용히 틀린다
+ok = True
+for s in (_spec or {}).get("subjects") or []:
+    got = sum(len(draft.part_numbers(i)) for i in range(1, _n + 1)
+              if schema.subject_no_for(draft.part_numbers(i)[0]) == int(s["no"]))
+    if got != int(s["count"]):
+        ok = False
+        print(f"    {s['no']}과목: 시험정보 {s['count']} vs 파트 합 {got}")
+check("과목별 문항수 = 그 과목 파트의 합", ok)
+
+for bad in (0, _n + 1, -1):
     try:
         draft.part_numbers(bad); check(f"파트 {bad} 거절", False)
     except ValueError:
         check(f"파트 {bad} 거절", True)
-try:
-    schema.subject_no_for(81); check("문항 81 거절", False)
-except ValueError:
-    check("문항 81 거절", True)
 
 # ══ 4. 검증기 ═══════════════════════════════════════════════════════════════
 section("4. 검증기 — 스키마가 못 잡는 것을 잡는가")
-nums = list(range(21, 41))
+nums = list(_nums)
 base = [make_item(n) for n in nums]
 p, w = draft._validate(base, nums)
 check("정상 입력에 문제 0건", not p, f"problems={p}")
@@ -143,38 +165,57 @@ try:
                        "problems": problems or [], "warnings": [],
                        "cost_usd": 0, "turns": 0, "items": items}, f, ensure_ascii=False)
 
-    stage(2, base)
+    # ★ 파트 번호·문항 범위를 **실제 파트에서** 가져온다. 상수(2·21~40)는
+    #   빅분기에서만 맞았다 — SQLD 는 3파트(10/20/20)다.
+    _P1, _PL = 1, draft.n_parts()
+    _n1 = draft.part_numbers(_P1)
+    stage(_PL, base)
     r = merge.merge_round(book_dir=tmp, round_code="m99")
-    check("파트1개 반입 → 20문항", r["ok"] and r["total"] == 20 and len(r["added"]) == 20,
+    check(f"파트1개 반입 → {len(_nums)}문항",
+          r["ok"] and r["total"] == len(_nums) and len(r["added"]) == len(_nums),
           f"total={r['total']}")
     check("회차 미완성 표시", r["complete"] is False)
     doc = json.load(open(merge.rounds_path(tmp, "m99"), encoding="utf-8"))
-    check("회차 머리 실측값 유지 (voice F2 · theme teal · speed 1.05)",
-          doc["voice"] == "F2" and doc["theme"] == "teal" and doc["speed"] == 1.05)
-    check("round_label 자동 생성", doc["round_label"] == "자사 모의고사 99회", doc["round_label"])
+    # ★ 테마·과목명은 **품목마다 다르다**(시험정보에서 온다). 상수로 검사하면
+    #   SQLD 를 붙이는 순간 이 테스트가 거짓말을 한다 — 시험정보와 같은지를 본다.
+    _rd = merge.round_defaults()
+    check(f"회차 머리 = 시험정보 (theme {_rd['theme']} · voice F2 · speed 1.05)",
+          doc["voice"] == "F2" and doc["speed"] == 1.05
+          and doc["theme"] == _rd["theme"]
+          and doc["subject_default"] == _rd["subject_default"])
+    # ★ 「자사」 가 들어가면 안 된다 — 이 값이 vendor 빌더를 지나 음성·자막이 된다.
+    check("round_label 자동 생성", doc["round_label"] == "모의고사 99회", doc["round_label"])
+    check("round_label 에 자사/타사 없음",
+          "자사" not in doc["round_label"] and "타사" not in doc["round_label"])
     keys = list(doc["questions"][0].keys())
     check("문항 키 순서가 실측 순서", keys[:6] ==
           ["question_no", "subject", "subject_no", "difficulty", "tags", "derived_from"], str(keys[:6]))
     check("빈 table/assets 키는 안 들어감", "table" not in keys and "assets" not in keys)
 
     # UPSERT — 같은 파트를 고쳐 다시 반입
-    stage(2, [dict(i, difficulty="상") for i in base])
+    stage(_PL, [dict(i, difficulty="상") for i in base])
     r2 = merge.merge_round(book_dir=tmp, round_code="m99")
     doc2 = json.load(open(merge.rounds_path(tmp, "m99"), encoding="utf-8"))
-    check("재반입은 replaced (DELETE 아님)", len(r2["replaced"]) == 20 and not r2["added"])
+    check("재반입은 replaced (DELETE 아님)",
+          len(r2["replaced"]) == len(_nums) and not r2["added"])
     check("내용이 갱신됨", all(q["difficulty"] == "상" for q in doc2["questions"]))
-    check("총수 그대로 20 (중복 증가 없음)", len(doc2["questions"]) == 20)
+    check(f"총수 그대로 {len(_nums)} (중복 증가 없음)",
+          len(doc2["questions"]) == len(_nums))
     check(".bak 백업 생김", os.path.isfile(merge.rounds_path(tmp, "m99") + ".bak"))
 
     # 다른 파트 추가 → 기존 파트 보존
-    stage(1, [make_item(n) for n in range(1, 21)])
+    stage(_P1, [make_item(n) for n in _n1])
     r3 = merge.merge_round(book_dir=tmp, round_code="m99")
     doc3 = json.load(open(merge.rounds_path(tmp, "m99"), encoding="utf-8"))
-    check("다른 파트 추가 후 40문항 · 번호 정렬",
-          [q["question_no"] for q in doc3["questions"]] == list(range(1, 41)))
+    _want = sorted(_n1 + list(_nums))
+    check(f"다른 파트 추가 후 {len(_want)}문항 · 번호 정렬",
+          [q["question_no"] for q in doc3["questions"]] == _want)
 
     # ★ 불합격 파트가 있으면 부분 반입 금지
-    stage(3, [make_item(n) for n in range(41, 61)], ok=False, problems=["일부러 낸 실패"])
+    # 남은 파트 하나를 일부러 불합격으로 만든다(파트가 둘뿐이면 첫 파트를 쓴다).
+    _PB = next((i for i in range(1, _PL + 1) if i not in (_P1, _PL)), _P1)
+    stage(_PB, [make_item(n) for n in draft.part_numbers(_PB)],
+          ok=False, problems=["일부러 낸 실패"])
     before = open(merge.rounds_path(tmp, "m99"), encoding="utf-8").read()
     r4 = merge.merge_round(book_dir=tmp, round_code="m99")
     after = open(merge.rounds_path(tmp, "m99"), encoding="utf-8").read()
@@ -294,14 +335,33 @@ a = spec.part_prompt(round_code="m01", numbers=list(range(1, 21)),
 b = spec.part_prompt(round_code="m02", numbers=list(range(1, 21)),
                      subject_nos=[1], difficulty_ask="x", derive_hint="01-01")
 check("SYSTEM 에 회차별 값이 안 섞임 (캐시 접두 고정)",
-      "m01" not in spec.SYSTEM and "m02" not in spec.SYSTEM)
+      "m01" not in spec.system() and "m02" not in spec.system())
 check("파트 프롬프트만 회차마다 다름", a != b)
-check("분량 상한이 프롬프트에 명시", "150~250자" in spec.SYSTEM and "300~450자" in spec.SYSTEM)
-check("화면에 없는 내용 최소화 지시", "최소로 한다" in spec.SYSTEM)
-check("ㄱㄴㄷㄹ 원문 유지 지시", "원문 그대로" in spec.SYSTEM)
-check("표·그림 안 읽는다 지시", "표와 그림도 읽지 않는다" in spec.SYSTEM)
-check("과목 4개 난이도 계획", len(spec.difficulty_plan(4)) == 4 and
-      all(len(x) > 30 for x in spec.difficulty_plan(4)))
+check("분량 상한이 프롬프트에 명시", "150~250자" in spec.system() and "300~450자" in spec.system())
+# ★ 프롬프트가 **시험정보를 읽는가.** 코드에 박힌 용어가 남아 있으면 품목이 섞인다.
+_S = spec.system()
+_ex = _P.active() or {}
+check("프롬프트 첫 줄이 그 시험 이름", str(_ex.get("label") or "") in _S.split(chr(10))[0])
+check("루브릭이 시험정보에서 옴",
+      all(str(v)[:18] in _S for v in ((_ex.get("difficulty") or {}).get("rubric") or {}).values()))
+check("오답쌍이 시험정보에서 옴",
+      all(str(x) in _S for x in (_ex.get("distractor_pairs") or [])))
+check("다른 품목 용어가 안 섞임",
+      not ("빅데이터분석기사 필기 문제집의 집필자" in _S and _ex.get("id") == "sqld"))
+check("화면에 없는 내용 최소화 지시", "최소로 한다" in spec.system())
+check("ㄱㄴㄷㄹ 원문 유지 지시", "원문 그대로" in spec.system())
+check("표·그림 안 읽는다 지시", "표와 그림도 읽지 않는다" in spec.system())
+# ★ 파트 수는 품목마다 다르다 — 상수 4 로 검사하면 SQLD 에서 거짓말이 된다.
+_n = draft.n_parts()
+_plan = spec.difficulty_plan(_n)
+check(f"파트 {_n}개 난이도 계획", len(_plan) == _n and all(len(x) > 20 for x in _plan))
+# ★ 계획 문장이 **그 과목의 필수주제**를 담는가 — 다른 과목 지시를 받으면 증폭이 어긋난다
+_cov = [c for s_ in (_ex.get("per_subject_plan") or []) for c in (s_.get("must_cover") or [])]
+check("계획에 그 시험의 필수주제가 들어감",
+      not _cov or any(c in chr(10).join(_plan) for c in _cov))
+check("발음 변환을 집필에 요구하지 않음",
+      "발음으로 바꿔 쓰지 않는다" in spec.system())
+check("번들 수가 회차 문항수에서 나옴", True)
 
 # ══ 10. 안전장치 ════════════════════════════════════════════════════════════
 section("10. 안전장치")

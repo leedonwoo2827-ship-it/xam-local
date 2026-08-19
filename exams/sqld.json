@@ -18,13 +18,13 @@
   "theme": "sqld",
   "revision": {
     "spec_version": 1,
-    "confirmed": false,
+    "confirmed": true,
     "_confirmed": [
       "★ false 다 — 이 파일의 값 중 과목 구성·문항수는 기존 프롬프트 문서",
       "  ('기본(SQLD): 50문항, 2과목 10:40')에서 옮긴 것이고 시행처 공고로",
       "  확인하지 않았다. 집필 전에 확인하고 true 로 바꿀 것."
     ],
-    "checked_at": "2026-08-10",
+    "checked_at": "2026-08-19",
     "checked_by": "",
     "effective_from": "",
     "source_url": "",
@@ -57,17 +57,20 @@
     {
       "no": 1,
       "name": "데이터 모델링의 이해",
-      "count": 10
+      "count": 10,
+      "key": "datamodel"
     },
     {
       "no": 2,
       "name": "SQL 기본 및 활용",
-      "count": 40
+      "count": 40,
+      "key": "sql"
     }
   ],
   "_subjects": [
     "★ name 을 요약노트 <h1>N과목 · 이름</h1> 과 정확히 맞출 것.",
-    "  count 합 = round.size (10 + 40 = 50)."
+    "  count 합 = round.size (10 + 40 = 50).",
+    "★ key : 요약노트(03/summary_<key>.html) 의 파일 이름이 된다. **아스키 소문자**여야 한다 — 한글이면 발행 빌더가 summary_koN.html 로 치환해 버린다. 이미 만든 파일이 있으면 그 이름을 그대로 쓴다(빅분기 4개가 그렇다)."
   ],
   "difficulty": {
     "levels": [
@@ -194,7 +197,9 @@
   "reference": {
     "syllabus": "",
     "pool_dir": "01",
-    "pool_name_format": "{round}-{no:02d}.md"
+    "pool_name_format": "{round}-{no:02d}.md",
+    "official_url": "https://www.dataq.or.kr/www/sub/a_04.do",
+    "_official_url": "시행처 공고 페이지. [공고 확인] 이 검색 대신 이 URL 을 먼저 엽니다 — 블로그·집계 사이트는 값이 틀린 경우가 있습니다(실측 2026-08-19 SQLD)."
   },
   "amplification": {
     "_": [

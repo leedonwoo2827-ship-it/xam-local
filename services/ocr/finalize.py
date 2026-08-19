@@ -126,12 +126,10 @@ def _has(q: dict, kind: str) -> bool:
 
 
 # ── 본문 ────────────────────────────────────────────────────────────────────
-def is_block_choice(text: str) -> bool:
-    """보기를 `①` 단독 줄 + 빈 줄 + 본문 으로 써야 하는가 (qmodel 과 같은 판정)."""
-    ex = (text or "").lstrip()
-    return bool(ex) and ("\n" in ex or ex[:2] in ("**", "| ", "``", "![")
-                         or ex.startswith("|"))
-
+# ★ 블록형 보기 판정은 **한 곳에만** 둔다 — `services.book.md`.
+#   여기(01/ 를 쓴다)와 02/ 렌더러가 갈리면 왕복 대조가 무의미해지고, 실제로
+#   사본이 셋으로 벌어져 같은 결함을 세 번 고쳤다(1열 표·`||`).
+from services.book.md import is_block_choice  # noqa: E402  (사본 금지)
 
 def _body_tokens(q: dict, assets: dict) -> str:
     """자산이 있는 문항 — 토큰을 펼친다. **선지 사이가 빈 줄이다.**"""
@@ -254,7 +252,13 @@ def render(q: dict) -> str:
 def crop_figure(src: str, page: int, bbox, dest: str) -> None:
     """페이지 PNG 의 bbox 를 잘라 dest 로 저장한다."""
     from PIL import Image
-    img = Image.open(project.scan_png(src, page))
+    png = project.scan_png(src, page)
+    # ★ 다른 면의 그림이면 그 면 스캔이 있어야 한다. 없으면 조용히 실패하는
+    #   대신 어느 면이 없는지 말한다 — 좌표는 남아 있으니 사람이 되돌릴 수 있다.
+    if not os.path.isfile(png):
+        raise FileNotFoundError(
+            f"그림을 자를 스캔이 없습니다: {src} p.{page} — [＋ OCR] 로 스캔을 먼저 뜨세요.")
+    img = Image.open(png)
     x, y, w, h = [max(0, int(v)) for v in bbox]
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     img.crop((x, y, x + w, y + h)).save(dest)
@@ -263,6 +267,21 @@ def crop_figure(src: str, page: int, bbox, dest: str) -> None:
 # ── 확정 ────────────────────────────────────────────────────────────────────
 class LockedError(Exception):
     """파일이 잠겨 있다(편집기에서 열어 둔 경우) → HTTP 423."""
+
+
+def fig_page(a: dict, page: int) -> int:
+    """이 그림 좌표가 **어느 면**의 것인가.
+
+    ★ 해설 그림이 다음 면에 있는 문항이 있다(실측 SQLD). 좌표는 픽셀이고
+      면마다 다른 그림이 그 자리에 있으니, 문항이 있는 면에서 자르면 엉뚱한 데를
+      자른다 — 조용히 틀린 그림이 실린다. 그래서 그림이 자기 면을 들고 다닌다.
+      없으면 문항의 면이다(지금까지 만든 초안 전부가 이 경우다).
+    """
+    try:
+        n = int(a.get("page") or 0)
+    except (TypeError, ValueError):
+        n = 0
+    return n if n > 0 else int(page)
 
 
 def prepare(q: dict, src: str, page: int, *, crop: bool = True,
@@ -282,7 +301,8 @@ def prepare(q: dict, src: str, page: int, *, crop: bool = True,
         if a.get("type") == "figure" and a.get("bbox"):
             rel = f"images/{qid(rn, qn)}_{aid}.png"
             if crop:
-                crop_figure(src, page, a["bbox"], os.path.join(stage, rel))
+                crop_figure(src, fig_page(a, page), a["bbox"],
+                            os.path.join(stage, rel))
             a["path"] = rel
     if assets:
         q["assets"] = assets
@@ -292,9 +312,13 @@ def prepare(q: dict, src: str, page: int, *, crop: bool = True,
         if f.get("bbox"):
             rel = f"images/{qid(rn, qn)}_{i}.png"
             if crop:
-                crop_figure(src, page, f["bbox"], os.path.join(stage, rel))
-            figs_out.append({"path": rel, "note": f.get("note", "figure"),
-                             "bbox": f["bbox"], "placement": f.get("placement", "지문")})
+                crop_figure(src, fig_page(f, page), f["bbox"],
+                            os.path.join(stage, rel))
+            out = {"path": rel, "note": f.get("note", "figure"),
+                   "bbox": f["bbox"], "placement": f.get("placement", "지문")}
+            if fig_page(f, page) != int(page):
+                out["page"] = fig_page(f, page)      # 다음 면에 있는 해설 그림
+            figs_out.append(out)
         elif f.get("path"):
             figs_out.append(f)
     if figs_out or q.get("figures"):
