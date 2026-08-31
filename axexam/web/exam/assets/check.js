@@ -34,6 +34,17 @@ let vidHidden=0;                   // 레벨이 부족해 안 보이는 개수 (
 const THEORY=(window.THEORY||[]);
 let mode="quiz", curRound=null, curTheory=null, answers={}, graded=false;
 
+/* 문항 페이지 나눔 —
+   한 회차가 80문항(빅분기)·50문항(SQLD)이라 전부 그리면 폰에서 4만 px 짜리 문서가 된다.
+   실제로 "작은 화면에서 61~70번쯤부터 못 간다"는 보고가 있었다. 브라우저가
+   긴 문서를 버티지 못하는 것이라 오류가 안 나고 그냥 안 내려간다 — 사람이 원인을 못 잡는다.
+   채점은 그대로 회차 전체로 한다(cur() 는 안 자른다). 자르는 것은 **그리는 것**뿐이다. */
+const PAGE=20;
+let page=0;
+/* 채점 결과를 들고 있는다. 페이지를 넘기면 카드가 새로 그려지므로,
+   보관하지 않으면 2쪽으로 넘어간 순간 정답·해설이 사라진다. */
+let lastResults=null;
+
 /* ── 풀던 답안 보존 ────────────────────────────────────────────────────
    answers 가 메모리 변수라 새로고침·탭닫기에 날아갔다.
    서버에 저장할 수도 있지만 localStorage 로 충분하다 —
@@ -137,6 +148,12 @@ const SQL_START=/^\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|WITH|MERGE|T
 const SQL_CONT=/^\s*(FROM|WHERE|GROUP\s+BY|ORDER\s+BY|HAVING|UNION|MINUS|INTERSECT|JOIN|LEFT|RIGHT|INNER|FULL|CROSS|OUTER|ON|AND|OR|SET|VALUES|START\s+WITH|CONNECT\s+BY|[(),])/i;
 const SQL_OK=/\b(FROM|VALUES|SET)\b|;/i;
 const BULLET=/^([-*•]|\d+[.)])\s+/;
+/* ★ 한글 항목 기호 — `ㄱ.` `가.` `①` 로 시작하는 줄은 **한 줄에 하나씩** 낸다.
+   BULLET 은 `-`·`1.` 만 알아서, 이런 줄은 그냥 문단에 섞여 한 덩이로 이어붙었다:
+     "ㄱ. 주문 테이블 ㄴ. API 호출 로그 ㄷ. CCTV 녹화 영상 ㄹ. XML 파일"
+   보기묶음 지문은 항목이 갈려 보이지 않으면 문제를 읽을 수 없다.
+   한 글자 + `.`/`)` 로 좁힌다 — "데이터. 이것은" 같은 보통 문장을 잡지 않으려고. */
+const ITEM=/^(?:[ㄱ-ㅎ]|[가나다라마바사아자차카타파하]|[①-⑳])[.)]\s+/;
 function sqlRun(L,i){ if(!SQL_START.test(L[i])) return null;
   const buf=[]; let j=i;
   while(j<L.length && L[j].trim() && (j===i||SQL_START.test(L[j])||SQL_CONT.test(L[j])||/^[ \t]/.test(L[j]))){ buf.push(L[j].replace(/\s+$/,"")); j++; }
@@ -160,9 +177,17 @@ function mdb(s){
     if(run){ i=run[0]; out+="<pre class='sql'><code>"+esc(run[1])+"</code></pre>"; continue; }
     if(BULLET.test(st)){ const buf=[]; while(i<L.length && BULLET.test(L[i].trim())){ buf.push(L[i].trim().replace(BULLET,"")); i++; }
       out+="<ul>"+buf.map(x=>"<li>"+md(x)+"</li>").join("")+"</ul>"; continue; }
+    if(ITEM.test(st)){ const buf=[];
+      while(i<L.length){ const c=L[i].trim();
+        if(!c) break;
+        if(ITEM.test(c)) buf.push(c);
+        else if(buf.length) buf[buf.length-1]+=" "+c;   /* 접혀 내려온 줄은 앞 항목에 붙인다 */
+        else break;
+        i++; }
+      out+=buf.map(x=>"<p>"+md(x)+"</p>").join(""); continue; }
     const buf=[];
     while(i<L.length){ const c=L[i].trim();
-      if(!c||c.startsWith("|")||c.startsWith("```")||BULLET.test(c)) break;
+      if(!c||c.startsWith("|")||c.startsWith("```")||BULLET.test(c)||ITEM.test(c)) break;
       if(buf.length&&sqlRun(L,i)) break;
       buf.push(c); i++; }
     out+="<p>"+md(buf.join(" "))+"</p>"; }
@@ -233,7 +258,7 @@ function buildSub(){
   const box=$("#subtabs");
   if(mode==="home"){ box.innerHTML=""; return; }
   if(mode==="quiz"){ box.innerHTML=rounds().map(r=>'<button data-v="'+r+'"'+(r===curRound?' class="on"':'')+'>'+r+'</button>').join("");
-    box.querySelectorAll("button").forEach(b=>b.onclick=()=>{ curRound=b.dataset.v; answers=loadAns(); graded=false; buildSub(); renderVideos(); render(); updateCrumb(); }); }
+    box.querySelectorAll("button").forEach(b=>b.onclick=()=>{ curRound=b.dataset.v; answers=loadAns(); graded=false; lastResults=null; page=0; buildSub(); renderVideos(); render(); updateCrumb(); }); }
   else{ box.innerHTML=THEORY.map(t=>'<button data-v="'+t.href+'"'+(t.href===curTheory?' class="on"':'')+'>'+esc(t.label)+'</button>').join("");
     box.querySelectorAll("button").forEach(b=>b.onclick=()=>{ curTheory=b.dataset.v; buildSub(); render(); updateCrumb(); }); }
 }
@@ -278,7 +303,16 @@ function render(){
   }
   const rows=cur();
   if(!rows.length){ list.innerHTML='<div class="empty">표시할 문제가 없습니다.</div>'; updateGauge(); return; }
-  list.innerHTML=rows.map(p=>{
+
+  /* 회차 전체(rows)는 그대로 두고 이 쪽에 보일 것만 잘라낸다.
+     회차·필터를 바꾸면 goPage(0) 로 되돌아가지만, 범위가 줄어 쪽수가 모자랄 수도 있어
+     여기서 한 번 더 가둔다(예: 3쪽을 보다가 과목 필터를 걸어 1쪽밖에 안 남는 경우). */
+  const pages=Math.max(1, Math.ceil(rows.length/PAGE));
+  if(page>=pages) page=pages-1;
+  if(page<0) page=0;
+  const view=rows.slice(page*PAGE, (page+1)*PAGE);
+
+  list.innerHTML=pagerHtml(page,pages,rows.length)+view.map(p=>{
     const k=keyOf(p);
     let opts=(p.choices||[]).map((c,ci)=>'<div class="opt" data-k="'+k+'" data-ci="'+ci+'"><span class="cn">'+(CIRC[ci]||(ci+1))+'</span><span>'+md(c)+'</span></div>').join("");
     let mid="";
@@ -293,9 +327,33 @@ function render(){
       /* 해설은 빈 껍데기로 둔다 — 채점 응답(DS.grade)이 채운다.
          서버 채점(ApiDS)일 때 정답·해설이 렌더 시점에 DOM 에 없어야 하기 때문이다. */
       +'<div class="expl"></div></div>';
-  }).join("");
+  }).join("")+pagerHtml(page,pages,rows.length);
   document.querySelectorAll(".opt").forEach(el=>{ if(answers[el.dataset.k]===+el.dataset.ci) el.classList.add("sel"); });
+  /* 채점한 뒤 쪽을 넘기면 카드가 새로 그려진다 — 보관해 둔 결과를 다시 입힌다.
+     applyResults 는 DOM 에 없는 문항을 건너뛰므로 이 쪽 것만 칠해진다. */
+  if(graded && lastResults) applyResults(lastResults);
   updateGauge();
+}
+
+/* 쪽 넘김 막대. 위·아래 두 곳에 같은 것을 둔다 —
+   80문항을 다 내려간 사람이 다시 위로 올라가 눌러야 하면 그건 안 넘기는 것과 같다. */
+function pagerHtml(pg, pages, total){
+  if(pages<2) return "";
+  const from=pg*PAGE+1, to=Math.min(total,(pg+1)*PAGE);
+  let h='<div class="pager"><button class="pg-nav"'+(pg?'':' disabled')+' onclick="goPage('+(pg-1)+')">‹ 이전</button>'
+       +'<div class="pg-nums">';
+  for(let i=0;i<pages;i++) h+='<button class="pg-n'+(i===pg?' on':'')+'" onclick="goPage('+i+')">'+(i+1)+'</button>';
+  h+='</div><button class="pg-nav"'+(pg<pages-1?'':' disabled')+' onclick="goPage('+(pg+1)+')">다음 ›</button>'
+    +'<span class="pg-info">'+from+'–'+to+' / '+total+'문항</span></div>';
+  return h;
+}
+function goPage(n){
+  page=n; render();
+  /* 쪽을 넘겼는데 화면이 그대로면 넘어간 줄 모른다. 목록 머리로 올린다.
+     scrollIntoView 대신 좌표를 쓰는 이유: 상단 네비가 고정이라 제목이 그 밑에 깔린다. */
+  const el=$("#list");
+  if(el){ const y=el.getBoundingClientRect().top+window.pageYOffset-70;
+          window.scrollTo({top:Math.max(0,y), behavior:"smooth"}); }
 }
 
 document.addEventListener("click",e=>{
@@ -334,7 +392,7 @@ async function grade(){
   if(mode!=="quiz") return;
   let res; try{ res=await DS.grade(curRound, answers); }catch(e){ res=null; }
   if(!res||!res.results){ toast("채점에 실패했습니다. 잠시 후 다시 시도해 주세요."); return; }
-  graded=true; applyResults(res.results);
+  graded=true; lastResults=res.results; applyResults(res.results);
   const sc=res.score||{correct:0,total:0,pct:0}; showScore(sc);
   toast(sc.total+"문항 중 "+sc.correct+"문항 정답 ("+sc.pct+"%)");
 
@@ -359,9 +417,10 @@ async function reveal(){
   let res; try{ res=await DS.grade(curRound, {}); }catch(e){ res=null; }
   if(!res||!res.results){ toast("정답을 불러오지 못했습니다."); return; }
   graded=true;
-  applyResults(res.results.map(r=>({...r, chosen:-1})));
+  lastResults=res.results.map(r=>({...r, chosen:-1}));
+  applyResults(lastResults);
 }
-function resetAll(){ answers={}; graded=false; saveAns(); render(); }   // saveAns 가 빈 값이면 지운다
+function resetAll(){ answers={}; graded=false; lastResults=null; page=0; saveAns(); render(); }   // saveAns 가 빈 값이면 지운다
 
 function renderHome(list){
   let h='<div class="cat">';
@@ -511,6 +570,37 @@ function openVid(v){
 }
 function closeVid(){ $("#vbox").innerHTML=""; $("#vmodal").classList.remove("show"); }
 $("#vmodal").addEventListener("click",e=>{ if(e.target.id==="vmodal") closeVid(); });
+
+/* 그림 확대는 두지 않는다(2026-08-31 결정) — 모달이 화면을 덮는 것에 비해
+   얻는 게 적다는 판단이다. 도식은 카드 안에서 폭에 맞춰 줄여 보여주고,
+   그래도 안 읽히면 그건 도식을 다시 그려야 할 문제다(확대로 덮을 일이 아니다).
+   대신 Esc 로 영상 모달은 닫히게 둔다. */
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape" && $("#vmodal") && $("#vmodal").classList.contains("show")) closeVid();
+});
+
+/* ══ 사이드 카드 접기/펼치기 ══════════════════════════════════════════════
+   채점현황·해설영상 카드가 항상 펼쳐져 있어 자리를 많이 먹는다.
+   제목줄을 누르면 접힌다. 접은 상태는 문제집별로 기억한다 —
+   매번 다시 접게 만들면 접는 기능이 없느니만 못하다. */
+function foldCards(){
+  document.querySelectorAll("#side .side-card").forEach((card,i)=>{
+    const h=card.querySelector("h3");
+    if(!h || h.dataset.fold) return;
+    h.dataset.fold="1";
+    h.setAttribute("role","button"); h.tabIndex=0;
+    const cap=document.createElement("span"); cap.className="fold-caret"; cap.textContent="▾";
+    h.appendChild(cap);
+    const key="exam.fold."+PD+"."+i;
+    const set=open=>{ card.classList.toggle("folded", !open); h.setAttribute("aria-expanded", open?"true":"false"); };
+    let saved=null; try{ saved=localStorage.getItem(key); }catch(e){}
+    set(saved!=="0");                                  // 저장된 값이 없으면 펼침
+    const toggle=()=>{ const open=card.classList.contains("folded"); set(open);
+      try{ localStorage.setItem(key, open?"1":"0"); }catch(e){} };
+    h.addEventListener("click",toggle);
+    h.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); toggle(); } });
+  });
+}
 let tt; function toast(m){ const t=$("#toast"); t.textContent=m; t.classList.add("show"); clearTimeout(tt); tt=setTimeout(()=>t.classList.remove("show"),1900); }
 
 /* 서버 모드에서 내 상태와 CSRF 를 받아둔다.
@@ -627,7 +717,7 @@ function buildFilters(){
   buildFilters();
   /* 필터를 바꿔도 답안은 지우지 않는다 — 과목만 좁혀 봤는데 풀던 게 날아가면 안 된다.
      채점 상태(graded)만 초기화해 새 범위로 다시 채점하게 한다. */
-  ["#fSubject","#fDiff"].forEach(s=>$(s).onchange=()=>{ graded=false; render(); });
+  ["#fSubject","#fDiff"].forEach(s=>$(s).onchange=()=>{ graded=false; lastResults=null; page=0; render(); });
   document.querySelectorAll("#modes button").forEach(b=>b.onclick=()=>setMode(b.dataset.m));
 
   /* ?m= · ?rd= 를 읽는다. 헤더의 '이론' 메뉴가 &m=theory 를 넘기는데
@@ -644,7 +734,7 @@ function buildFilters(){
   // 문제가 0건이면 문제집 탭으로 보내지 않는다 — 눌러도 빈 화면이다
   if(m==="quiz" && !rs.length) m="home";
 
-  setMode(m); renderVideos();
+  setMode(m); renderVideos(); foldCards();
 
   /* 레벨 제한 영상은 나중에 합친다 — 첫 화면을 기다리게 하지 않는다. */
   loadPrivateVideos();

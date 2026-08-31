@@ -317,20 +317,40 @@ body{ background:var(--ex-soft); }
 @media (max-width:900px){ #ft_wr{ grid-template-columns:repeat(2, 1fr); } }
 @media (max-width:520px){ #ft_wr{ grid-template-columns:1fr; } }
 
-/* ── 1200px 강제 폭 해제 ────────────────────────────────────────────
- * default.css:48  `#hd, #wrapper, #ft { min-width:1200px }`
- * default.css:56  `#ft_wr { width:1200px }`
- * default.css:206 `#ft_copy { width:1200px }`
- *
- * theme/basic 은 반응형이 아니라 1200px 고정 레이아웃이다. 그래서 노트북(1366×768 에서
- * 브라우저 여백을 빼면 1200px 미만)에서 **가로 스크롤이 생기고 오른쪽이 잘린다.**
- * 우리 화면(axnav·mypage·check)은 반응형 한 벌로 만들었으므로 이 강제 폭을 푼다.
+/* ── 본문 폭 ────────────────────────────────────────────────────────
+ * 1200px 강제 폭은 **theme/axexam/css/default.css 에서 없앴다**(2026-08-31).
+ * 예전에는 여기서 `min-width:0 !important` 로 덮고 있었는데, 덮개가 필요한 값은
+ * 애초에 테마에 있으면 안 되는 값이다 — 덮개가 있으니 원인이 고쳐진 줄 알고
+ * `#container{width:930px}` 라는 진짜 못이 몇 달을 살아남았다.
+ * 여기 남기는 것은 '푸는 일'이 아니라 우리 디자인의 폭(1160px) 하나뿐이다.
  *
  * ⚠ 게시판 표(#bo_list table)는 basic 스킨이라 좁은 폭에서 여전히 넘칠 수 있다.
- *   그건 표 자체가 스크롤되게 두는 편이 페이지 전체가 밀리는 것보다 낫다. */
-#hd, #wrapper, #ft{ min-width:0 !important; }
-#ft_copy{ width:auto !important; max-width:1160px; margin:0 auto !important; padding:18px 20px !important; }
+ *   표 자체가 제자리에서 스크롤되게 둔다 — 페이지 전체가 밀리는 것보다 낫다. */
+#ft_copy{ max-width:1160px; padding:18px 20px !important; }
 #container_wr, #container{ max-width:1160px; margin-left:auto !important; margin-right:auto !important; }
+.tbl_wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+
+/* ── 테마 카드를 벗는 화면 (#container.ex-bare) ──────────────────────
+ * 문제풀이 화면(check.php)은 정적 페이지에서 옮겨온 것이라 자기 배경(.page)과
+ * 자기 폭 상자(.wrap)를 이미 갖고 있다. 그 위에 테마 카드를 한 겹 더 씌우면:
+ *   ① 흰 카드 안에 흰 문제 카드가 들어가 층이 두 겹으로 보인다
+ *   ② 폭을 문제가 아니라 테마가 정한다 — 카드 패딩 56px + 비로그인 사이드 몫 255px 이
+ *      먼저 나가고 남은 것을 문제와 채점현황이 나눈다. 실측으로 문제 칸이 350px 였다
+ *   ③ 제목이 두 번 나온다(#container_title + .head-block 의 h1)
+ * → head.php 가 $ex_bare 를 보고 이 클래스를 단다. 켜는 곳은 화면 파일 한 줄이다.
+ *
+ * ⚠ 아무 화면에나 켜지 말 것. mypage.css 머리 주석대로 .mp·.apply 는
+ *   "#container 하위에 들어간다" 는 전제로 짜여 있어 카드의 패딩에 기대고 있다. */
+#container_wr.ex-bare-wr{ max-width:none !important; padding:0 !important; margin:0 !important; }
+#container.ex-bare{
+  background:transparent !important; border:0 !important; box-shadow:none !important;
+  border-radius:0 !important; padding:0 !important; margin:0 !important;
+  width:100% !important; max-width:none !important; float:none !important; min-height:0 !important;
+}
+/* 그누보드 사이드 로그인 위젯(#aside)은 이 화면에 두지 않는다 —
+   상단 네비에 로그인·회원가입 버튼이 이미 있고, 전면 폭 화면 옆에 붙을 자리가 없다.
+   비로그인일 때만 그려지던 것이라 로그인 사용자에게는 원래 없던 칸이다. */
+.ex-bare-wr #aside{ display:none !important; }
 
 /* ── 버튼 공통 ─────────────────────────────────────────────────────── */
 .btn_b01, .btn_b02, .btn_b03, .btn_submit, .btn_cancel, .btn_close{
@@ -346,7 +366,22 @@ body{ background:var(--ex-soft); }
 a{ color:var(--ex-blue-600); }
 .selec_chk{ accent-color:var(--ex-blue-600); }
 
-/* ── 반응형 ───────────────────────────────────────────────────────── */
+/* ── 반응형 ─────────────────────────────────────────────────────────
+ * default.css 의 고정 폭을 없애고 나서야 여기가 실제로 걸린다.
+ * 그 전에는 폭이 1200px 로 고정돼 폰에서도 이 분기가 켜지지 않았다. */
+@media (max-width:920px){
+  /* 카드가 화면 끝에 붙지 않게 좌우 여백만 준다. 데스크톱(=1160px 안쪽)에는
+     여백이 이미 있으므로 좁을 때만 넣는다.
+     ⚠ .ex-bare-wr 은 제외한다 — 그 화면은 .wrap 이 여백을 갖고 있고,
+       여기서 또 주면 배경 띠(.crumb-bar)가 화면 끝까지 못 간다. */
+  #container_wr:not(.ex-bare-wr){ padding-left:12px; padding-right:12px; }
+}
+@media (max-width:760px){
+  /* 폰에서 28px 좌우 패딩은 본문 한 줄을 통째로 갉아먹는다 */
+  #container:not(.ex-bare){ padding:20px 14px !important; border-radius:14px !important; }
+  #container_title{ font-size:19px !important; margin-bottom:14px !important; }
+  #ft_wr{ padding:28px 16px !important; gap:20px 24px; }
+}
 @media (max-width:480px){
   .mbskin{ padding:28px 14px; }
   .mbskin .mbskin_box{ padding:28px 22px 24px; }

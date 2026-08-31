@@ -95,6 +95,13 @@ $EXAM_CFG = array(
 );
 
 $g5['title'] = $pd_name . ' 문제집';
+
+/* 테마 카드(#container 의 흰 배경·테두리·패딩)를 벗는다 — theme/axexam/head.php 참조.
+   이 화면은 .page(배경) 와 .wrap(폭) 을 스스로 갖고 있어서 카드가 한 겹 더 필요 없다.
+   ⚠ head.php 를 include 하기 전에 켜야 한다. head.php 가 #container 를 그리는 시점에
+     이미 값이 있어야 클래스가 붙는다. */
+$ex_bare = true;
+
 include_once(G5_PATH . '/head.php');
 
 $ex_data = 'pd/' . rawurlencode($pd) . '/';

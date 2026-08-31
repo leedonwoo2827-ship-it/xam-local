@@ -44,16 +44,25 @@ border:1px solid #558ab7 !important;
 
 .placeholdersjs {color:#aaa !important}
 
-/* 레이아웃 크기 지정 */
-#hd, #wrapper, #ft {min-width:1200px}
-
+/* 레이아웃 크기 지정
+ *
+ * ⚠ 여기 있던 `#hd, #wrapper, #ft {min-width:1200px}` 을 뺐다(2026-08-31).
+ *   그누보드 기본 테마의 잔재다. 이 한 줄이 페이지 폭을 1200px 로 못박아서
+ *   폰에서 오른쪽이 잘리고, check.css·axnav.css 가 이미 가지고 있던
+ *   @media(max-width:920/760/640) 가 전부 무력화됐다 — 레이아웃 폭이
+ *   줄지 않으니 분기가 걸릴 일이 없다.
+ *   (exam/assets/gnuboard-skin.css 가 !important 로 덮고 있었지만,
+ *    덮개가 필요한 값은 애초에 여기 있으면 안 되는 값이다.)
+ *
+ * 고정 폭은 max-width 로 준다 — 넓으면 1200px, 좁으면 화면 폭을 그대로 쓴다.
+ */
 #hd_pop,
 #hd_wrapper,
 #tnb .inner,
 
 #gnb .gnb_wrap,
 #container_wr,
-#ft_wr {width:1200px}
+#ft_wr {width:100%;max-width:1200px;margin-left:auto;margin-right:auto}
 
 /* 공통 - display none/block */
 .is-hidden { display: none !important; }
@@ -179,10 +188,29 @@ box-shadow:0 2px 5px rgba(0,0,0,0.2)}
 #container_wr {margin:0 auto;zoom:1}
 #aside {float:right;width:235px;padding:0;height:100%;margin:20px 0 20px 20px}
 
-#container {position:relative;float:left;min-height:500px;height:auto !important;margin:20px 0;font-size:1em;width:930px;zoom:1}
+/* ⚠ width:930px 고정이었다. #aside(235px + 왼쪽 여백 20px) 와 나란히 놓으려고
+ *   1200px 을 손으로 나눈 값인데, min-width 를 풀고 나면 이것이 마지막 못이다 —
+ *   폰에서 본문 박스가 뷰포트보다 넓어 오른쪽이 그대로 잘렸다.
+ *   calc() 로 "전체 − 사이드" 를 계산해 부모 폭이 줄면 같이 줄게 한다.
+ *   덤으로 손으로 나눈 값은 감싸는 폭(gnuboard-skin.css 의 1160px)이 바뀌면
+ *   조용히 어긋난다 — 실제로 930+20+235=1185 가 1160 을 넘겨 #aside 가
+ *   데스크톱에서도 아래로 떨어져 있었다. */
+#container {position:relative;float:left;min-height:500px;height:auto !important;margin:20px 0;font-size:1em;width:calc(100% - 255px);zoom:1}
+/* 로그인 상태에서는 tail.php 가 #aside 를 아예 그리지 않는다(로그인 위젯이라
+ * 볼 이유가 없다). 그때 오른쪽 255px 이 통째로 빈다 — 폭을 다 쓰게 한다.
+ * :only-child 로 잡는다 — #container_wr:after 는 가상요소라 자식으로 세지 않는다. */
+#container:only-child {width:100%}
 #container:after {display:block;visibility:hidden;clear:both;content:""}
 #container_title {font-size:1.333em;margin:0 auto;font-weight:bold}
 #container_title span {margin:0 auto 10px;display:block;line-height:30px}
+
+/* 좁은 화면 — 사이드(비로그인 로그인 위젯)를 본문 아래로 내리고 둘 다 폭을 다 쓴다.
+ * 920px 은 check.css 가 .layout 을 1열로 바꾸는 지점과 같은 값이다 —
+ * 분기점이 갈리면 본문과 껍데기가 따로 접혀 중간 폭에서 어색해진다. */
+@media (max-width:920px){
+  #container {float:none;width:100%;margin:16px 0}
+  #aside {float:none;width:100%;height:auto;margin:0 0 20px}
+}
 
 .lt_wr {width:32%}
 .lt_wr:nth-child(3n+1) {clear:both}
@@ -203,7 +231,7 @@ box-shadow:0 2px 5px rgba(0,0,0,0.2)}
 #ft_company h2 {font-size:1.2em;margin-bottom:20px}
 #ft_company {font-weight:normal;color:#e3e3e3;line-height:2em}
 #ft_catch {margin:20px 0 10px}
-#ft_copy {text-align:center;width:1200px;margin:0 auto;padding:20px 0;color:#5b5b5b;font-size:0.92em;border-top:1px solid #383838}
+#ft_copy {text-align:center;width:auto;max-width:1200px;margin:0 auto;padding:20px 0;color:#5b5b5b;font-size:0.92em;border-top:1px solid #383838}
 #top_btn {position:fixed;bottom:20px;right:20px;width:50px;height:50px;line-height:46px;border:2px solid #333;color:#333;text-align:center;font-size:15px;z-index:90;background:rgba(255,255,255,0.5)}
 #top_btn:hover {border-color:#3059c7;background:#3059c7;color:#fff}
 

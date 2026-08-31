@@ -268,9 +268,26 @@ ksort($ex_groups);
 <!-- } 상단 끝 -->
 
 <!-- 콘텐츠 시작 { -->
+<?php
+/* $ex_bare — '테마 카드를 벗는다' 는 표시다. head.php 를 include 하기 **전에**
+ * 화면 쪽에서 켠다(현재 /exam/check.php 하나).
+ *
+ * 왜 필요한가: 문제풀이 화면은 정적 페이지에서 옮겨온 것이라 자기 배경(.page)과
+ * 자기 폭 상자(.wrap)를 이미 갖고 있다. 그 위에 #container 의 흰 카드를 한 겹 더
+ * 씌우면 흰 카드 안에 흰 문제 카드가 들어가고, 무엇보다 **폭을 문제가 아니라
+ * 테마가 정한다** — 탭 줄에서 가장 긴 '과목게시판' 이 폭을 끌어간다.
+ *
+ * ⚠ 아무 화면에나 켜지 말 것. mypage.css 머리 주석에 적혀 있듯 .mp·.apply 는
+ *   "#container 하위에 들어간다" 는 전제로 짜여 있어 카드의 패딩에 기대고 있다.
+ *   자기 폭 상자를 가진 화면만 켠다.
+ */
+$ex_bare_cls = !empty($ex_bare) ? ' class="ex-bare"' : '';
+?>
 <div id="wrapper">
-    <div id="container_wr">
-    <div id="container">
-        <?php if (!defined('_INDEX_')) { ?>
+    <div id="container_wr"<?php echo !empty($ex_bare) ? ' class="ex-bare-wr"' : '' ?>>
+    <div id="container"<?php echo $ex_bare_cls ?>>
+        <?php /* 카드를 벗는 화면은 제목을 자기가 그린다(.head-block > h1).
+                 여기서도 그리면 '…문제집' 과 '회차별 모의고사' 가 겹쳐 두 줄이 된다. */ ?>
+        <?php if (!defined('_INDEX_') && empty($ex_bare)) { ?>
         <h2 id="container_title"><span title="<?php echo get_text($g5['title']) ?>"><?php echo get_head_title($g5['title']) ?></span></h2>
         <?php } ?>

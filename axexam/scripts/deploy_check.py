@@ -105,6 +105,10 @@ COMPARE = [
     (WEB / "exam/assets/report.css",        "/exam/assets/report.css"),
     (WEB / "exam/assets/report.js",         "/exam/assets/report.js"),
     (WEB / "exam/assets/gnuboard-skin.css", "/exam/assets/gnuboard-skin.css"),
+    # 테마 CSS 도 본다. 여기 있던 `#hd,#wrapper,#ft{min-width:1200px}` 과
+    # `#container{width:930px}` 이 폰에서 오른쪽을 잘라먹던 원인이었다(26-08-31 수정).
+    # 목록에 없으면 옛 파일이 서버에 남아도 아무도 모른다 — 화면이 "그냥 작게" 보일 뿐이다.
+    (WEB / "theme/axexam/css/default.css",  "/theme/axexam/css/default.css"),
     # features.css·features.php 가 목록에 없었다 — 고쳐도 올렸는지 확인해 줄 장치가
     # 없어서 조용히 옛 파일이 남는다(실제로 캡처 경로 버그가 그렇게 오래 남았다).
     (WEB / "exam/assets/features.css",      "/exam/assets/features.css"),
