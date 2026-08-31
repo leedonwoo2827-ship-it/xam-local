@@ -39,7 +39,9 @@ let mode="quiz", curRound=null, curTheory=null, answers={}, graded=false;
    실제로 "작은 화면에서 61~70번쯤부터 못 간다"는 보고가 있었다. 브라우저가
    긴 문서를 버티지 못하는 것이라 오류가 안 나고 그냥 안 내려간다 — 사람이 원인을 못 잡는다.
    채점은 그대로 회차 전체로 한다(cur() 는 안 자른다). 자르는 것은 **그리는 것**뿐이다. */
-const PAGE=20;
+/* ★ 「한 문항씩」 토글이 이 값을 1 로 바꾼다. 대조·검수는 한 문항씩 보는 것이
+   편하고, 응시자는 목록이 편하다 — 둘 다 남긴다. */
+let PAGE=20;
 let page=0;
 /* 채점 결과를 들고 있는다. 페이지를 넘기면 카드가 새로 그려지므로,
    보관하지 않으면 2쪽으로 넘어간 순간 정답·해설이 사라진다. */
@@ -119,7 +121,7 @@ const ApiDS = {
       headers:{"Content-Type":"application/json","X-Exam-Csrf":(window.ME&&ME.csrf)||""},
       body:JSON.stringify({
         pd:PD, round:round, keys:rows.map(keyOf), answers:ans,
-        filter:[$("#fSubject").value,$("#fDiff").value].filter(Boolean).join("/")
+        filter:$("#fSubject").value||""
       })});
     return await r.json();
   },
@@ -222,8 +224,7 @@ function subjectNames(){
   return SUBJECTS.length ? SUBJECTS.map(s=>s.sj_name) : uniq(P.map(p=>p.subject));
 }
 function cur(){ return P.filter(p=>p.round===curRound
-  && (!$("#fSubject").value||(p.subject||"")===$("#fSubject").value)
-  && (!$("#fDiff").value||(p.difficulty||"")===$("#fDiff").value)); }
+  && (!$("#fSubject").value||(p.subject||"")===$("#fSubject").value)); }
 function tableHtml(t){ if(!t||!t.columns) return "";
   let h="<table class='qtable'><thead><tr>"+t.columns.map(c=>"<th>"+esc(String(c))+"</th>").join("")+"</tr></thead><tbody>";
   (t.rows||[]).forEach(r=>{ h+="<tr>"+r.map(c=>"<td>"+esc(String(c))+"</td>").join("")+"</tr>"; }); return h+"</tbody></table>"; }
@@ -358,14 +359,36 @@ function render(){
 /* 쪽 넘김 막대. 위·아래 두 곳에 같은 것을 둔다 —
    80문항을 다 내려간 사람이 다시 위로 올라가 눌러야 하면 그건 안 넘기는 것과 같다. */
 function pagerHtml(pg, pages, total){
-  if(pages<2) return "";
+  /* 「한 문항씩」 토글은 쪽이 하나뿐이어도 낸다 — 그 상태를 되돌릴 방법이
+     화면에 없으면 갇힌다. 쪽 번호만 pages<2 일 때 접는다. */
+  const size='<div class="pg-size">'
+    +'<button class="pg-sz'+(PAGE===20?' on':'')+'" onclick="setPageSize(20)">20문항씩</button>'
+    +'<button class="pg-sz'+(PAGE===1?' on':'')+'" onclick="setPageSize(1)">한 문항씩</button></div>';
+  if(pages<2) return '<div class="pager">'+size+'</div>';
   const from=pg*PAGE+1, to=Math.min(total,(pg+1)*PAGE);
-  let h='<div class="pager"><button class="pg-nav"'+(pg?'':' disabled')+' onclick="goPage('+(pg-1)+')">‹ 이전</button>'
-       +'<div class="pg-nums">';
-  for(let i=0;i<pages;i++) h+='<button class="pg-n'+(i===pg?' on':'')+'" onclick="goPage('+i+')">'+(i+1)+'</button>';
-  h+='</div><button class="pg-nav"'+(pg<pages-1?'':' disabled')+' onclick="goPage('+(pg+1)+')">다음 ›</button>'
+  let h='<div class="pager">'+size
+       +'<button class="pg-nav"'+(pg?'':' disabled')+' onclick="goPage('+(pg-1)+')">‹ 이전</button>';
+  /* 한 문항씩일 때는 번호 버튼이 80개가 된다 — 그건 넘김 막대가 아니라 벽이다.
+     대신 「47 / 80」 만 보여준다. */
+  if(PAGE===1){
+    h+='<span class="pg-cur">'+(pg+1)+' / '+pages+'</span>';
+  }else{
+    h+='<div class="pg-nums">';
+    for(let i=0;i<pages;i++) h+='<button class="pg-n'+(i===pg?' on':'')+'" onclick="goPage('+i+')">'+(i+1)+'</button>';
+    h+='</div>';
+  }
+  h+='<button class="pg-nav"'+(pg<pages-1?'':' disabled')+' onclick="goPage('+(pg+1)+')">다음 ›</button>'
     +'<span class="pg-info">'+from+'–'+to+' / '+total+'문항</span></div>';
   return h;
+}
+/* 쪽 크기를 바꿔도 **보고 있던 문항에 머문다.** 20→1 로 바꿨는데 1번으로
+   튕기면 47번을 다시 찾아가야 한다. 첫 번째로 보이던 문항의 자리를 기준으로 옮긴다. */
+function setPageSize(n){
+  if(PAGE===n) return;
+  const firstIdx=page*PAGE;
+  PAGE=n;
+  page=Math.floor(firstIdx/PAGE);
+  goPage(page);
 }
 function goPage(n){
   page=n; render();
@@ -711,12 +734,13 @@ function loadBoard(){
 /* ══ 부팅 ═════════════════════════════════════════════════════════════════ */
 
 function buildFilters(){
-  /* 과목·난이도 드롭다운을 다시 채운다. DS.problems() 로 P 가 갈리면 다시 불러야 한다. */
-  const sub=$("#fSubject"), dif=$("#fDiff");
+  /* 과목 드롭다운을 다시 채운다. DS.problems() 로 P 가 갈리면 다시 불러야 한다.
+     ★ 난이도 필터는 뺐다 — 난이도는 집필 쪽 표기이고, 응시자가 「하만 풀기」로
+       쓰는 순간 모의고사가 아니게 된다. 카드의 난이도 칩은 그대로 둔다. */
+  const sub=$("#fSubject");
+  if(!sub) return;
   sub.innerHTML='<option value="">전체 과목</option>';
-  dif.innerHTML='<option value="">전체 난이도</option>';
   subjectNames().forEach(s=>{ const o=document.createElement("option"); o.value=s; o.textContent=s; sub.appendChild(o); });
-  uniq(P.map(p=>p.difficulty)).forEach(s=>{ const o=document.createElement("option"); o.value=s; o.textContent=s; dif.appendChild(o); });
 }
 
 (async function(){
@@ -737,7 +761,7 @@ function buildFilters(){
   buildFilters();
   /* 필터를 바꿔도 답안은 지우지 않는다 — 과목만 좁혀 봤는데 풀던 게 날아가면 안 된다.
      채점 상태(graded)만 초기화해 새 범위로 다시 채점하게 한다. */
-  ["#fSubject","#fDiff"].forEach(s=>$(s).onchange=()=>{ graded=false; lastResults=null; page=0; render(); });
+  ["#fSubject"].forEach(s=>{ const el=$(s); if(el) el.onchange=()=>{ graded=false; lastResults=null; page=0; render(); }; });
   document.querySelectorAll("#modes button").forEach(b=>b.onclick=()=>setMode(b.dataset.m));
 
   /* ?m= · ?rd= 를 읽는다. 헤더의 '이론' 메뉴가 &m=theory 를 넘기는데

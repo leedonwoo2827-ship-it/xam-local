@@ -123,6 +123,14 @@ pre.sql code{ background:none; padding:0; border-radius:0; color:inherit; font-s
 .pg-nums .pg-n{ min-width:36px; padding:8px 0; text-align:center; }
 .pg-nums .pg-n.on{ background:var(--navy-700); border-color:var(--navy-700); color:#fff; }
 .pg-info{ margin-left:auto; color:var(--faint); font-size:12.5px; font-weight:600; }
+/* 「20문항씩 / 한 문항씩」 — 대조·검수는 한 문항씩이 편하고 응시자는 목록이 편하다.
+   넘김 막대 맨 앞에 둔다(왼쪽에서 오른쪽으로 읽는 순서: 얼마씩 → 어디로). */
+.pg-size{ display:flex; gap:0; margin-right:4px; }
+.pg-size .pg-sz{ padding:8px 12px; font-size:12.5px; border-radius:0; }
+.pg-size .pg-sz:first-child{ border-radius:var(--r-sm) 0 0 var(--r-sm); }
+.pg-size .pg-sz:last-child{ border-radius:0 var(--r-sm) var(--r-sm) 0; margin-left:-1px; }
+.pg-size .pg-sz.on{ background:var(--navy-700); border-color:var(--navy-700); color:#fff; }
+.pg-cur{ min-width:74px; text-align:center; color:var(--ink); font-weight:700; font-size:13.5px; }
 @media (max-width:920px){ .side{ grid-template-columns:1fr; } }
 @media (max-width:760px){
   .topnav{ flex-wrap:wrap; height:auto; padding:10px 16px; gap:8px; }

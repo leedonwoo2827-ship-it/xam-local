@@ -149,7 +149,6 @@ window.EXAM_API = EXAM_CFG.api; window.EXAM_PD = EXAM_CFG.pd;</script>
       <div>
         <div class="filters" id="filters" style="display:none">
           <select class="input" id="fSubject" style="max-width:220px"><option value="">전체 과목</option></select>
-          <select class="input" id="fDiff" style="max-width:160px"><option value="">전체 난이도</option></select>
         </div>
         <div id="list"></div>
       </div>
