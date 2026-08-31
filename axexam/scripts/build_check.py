@@ -41,6 +41,7 @@ import json
 import re
 import shutil
 import sys
+import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -155,6 +156,11 @@ def _svg_index(book: Path) -> dict[str, Path]:
     return idx
 
 
+# 해설로 되돌리는 그림 줄의 경로 앞머리. check.js 는 파일 이름만 떼어 쓰므로
+# 어떤 앞머리든 되지만, 02/*.md 원본과 같은 모양으로 둔다.
+FIG_DIR_MD = "assets"
+
+
 def _inline(text: str) -> set[str]:
     return {Path(u).name for u in _IMG_RE.findall(text or "")}
 
@@ -231,7 +237,23 @@ def collect(book: Path, figs_dir: Path, meta: dict[str, dict], strict: bool = Tr
             inl_q = _inline(q) | _inline(passage)
             inl_e = _inline(expl)
             asset_field = {Path(a).name for a in (b.get("assets") or [])}
-            figures = sorted(asset_field - inl_q - inl_e)
+            # ★ 그림이 **어디 것인지**를 지킨다. 05/lesson 은 본문에서 그림 줄을 지우고
+            #   이름만 `assets` 로 옮기므로, 그것만 보면 해설 그림도 문제 칸에 그려진다.
+            #   실제로 그렇게 나갔다 — 빅분기 235문항의 그림이 전부 해설 것인데 보기
+            #   위에 걸렸고, "옳지 않은 것" 문항은 그림이 답을 그대로 보여줬다.
+            #   lesson.py 가 지문 쪽만 `passage_assets` 로 남겨 두므로(집필 규약:
+            #   「지문의 그림은 답을 가리고, 해설의 그림은 온전하게」), **남은 것은
+            #   해설 것**이다. 실측으로 `question` 에 그림 줄이 있는 문항은 두 책 다 0 이다.
+            pass_field = {Path(a).name for a in (b.get("passage_assets") or [])}
+            # 문제 칸에 그릴 것 — 지문이 가리킨 그림뿐. 본문에 줄이 살아 있으면
+            # mdLines() 가 이미 그리므로 여기서 뺀다.
+            figures = sorted((asset_field & pass_field) - inl_q)
+            # 해설 것 — 해설 본문에 그림 줄을 되돌린다. check.js 가 해설을 mdb() 로
+            # 그리므로 그 안에서 렌더된다. DB 스키마를 늘리지 않아도 된다.
+            expl_only = sorted(asset_field - pass_field - inl_q - inl_e)
+            if expl_only:
+                expl = (expl.rstrip() + "\n\n"
+                        + "\n".join(f"![]({FIG_DIR_MD}/{n})" for n in expl_only))
             for name in (asset_field | inl_q | inl_e):
                 ensure(name)
 
@@ -781,6 +803,176 @@ def build_theory(book: Path, out: Path,
     return items, content
 
 
+#: `theory_content.js` 의 첫 줄. PHP 쪽(`adm/exam_lib/deploy.php`)이 이 줄을 알아본다.
+THEORY_HTML_GUARD = "window.THEORY_HTML = window.THEORY_HTML || {};"
+
+
+def theory_unit_line(key: str, html: str) -> str:
+    """과목 하나를 담은 **한 줄**. 이것이 과목별 갈음의 최소 단위다.
+
+    `window.THEORY_HTML["theory/summary_explore.html"] = "…";`
+    """
+    return (f"window.THEORY_HTML[{json.dumps(key, ensure_ascii=False)}] = "
+            f"{json.dumps(html, ensure_ascii=False)};")
+
+
+def write_theory_content(pdir: Path, theory_html: dict[str, str]) -> None:
+    """이론 본문을 쓴다 — 합본 한 장 + **과목당 자립 파일 한 개.**
+
+    ★ 왜 한 덩이가 아니라 과목마다 한 줄인가
+      예전에는 4과목을 `json.dumps` 한 덩이로 구웠다. 그러면 과목 하나만 고쳐도
+      `theory_content.js` 를 통째로 갈아야 하고, 아직 안 만든 과목이 옛 것으로
+      덮인다(빅분기에서 실제로 막힌 지점 — 4과목 중 3과목만 새로 만들었다).
+      과목 하나 = 한 줄로 두면 `adm/exam_deploy.php` 가 **그 한 줄만** 바꿔 쓸 수 있고,
+      손대지 않은 과목은 바이트가 그대로 남는다.
+
+    ★ 전역 이름(`window.THEORY_HTML`)과 `<script src="theory_content.js">` 한 장은
+      그대로다. 그래서 `exam/check.php` · `assets/check.js` 는 이 변경을 모른다.
+
+    `theory/summary_<key>.js` 는 갈음의 단위이자 「어느 과목을 언제 갈았나」의 기록이다
+    (과목별 mtime 이 여기 생긴다). 화면이 읽는 파일은 아니다.
+    """
+    tdir = pdir / "theory"
+    tdir.mkdir(parents=True, exist_ok=True)
+
+    body = [
+        "/* 과목 하나가 한 줄이다 — adm/exam_deploy.php 의 과목별 갈음이 그 한 줄만",
+        "   바꿔 쓴다. 전역 이름은 그대로라 check.js 는 이 형식을 모른다.",
+        "   같은 줄이 theory/summary_<key>.js 에도 한 개씩 들어 있다. */",
+        THEORY_HTML_GUARD,
+    ]
+    for key in sorted(theory_html):
+        line = theory_unit_line(key, theory_html[key])
+        body.append(line)
+        # 자립 파일 — 가드를 함께 담아 그것만 올려도 문법이 성립한다.
+        (pdir / key).with_suffix(".js").write_text(
+            THEORY_HTML_GUARD + "\n" + line + "\n", encoding="utf-8", newline="\n")
+
+    # ★ newline="\n" 을 못 박는다. 윈도우에서 기본값은 CRLF 인데 서버(PHP)가 과목 한 줄을
+    #   갈아끼울 때는 LF 로 쓴다. 그대로 두면 갈음 한 번에 파일 전체의 줄끝이 뒤집혀
+    #   「무엇이 실제로 바뀌었나」를 바이트로 비교할 수 없게 된다.
+    (pdir / "theory_content.js").write_text("\n".join(body) + "\n",
+                                            encoding="utf-8", newline="\n")
+
+
+def write_upload_set(out: Path, pdir: Path, pd: str) -> Path:
+    """올릴 것을 한 곳에 모은다 — `06/_올릴것/`.
+
+    ★ 왜 이 폴더가 필요한가
+      빌드 산출물은 `06/` 안에 흩어져 있다(품목 것은 `pd/<pd>/`, 껍데기는 뿌리).
+      그런데 웹 관리자 화면(`adm/exam_deploy.php`)에 올릴 때 사람이 매번
+      "무엇을 어디서 골라야 하나" 를 다시 판단해야 했다. 그래서 **올릴 것만**
+      한 폴더에 모아둔다. 목표는 하나다 — 만든 것을 그대로 끌어다 놓는다.
+
+    ★ 규칙: 폴더가 끼는 것만 ZIP, 나머지는 파일 그대로.
+      `figs/` 는 479개까지 가고 `assets/` 도 여러 개다. 그건 낱개 업로드로
+      올리면 서버 실행 시간(카페24 실측 30초)에 걸린다. 반대로 파일 하나짜리를
+      ZIP 으로 싸면 사람이 압축을 풀 이유가 없는데 한 단계가 늘어난다.
+
+    ★ 이름을 바꾸지 않는다. 반입 화면이 파일 **이름으로** 갈 자리를 정하기 때문이다
+      (`ex_deploy_add_rel()`). `problems.js` 를 `1-문항.js` 로 바꾸면 갈 곳을 잃는다.
+
+    ★ `06/` 의 FTP 업로드 목록(`services/publish/ftplist.py`)에는 이 폴더가 없다.
+      `UPLOAD_FILES`(이름 목록) · `UPLOAD_DIRS`(assets·figs·theory) · `pd/` 만 올라가므로
+      `_올릴것/` 은 서버로 가지 않는다. `--prune` 도 건드리지 않는다.
+    """
+    dest = out / "_올릴것"
+    if dest.exists():
+        shutil.rmtree(dest)          # 지난 빌드의 잔재가 섞이면 무엇이 새것인지 알 수 없다
+    dest.mkdir(parents=True)
+
+    loose: list[str] = []
+    zips: list[tuple[str, int]] = []
+
+    # ── 주제마다 폴더 하나 (2026-08-26 지시)
+    #
+    # ★ 왜. 반입 화면의 박스가 다섯인데 파일은 한 폴더에 아홉 개가 섞여 있었다.
+    #   「어느 파일이 어느 박스로 가나」 를 사람이 매번 다시 맞춰야 했다.
+    #   폴더 하나가 박스 하나면 그 폴더를 통째로 열어 끌어다 놓으면 끝난다.
+    # ★ **파일 이름은 그대로 둔다.** 반입 화면이 이름으로 갈 자리를 정한다
+    #   (`ex_deploy_add_rel()`). 폴더 이름은 사람만 보는 것이라 바꿔도 안전하다.
+    BOX = {
+        "problems.js": "1_문항",
+        "videos.js": "2_해설영상링크",
+        "videos.private.json": "2_해설영상링크",
+        "theory.js": "3_요약노트",
+        "theory_content.js": "3_요약노트",
+    }
+
+    def _put(src: Path, box: str, name: str = "") -> str:
+        d = dest / box
+        d.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, d / (name or src.name))
+        return f"{box}/{name or src.name}"
+
+    # ── 파일 그대로 — 하나짜리들 (품목)
+    for n in ("problems.js", "videos.js", "videos.private.json",
+              "theory.js", "theory_content.js"):
+        if (pdir / n).is_file():
+            loose.append(_put(pdir / n, BOX[n]))
+
+    # 과목별 단위 파일 — 한 과목만 갈아끼울 때 쓴다. 처음 올릴 때는 안 쓴다.
+    for p in sorted((pdir / "theory").glob("*.js")):
+        loose.append(_put(p, "3_요약노트/과목별_갈음용"))
+
+    def _zip(name: str, box: str, members: list[tuple[Path, str]]) -> None:
+        if not members:
+            return
+        d = dest / box
+        d.mkdir(parents=True, exist_ok=True)
+        z = d / name
+        with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED) as f:
+            for src, arc in members:
+                f.write(src, arc)
+        zips.append((f"{box}/{name}", z.stat().st_size))
+
+    # ── ZIP — 폴더가 끼는 것
+    figs = sorted((pdir / "figs").glob("*")) if (pdir / "figs").is_dir() else []
+    _zip("문제도식.zip", "4_문제도식", [(p, f"figs/{p.name}") for p in figs if p.is_file()])
+
+    shell: list[tuple[Path, str]] = []
+    for n in ("index.html", "detail.html", "check.html"):
+        if (out / n).is_file():
+            shell.append((out / n, n))
+    if (out / "assets").is_dir():
+        for p in sorted((out / "assets").rglob("*")):
+            if p.is_file():
+                shell.append((p, str(p.relative_to(out)).replace("\\", "/")))
+    _zip("공용껍데기.zip", "5_공용껍데기", shell)
+
+    (dest / "올리는순서.txt").write_text(
+        "\n".join([
+            f"품목 {pd} — /adm/exam_deploy.php?pd={pd}",
+            "",
+            "폴더 하나가 반입 화면의 박스 하나다.",
+            "폴더를 열어 안의 것을 그대로 끌어다 놓으면 된다.",
+            "파일 이름은 바꾸지 않는다 — 반입 화면이 이름으로 갈 자리를 정한다.",
+            "",
+            "[파일 그대로]",
+            *(f"     {n}" for n in loose),
+            "",
+            "[ZIP 으로]",
+            *(f"     {n}  ({b:,}B)" for n, b in zips),
+            "     ※ 5_공용껍데기 는 대상을 「공용 껍데기」로 바꿔 올린다.",
+            "       모든 문제집이 같이 쓰므로 바뀌었을 때만 올린다.",
+            "",
+            "[파일이 아니라 DB]",
+            f"     06/pd/{pd}/problems.json → /adm/exam_import.php",
+            "     문항을 고쳤으면 1_문항 과 함께 해야 한다.",
+            "     .htaccess 가 .json 을 403 으로 막아 반입으로는 안 올라간다.",
+            "",
+            "3_요약노트/과목별_갈음용 은 처음 올릴 때 쓰지 않는다 —",
+            "한 과목만 고쳤을 때 그 파일 하나만 올리는 자리다.",
+        ]) + "\n",
+        encoding="utf-8", newline="\n")
+
+    print(f"\n[올릴것] {dest}")
+    print(f"         파일 그대로 {len(loose)}개 · ZIP {len(zips)}개")
+    for n, b in zips:
+        print(f"           {n}  {b:,}B")
+    return dest
+
+
 def emit_json(probs: list[dict], meta: dict[str, dict], pd_id: str, dest: Path) -> Path:
     """adm/exam_import.php 가 업로드받아 upsert 할 problems.json 을 만든다.
 
@@ -951,8 +1143,7 @@ def main(argv: list[str] | None = None) -> int:
         (pdir / "videos.private.json").unlink()
     (pdir / "theory.js").write_text(
         "window.THEORY = " + json.dumps(theory, ensure_ascii=False) + ";\n", encoding="utf-8")
-    (pdir / "theory_content.js").write_text(
-        "window.THEORY_HTML = " + json.dumps(theory_html, ensure_ascii=False) + ";\n", encoding="utf-8")
+    write_theory_content(pdir, theory_html)
 
     # 6) 화면
     #
@@ -1083,6 +1274,8 @@ def main(argv: list[str] | None = None) -> int:
             if flat_dir: print(f"        폴더 {', '.join(d + '/' for d in flat_dir)}")
             print( "        이제 정적 데이터는 pd/<품목>/ 아래에 있다. 위 사본은 낡은 것이다.")
             print( "        → 지우려면: python scripts/build_check.py --prune")
+
+    write_upload_set(out, pdir, args.pd)
 
     # ── 리포트 ──────────────────────────────────────────────
     subj = sorted({p["subject"] for p in probs if p["subject"]})
