@@ -430,8 +430,9 @@ function textarea(value, onInput, rows) {
 }
 
 /* ── 지문 ───────────────────────────────────────────
- * `passage` 는 문제문 **위**에 붙는 자료다 — ㄱ~ㄹ 보기묶음, 표, SQL, 그림.
- * 이게 없으면 "위 ㄱ~ㄹ 중 …" 같은 문제문이 화면에서 혼자 떠 있게 된다.
+ * `passage` 는 **발문과 보기 사이**에 놓이는 자료다 — ㄱ~ㄹ 항목, 표, SQL, 조건 목록.
+ * 웹도 그 순서로 그린다(check.js: 문제문 → 지문 → 보기).
+ * 이게 없으면 "위 ㄱ~ㄹ 중 …" 같은 발문이 화면에서 혼자 떠 있게 된다.
  *
  * ★ 있는 문항에만 상자를 펼친다. 720개 중 15개(전부 m01)뿐이라 늘 띄우면
  *   나머지 705개 화면이 빈 상자로 시끄러워진다. 없으면 [＋ 지문] 한 줄이다.
@@ -444,11 +445,11 @@ function passageField(r, d) {
   if (d.passage || S.passageOpen) {
     const ta = textarea(d.passage, (v) => { d.passage = v; markDirty(); }, 4);
     ta.placeholder = "ㄱ. …\nㄴ. …";
-    wrap.appendChild(field("지문 — 문제문 위에 붙는 자료", ta));
+    wrap.appendChild(field("지문 — 발문과 보기 사이에 들어갑니다", ta));
   } else {
     const add = el("button", "btn sm", "＋ 지문");
     add.type = "button";
-    add.title = "ㄱ~ㄹ 보기묶음·표·SQL 처럼 문제문 앞에 놓이는 자료를 넣습니다";
+    add.title = "ㄱ~ㄹ 항목·표·SQL·조건 목록처럼 발문과 보기 사이에 들어가는 자료입니다";
     add.addEventListener("click", () => { S.passageOpen = true; renderEditor(); });
     const row = el("div", "qz-passage-add");
     row.appendChild(add);
@@ -520,7 +521,7 @@ function paintWebPrev() {
 
   box.innerHTML = `<div class="wp-card">${head}`
     + `<div class="wp-q">${mdBlocks(d.question, figs)}</div>`
-    + (d.passage ? `<div class="wp-passage">${mdBlocks(d.passage, figs)}</div>` : "")
+    + (d.passage ? `<div class="wp-passage">${wpLines(d.passage, figs)}</div>` : "")
     + `<div class="wp-opts">${opts}</div>`
     + `<div class="wp-expl"><b class="wp-lbl">해설 (정답 ${GLYPHS[d.answer_index] || "?"})</b>`
     + `${mdBlocks(d.explanation, figs)}</div></div>`;
@@ -541,10 +542,10 @@ function mdInline(s, figs) {
   t = t.replace(/`([^`]+)`/g, "<code>$1</code>");
   return t;
 }
-const WP_BULLET = /^([-*•]|\d+[.)])\s+/;
+const WP_BULLET = /^([-*•·]|\d+[.)])\s+/;
 /* ★ 한글 항목 기호 — check.js 의 ITEM 과 같은 규칙이다. 여기서 갈리면
    미리보기가 거짓말을 한다(한쪽만 줄을 나눈다). */
-const WP_ITEM = /^(?:[ㄱ-ㅎ]|[가나다라마바사아자차카타파하]|[①-⑳])[.)]\s+/;
+const WP_ITEM = /^(?:(?:[ㄱ-ㅎ]|[가나다라마바사아자차카타파하])[.)]|[①-⑳㉠-㉭][.)]?|※)\s+/;
 function wpTable(rows, figs) {
   const cells = rows.map((r) => r.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim()));
   let head = [];
@@ -557,6 +558,51 @@ function wpTable(rows, figs) {
     + "<tbody>" + cells.map((r) => "<tr>" + r.map((c) => "<td>" + mdInline(c, figs) + "</td>").join("") + "</tr>").join("")
     + "</tbody></table>";
 }
+/* 지문은 쓴 대로 낸다 — check.js 의 mdLines() 와 같은 규칙이다.
+   여기서 갈리면 미리보기가 거짓말을 한다. */
+/* 맨텍스트 SQL — 지문이 ```sql 울타리 없이 SELECT … 로 시작하는 경우가 많다.
+   check.js 의 SQL_START/SQL_CONT/SQL_OK/sqlRun 을 그대로 옮긴 것이다.
+   SQLD 지문이 표와 SQL 덩어리라 이게 없으면 미리보기가 그것만 문단으로 흘린다. */
+const WP_SQL_START = /^\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|WITH|MERGE|TRUNCATE)\b/i;
+const WP_SQL_CONT = /^\s*(FROM|WHERE|GROUP\s+BY|ORDER\s+BY|HAVING|UNION|MINUS|INTERSECT|JOIN|LEFT|RIGHT|INNER|FULL|CROSS|OUTER|ON|AND|OR|SET|VALUES|START\s+WITH|CONNECT\s+BY|[(),])/i;
+const WP_SQL_OK = /\b(FROM|VALUES|SET)\b|;/i;
+function wpSqlRun(L, i) {
+  if (!WP_SQL_START.test(L[i])) return null;
+  const buf = []; let j = i;
+  while (j < L.length && L[j].trim()
+         && (j === i || WP_SQL_START.test(L[j]) || WP_SQL_CONT.test(L[j]) || /^[ \t]/.test(L[j]))) {
+    buf.push(L[j].replace(/\s+$/, "")); j++;
+  }
+  const code = buf.join("\n").trim();
+  return WP_SQL_OK.test(code) ? [j, code] : null;
+}
+
+function wpLines(s, figs) {
+  const L = String(s || "").replace(/\r\n/g, "\n").split("\n");
+  let out = "", i = 0;
+  while (i < L.length) {
+    const st = L[i].trim();
+    if (!st) { i++; continue; }
+    if (st.startsWith("```")) {
+      i++; const buf = [];
+      while (i < L.length && !L[i].trim().startsWith("```")) { buf.push(L[i]); i++; }
+      i++;
+      out += "<pre class='wp-sql'><code>" + esc2(buf.join("\n").trim()) + "</code></pre>";
+      continue;
+    }
+    if (st.startsWith("|")) {
+      const buf = [];
+      while (i < L.length && L[i].trim().startsWith("|")) { buf.push(L[i]); i++; }
+      out += wpTable(buf, figs);
+      continue;
+    }
+    const run = wpSqlRun(L, i);
+    if (run) { i = run[0]; out += "<pre class='wp-sql'><code>" + esc2(run[1]) + "</code></pre>"; continue; }
+    out += "<p>" + mdInline(st, figs) + "</p>"; i++;
+  }
+  return out;
+}
+
 function mdBlocks(s, figs) {
   const L = String(s || "").replace(/\r\n/g, "\n").split("\n");
   let out = "", i = 0;
@@ -577,6 +623,8 @@ function mdBlocks(s, figs) {
       out += wpTable(buf, figs);
       continue;
     }
+    const run = wpSqlRun(L, i);
+    if (run) { i = run[0]; out += "<pre class='wp-sql'><code>" + esc2(run[1]) + "</code></pre>"; continue; }
     if (WP_BULLET.test(st)) {
       const buf = [];
       while (i < L.length && WP_BULLET.test(L[i].trim())) { buf.push(L[i].trim().replace(WP_BULLET, "")); i++; }
@@ -600,6 +648,7 @@ function mdBlocks(s, figs) {
     while (i < L.length) {
       const c = L[i].trim();
       if (!c || c.startsWith("|") || c.startsWith("```") || WP_BULLET.test(c) || WP_ITEM.test(c)) break;
+      if (buf.length && wpSqlRun(L, i)) break;
       buf.push(c); i++;
     }
     out += "<p>" + mdInline(buf.join(" "), figs) + "</p>";
