@@ -120,6 +120,14 @@ def read(question_id: str) -> dict:
         "tags": list(q.get("tags") or []),
         "derived_from": q.get("derived_from", ""),
         "question": q.get("question", ""),
+        # ★ 지문. 720문항 중 15개(전부 m01)에만 있지만, 그 15개는 지문 없이는
+        #   문제문이 성립하지 않는다("위 ㄱ~ㄹ 중 …"). 이 키를 안 내보내던 동안
+        #   교정 화면에서 **보이지도 편집되지도 않았다** — 웹에는 나오는데.
+        "passage": q.get("passage", "") or "",
+        # SQLD 는 지문을 passage 가 아니라 table·sql 에 담는다(md.passage_parts 참고).
+        # 구조가 있는 값이라 텍스트 상자로 고치면 깨진다 — **보여주기만** 한다.
+        "table": q.get("table") or None,
+        "sql": q.get("sql", "") or "",
         "choices": list(q.get("choices") or []),
         "answer_index": q.get("answer_index"),
         "explanation": q.get("explanation", ""),
@@ -165,7 +173,7 @@ def read_source(question_id: str) -> dict:
 
 
 # ── 저장 ────────────────────────────────────────────────────────────────────
-_EDITABLE = ("question", "choices", "answer_index", "explanation",
+_EDITABLE = ("question", "passage", "choices", "answer_index", "explanation",
              "explanation_speech", "difficulty", "subject", "subject_no", "tags")
 
 
@@ -200,6 +208,15 @@ def save(question_id: str, values: dict, flags: dict | None = None,
         for k in _EDITABLE:
             if k in values:
                 q[k] = values[k]
+        # ★ 지문이 없던 문항에 빈 문자열을 심지 않는다. 화면은 passage 를 늘 보내는데
+        #   그대로 받으면 지문 없는 705개의 _rounds 가 null → "" 로 바뀐다. 내용은
+        #   같은데 파일만 흔들려서 md·lesson 대조가 통째로 시끄러워진다.
+        if "passage" in values and not (values["passage"] or "").strip()                 and not (before.get("passage") or "").strip():
+            if "passage" in before:
+                q["passage"] = before["passage"]
+            else:
+                q.pop("passage", None)
+
         if "choices" in values:
             q["choices"] = [str(c) for c in values["choices"]]
         if "answer_index" in values:

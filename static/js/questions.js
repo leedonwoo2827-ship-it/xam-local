@@ -45,6 +45,8 @@ const S = {
   dirty: false,
   ctx: null,
   saving: false,
+  passageOpen: false,   // 지문 없는 문항에서 [＋ 지문] 을 눌렀는가
+  webPrev: false,       // 웹 미리보기를 펼쳤는가 (문항을 바꿔도 유지한다)
 };
 
 export async function mount(root, ctx) {
@@ -259,6 +261,7 @@ async function openQuestion(qid) {
   }
   S.draft = snapshot(S.rec);
   S.dirty = false;
+  S.passageOpen = false;   // 지문이 없는 문항에서 빈 상자를 띄우지 않는다
 
   const hash = "#/questions/" + encodeURIComponent(qid);
   if (location.hash !== hash) history.replaceState(null, "", hash);
@@ -272,6 +275,7 @@ async function openQuestion(qid) {
 function snapshot(rec) {
   return {
     question: rec.question,
+    passage: rec.passage || "",
     choices: rec.choices.slice(),
     answer_index: rec.answer_index,
     explanation: rec.explanation,
@@ -319,6 +323,9 @@ function renderEditor() {
 
   // ── 문제문
   card.appendChild(field("문제", textarea(d.question, (v) => { d.question = v; markDirty(); }, 3)));
+
+  // ── 지문
+  card.appendChild(passageField(r, d));
 
   // ── 보기 4개 (라디오가 곧 정답)
   const cbox = el("div", "qz-choices");
@@ -388,7 +395,9 @@ function renderEditor() {
   });
   const prevWrap = el("div", "qz-preview-wrap");
   prevWrap.appendChild(prevBtn);
+  prevWrap.appendChild(webPrevBtn(r));
   prevWrap.appendChild(prevBox);
+  prevWrap.appendChild(webPrevBox(r));
   card.appendChild(prevWrap);
 
   // ── 바닥 액션
@@ -418,6 +427,184 @@ function textarea(value, onInput, rows) {
   ta.addEventListener("input", () => { onInput(ta.value); grow(); });
   requestAnimationFrame(grow);
   return ta;
+}
+
+/* ── 지문 ───────────────────────────────────────────
+ * `passage` 는 문제문 **위**에 붙는 자료다 — ㄱ~ㄹ 보기묶음, 표, SQL, 그림.
+ * 이게 없으면 "위 ㄱ~ㄹ 중 …" 같은 문제문이 화면에서 혼자 떠 있게 된다.
+ *
+ * ★ 있는 문항에만 상자를 펼친다. 720개 중 15개(전부 m01)뿐이라 늘 띄우면
+ *   나머지 705개 화면이 빈 상자로 시끄러워진다. 없으면 [＋ 지문] 한 줄이다.
+ * ★ SQLD 계열은 지문을 `passage` 가 아니라 `table`·`sql` 에 담는다
+ *   (services/book/md.py 의 passage_parts). 구조가 있는 값이라 텍스트 상자로
+ *   고치면 깨진다 — 여기서는 읽기 전용으로 보여만 준다. */
+function passageField(r, d) {
+  const wrap = el("div", "qz-passage-wrap");
+
+  if (d.passage || S.passageOpen) {
+    const ta = textarea(d.passage, (v) => { d.passage = v; markDirty(); }, 4);
+    ta.placeholder = "ㄱ. …\nㄴ. …";
+    wrap.appendChild(field("지문 — 문제문 위에 붙는 자료", ta));
+  } else {
+    const add = el("button", "btn sm", "＋ 지문");
+    add.type = "button";
+    add.title = "ㄱ~ㄹ 보기묶음·표·SQL 처럼 문제문 앞에 놓이는 자료를 넣습니다";
+    add.addEventListener("click", () => { S.passageOpen = true; renderEditor(); });
+    const row = el("div", "qz-passage-add");
+    row.appendChild(add);
+    wrap.appendChild(row);
+  }
+
+  // 이 책이 표·SQL 을 따로 담고 있으면 함께 보여준다(편집은 여기서 하지 않는다).
+  const ro = [];
+  if (r.table) ro.push(JSON.stringify(r.table, null, 2));
+  if (r.sql) ro.push(r.sql);
+  if (ro.length) {
+    const box = el("pre", "preview qz-ro", ro.join("\n\n"));
+    const hint = el("div", "field-hint",
+      "이 책은 지문을 table·sql 필드에 담습니다. 여기서는 읽기 전용입니다 — "
+      + "고치려면 _rounds 를 다시 만들어야 합니다.");
+    const w2 = el("div");
+    w2.appendChild(box);
+    w2.appendChild(hint);
+    wrap.appendChild(field("지문 (표·SQL)", w2));
+  }
+  return wrap;
+}
+
+/* ── 웹 미리보기 ────────────────────────────────────
+ * 저장하면 사이트에서 어떻게 보이는지를 그 자리에서 본다. 렌더 규칙은
+ * axexam/web/exam/assets/check.js 의 mdb()/md() 를 그대로 옮긴 것이다 —
+ * 표·불릿·SQL·그림 처리가 거기서 갈리면 미리보기가 거짓말을 한다.
+ * 그림은 로컬 BOOK 의 실제 파일을 가리킨다(assets[].url). */
+function webPrevBtn(r) {
+  const b = el("button", "btn sm", "웹 미리보기");
+  b.type = "button";
+  b.addEventListener("click", () => {
+    S.webPrev = !S.webPrev;
+    const box = $("#qz-webprev");
+    if (box) box.hidden = !S.webPrev;
+    if (S.webPrev) paintWebPrev();
+  });
+  return b;
+}
+
+function webPrevBox(r) {
+  const box = el("div", "qz-webprev");
+  box.id = "qz-webprev";
+  box.hidden = !S.webPrev;
+  return box;
+}
+
+function paintWebPrev() {
+  const box = $("#qz-webprev");
+  if (!box) return;
+  const r = S.rec, d = S.draft;
+  if (!r || !d) return;
+
+  // 그림 이름 → 로컬 파일 주소. check.js 는 서버의 figs/ 를 보지만 여기서는
+  // 아직 빌드하지 않은 BOOK 의 원본을 봐야 한다.
+  const figs = {};
+  (r.assets || []).forEach((a) => { figs[a.name] = a.url; });
+
+  const head = `<div class="wp-head">`
+    + `<span class="wp-num">${esc2(r.round)}회 · ${esc2(r.question_no)}번</span>`
+    + `<span class="wp-sj">${esc2(d.subject)}</span>`
+    + `<span class="wp-diff">난이도 ${esc2(d.difficulty)}</span></div>`;
+
+  const opts = d.choices.map((c, i) => {
+    const on = i === d.answer_index;
+    return `<div class="wp-opt${on ? " correct" : ""}">`
+      + `<span class="wp-cn">${GLYPHS[i]}</span><span>${mdInline(c, figs)}</span></div>`;
+  }).join("");
+
+  box.innerHTML = `<div class="wp-card">${head}`
+    + `<div class="wp-q">${mdBlocks(d.question, figs)}</div>`
+    + (d.passage ? `<div class="wp-passage">${mdBlocks(d.passage, figs)}</div>` : "")
+    + `<div class="wp-opts">${opts}</div>`
+    + `<div class="wp-expl"><b class="wp-lbl">해설 (정답 ${GLYPHS[d.answer_index] || "?"})</b>`
+    + `${mdBlocks(d.explanation, figs)}</div></div>`;
+}
+
+/* check.js 의 esc/md/mdb 이식 — 규칙을 바꾸지 않는다. */
+function esc2(s) {
+  return String(s == null ? "" : s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+}
+function mdInline(s, figs) {
+  let t = esc2(s);
+  t = t.replace(/!\[[^\]]*\]\(([^)\s]+)[^)]*\)/g, (m, u) => {
+    const name = u.split(/[\/]/).pop().replace(/\.svg$/i, "");
+    const src = figs[name];
+    return src ? `<img class="wp-fig" src="${src}">` : "";
+  });
+  t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  t = t.replace(/`([^`]+)`/g, "<code>$1</code>");
+  return t;
+}
+const WP_BULLET = /^([-*•]|\d+[.)])\s+/;
+/* ★ 한글 항목 기호 — check.js 의 ITEM 과 같은 규칙이다. 여기서 갈리면
+   미리보기가 거짓말을 한다(한쪽만 줄을 나눈다). */
+const WP_ITEM = /^(?:[ㄱ-ㅎ]|[가나다라마바사아자차카타파하]|[①-⑳])[.)]\s+/;
+function wpTable(rows, figs) {
+  const cells = rows.map((r) => r.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim()));
+  let head = [];
+  if (cells.length > 1 && cells[1].every((c) => /^:?-{2,}:?$/.test(c || "-"))) {
+    head = cells[0];
+    cells.splice(0, 2);
+  }
+  return "<table class='wp-table'>"
+    + (head.length ? "<thead><tr>" + head.map((c) => "<th>" + mdInline(c, figs) + "</th>").join("") + "</tr></thead>" : "")
+    + "<tbody>" + cells.map((r) => "<tr>" + r.map((c) => "<td>" + mdInline(c, figs) + "</td>").join("") + "</tr>").join("")
+    + "</tbody></table>";
+}
+function mdBlocks(s, figs) {
+  const L = String(s || "").replace(/\r\n/g, "\n").split("\n");
+  let out = "", i = 0;
+  while (i < L.length) {
+    const st = L[i].trim();
+    if (!st) { i++; continue; }
+    if (st.startsWith("```")) {
+      i++;
+      const buf = [];
+      while (i < L.length && !L[i].trim().startsWith("```")) { buf.push(L[i]); i++; }
+      i++;
+      out += "<pre class='wp-sql'><code>" + esc2(buf.join("\n").trim()) + "</code></pre>";
+      continue;
+    }
+    if (st.startsWith("|")) {
+      const buf = [];
+      while (i < L.length && L[i].trim().startsWith("|")) { buf.push(L[i]); i++; }
+      out += wpTable(buf, figs);
+      continue;
+    }
+    if (WP_BULLET.test(st)) {
+      const buf = [];
+      while (i < L.length && WP_BULLET.test(L[i].trim())) { buf.push(L[i].trim().replace(WP_BULLET, "")); i++; }
+      out += "<ul>" + buf.map((x) => "<li>" + mdInline(x, figs) + "</li>").join("") + "</ul>";
+      continue;
+    }
+    if (WP_ITEM.test(st)) {
+      const buf = [];
+      while (i < L.length) {
+        const c = L[i].trim();
+        if (!c) break;
+        if (WP_ITEM.test(c)) buf.push(c);
+        else if (buf.length) buf[buf.length - 1] += " " + c;   // 접혀 내려온 줄
+        else break;
+        i++;
+      }
+      out += buf.map((x) => "<p>" + mdInline(x, figs) + "</p>").join("");
+      continue;
+    }
+    const buf = [];
+    while (i < L.length) {
+      const c = L[i].trim();
+      if (!c || c.startsWith("|") || c.startsWith("```") || WP_BULLET.test(c) || WP_ITEM.test(c)) break;
+      buf.push(c); i++;
+    }
+    out += "<p>" + mdInline(buf.join(" "), figs) + "</p>";
+  }
+  return out;
 }
 
 function derivedRow() {
@@ -565,6 +752,8 @@ function markDirty() {
   S.dirty = true;
   const h = $("#qz-foot-hint");
   if (h) h.textContent = "저장하지 않은 편집이 있습니다.";
+  // 웹 미리보기가 열려 있으면 타이핑을 따라간다 — 카드 하나라 다시 그려도 싸다.
+  if (S.webPrev) paintWebPrev();
 }
 
 /* ── 저장 ──────────────────────────────────────────── */

@@ -1251,6 +1251,13 @@ td.wrap, th.wrap { white-space: normal; min-width: 120px; max-width: 330px; }
 /* ── 빠진 변형들 ─────────────────────────────────────────────────────────── */
 .status-chip.warn { background: var(--warn-bg); color: var(--warn); box-shadow: none; }
 .seg.sm button { padding: 3px 10px; font-size: var(--t-2xs); }
+/* ★ 일시정지 — 눈에 걸려야 한다. 5시간 돌던 것을 멈추는 버튼이 평범한 회색이라
+   사람이 찾지 못했다(2026-08-20). 주의색이지만 `danger` 는 아니다 — 만든 것은 남는다. */
+.btn.pause { background: var(--warn); color: var(--bone); border-color: transparent;
+             font-weight: 600; box-shadow: none; }
+.btn.pause:hover { background: #574c0e; color: var(--bone); }
+.btn.pause:disabled { background: var(--warn); color: var(--bone); opacity: .55; }
+
 .btn.primary.danger { background: var(--err); }
 .btn.primary.danger:hover { background: #521539; }
 .su-team.bad { color: var(--err); font-weight: 600; }
@@ -1458,6 +1465,39 @@ kbd {
 .pb-check .item.err { background: var(--err-bg); color: var(--err); }
 .pb-check .item.warn { background: var(--warn-bg); color: var(--warn); }
 .pb-check .item.ok { color: var(--text-2); }
+/* ★ 범위 밖 그룹 — 「지금 막는 것이 아니라 다음 단계에서 볼 것」. 못 지킨 줄도
+ *   붉게 두지 않는다. 1차 화면에서 유튜브 항목이 오류로 떠 사람이 빌드를 눌러도
+ *   되는지 판단하지 못했다(2026-08-26). */
+.pb-check .item.idle { color: var(--text-3, var(--text-2)); opacity: .62; }
+.pb-later > .qz-label { opacity: .7; }
+/* 발행 체크리스트의 묶음 머리글 — 「문제집 세팅」 / 「업로드」 */
+.pb-section {
+  margin: 18px 0 6px; padding: 6px 10px; border-radius: var(--r-sm);
+  background: var(--soft, #f6f8fc); color: var(--text-2);
+  font-size: var(--t-xs); font-weight: 700; letter-spacing: .01em;
+}
+.pb-section:first-child { margin-top: 4px; }
+/* 체크리스트의 접은 설명 — 「자세히」 */
+.pb-more { margin-top: 4px; }
+.pb-more > summary {
+  cursor: pointer; width: fit-content; padding: 1px 6px; border-radius: var(--r-sm);
+  color: var(--text-2); font-size: var(--t-xs); background: var(--soft, #f6f8fc);
+}
+.pb-more > summary:hover { color: var(--brand); }
+.pb-more > div { margin-top: 4px; white-space: pre-wrap; }
+
+/* 드라이브 폴더 주소 칸 — 앱스 스크립트 상자 안. 아래 코드 상자와 폭을 맞춘다.
+   ★ `pre-wrap` 을 물려받으면 placeholder 가 두 줄로 접힌다 — 여기서 끊는다. */
+.pb-more input.pb-folder {
+  width: 100%; margin: 6px 0 0; padding: 6px 9px; white-space: nowrap;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--white); color: var(--text);
+  font: 12px/1.5 ui-monospace, Consolas, monospace;
+}
+.pb-more input.pb-folder:focus { outline: none; border-color: var(--brand); }
+
+
+
 
 /* ── 화면 ④ 요약노트 — 좌 편집 / 우 즉시 미리보기 ───────────────────────── */
 .sm-split { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
@@ -1892,6 +1932,25 @@ table.data tr.on b { color: var(--brand); }
 }
 .pb-partial .qz-foot, .pb-paste .qz-foot { flex-wrap: wrap; }
 
+/* 좌표 TXT 드롭 영역 — 끌어다 놓거나 눌러서 고른다.
+   textarea 아래에 둔다: 붙여넣기가 여전히 기본 동작이고 드롭은 그 대안이다. */
+.pb-drop {
+  margin: 8px 0; padding: 16px 12px; text-align: center;
+  border: 1.5px dashed var(--hairline); border-radius: var(--r-sm);
+  background: var(--white); color: var(--text-3); font-size: var(--t-sm);
+  cursor: pointer; transition: border-color .12s, background .12s, color .12s;
+}
+.pb-drop:hover { border-color: var(--verm-500); color: var(--text); }
+.pb-drop.over {
+  border-color: var(--brand); border-style: solid;
+  background: var(--brand-wash); color: var(--text);
+}
+
+/* 판정 미리보기 — 반입 전에 무엇이 갈아끼워지는지 보는 자리. */
+.pb-plan { margin-top: 10px; }
+.pb-plan .tbl-wrap { max-height: 320px; overflow: auto; }
+.pb-plan .qz-warn { white-space: pre-line; }
+
 /* 사내망 보기 전용 띠 — shell.js 의 renderShareBanner() 가 넣는다.
    position:fixed 라 스크롤해도 남는다. 동료가 아래로 내려간 뒤 [저장] 을 누르는
    상황을 막으려면 계속 보여야 한다. */
@@ -1970,3 +2029,93 @@ table.data tr.on b { color: var(--brand); }
 .rail .su-name { color: var(--rail-ink); }
 .rail .su-team { color: var(--rail-ink-3); }
 .rail .side-user [data-icon] { color: var(--rail-ink-3); }
+
+
+/* ═══ 슬라이드 화면 ════════════════════════════════════════════════════════
+ * ① 굽기 → ② PPTX → ③ 장수 확정 → ④ 그림파일. 네 단계라 사람이 순서를 외워야
+ * 하는 화면이 된다. 그래서 **바닥에 띠**를 붙여 「다음에 누를 것 하나」만 말한다
+ * (2026-08-24 지시: "우측 바닥이나 플로팅창의 ux를 잘 바꾸세요").
+ *
+ * ★ position:sticky 로 카드 흐름 안에 둔다. fixed 로 띄우면 레일 폭·패널 열림에
+ *   따라 자리를 다시 계산해야 하고, 인쇄·좁은 창에서 본문을 가린다.
+ */
+.sl-dock {
+  position: sticky; bottom: 0; z-index: 5;
+  display: flex; align-items: center; gap: 14px;
+  margin: 14px 0 0; padding: 12px 16px;
+  border-radius: var(--r);
+  background: var(--card, #fff);
+  box-shadow: 0 -6px 18px rgb(0 0 0 / .07), inset 0 0 0 1px var(--line);
+}
+.sl-dock-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sl-dock-txt b { font-size: var(--t-body); }
+.sl-dock-txt .field-hint { margin: 0; }
+.sl-dock .btn { margin-left: auto; flex: none; }
+
+/* ★ `.tbl-wrap` 이 CSS 에 없었다 — publish.js · video.js · slides.js 가 이 이름을
+ * 쓰는데 규칙이 없어서, 안의 표가 카드를 뚫고 아래 카드와 겹쳤다(실측 2026-08-24).
+ * 스크롤은 **감싼 쪽**이 맡는다. 표에 max-height 를 주면 헤더 sticky 가 깨진다.
+ */
+.tbl-wrap { overflow: auto; border-radius: var(--r); }
+.tbl-wrap > table { margin: 0; }
+
+/* `.tbl` = `table.data` 와 같은 결. 두 이름이 도는 것을 여기서 하나로 묶는다. */
+table.tbl { border-collapse: collapse; width: 100%; font-size: var(--t-xs); }
+table.tbl th, table.tbl td { padding: 7px 10px; text-align: left; }
+table.tbl th { color: var(--text-2); font-weight: 600; background: var(--soft, #f6f8fc); }
+
+/* 장수 ± — 숫자가 가운데서 흔들리지 않게 폭을 고정한다. */
+.sl-step { white-space: nowrap; }
+.sl-step .btn { padding: 2px 8px; min-width: 26px; }
+.sl-step b {
+  display: inline-block; min-width: 22px; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.sl-sel { padding: 5px 9px; }
+table.data td.warn { color: var(--warn); font-weight: 600; }
+table.data td.bad  { color: var(--err);  font-weight: 600; }
+table.data td.ok   { color: var(--ok); }
+table.data tr.bad  { background: var(--err-bg); }
+
+/* ── 문항 교정 · 지문 ─────────────────────────────────────────────────────
+   지문이 없는 문항에서는 [＋ 지문] 한 줄만 남긴다(720 중 15개에만 있다). */
+.qz-passage-add { margin: 2px 0 14px; }
+.qz-ro { max-height: 220px; overflow: auto; }
+
+/* ── 문항 교정 · 웹 미리보기 ──────────────────────────────────────────────
+   axexam/web/exam/assets/check.css 의 문제 카드를 축소해 옮긴 것이다.
+   값이 갈리면 미리보기가 거짓말을 하므로, 고칠 때는 저쪽을 먼저 본다. */
+.qz-webprev { margin-top: 12px; }
+.qz-webprev .wp-card {
+  background: var(--bone); border-radius: 14px; padding: 20px 22px;
+  box-shadow: 0 0 0 1px var(--hairline), var(--lift-sm);
+}
+.qz-webprev .wp-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.qz-webprev .wp-num  { font-weight: 800; color: var(--bone); background: var(--brand); font-size: 12px; padding: 4px 11px; border-radius: 999px; }
+.qz-webprev .wp-sj   { font-size: 12px; color: var(--ok); background: var(--ok-bg); padding: 4px 10px; border-radius: 999px; font-weight: 700; }
+.qz-webprev .wp-diff { font-size: 12px; color: var(--text-3); background: transparent; padding: 4px 10px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--hairline); }
+.qz-webprev .wp-q { font-size: 15.5px; font-weight: 600; color: var(--ink); }
+.qz-webprev .wp-passage {
+  margin-top: 12px; padding: 13px 15px; border-radius: 10px;
+  background: rgb(var(--hairline-rgb) / .04); font-size: 14px; color: var(--text);
+}
+.qz-webprev .wp-opts { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.qz-webprev .wp-opt {
+  display: flex; gap: 11px; align-items: flex-start; padding: 10px 13px;
+  border-radius: 10px; box-shadow: inset 0 0 0 1px var(--hairline); font-size: 14.5px;
+}
+.qz-webprev .wp-opt.correct { background: var(--ok-bg); box-shadow: inset 0 0 0 1px var(--ok); }
+.qz-webprev .wp-cn { font-weight: 800; color: var(--brand); flex: 0 0 auto; }
+.qz-webprev .wp-opt.correct .wp-cn { color: var(--ok); }
+.qz-webprev .wp-expl {
+  margin-top: 14px; padding: 13px 15px; border-radius: 10px;
+  background: rgb(var(--hairline-rgb) / .04); border-left: 4px solid var(--brand);
+  font-size: 14px;
+}
+.qz-webprev .wp-lbl { display: block; margin-bottom: 6px; color: var(--brand); }
+.qz-webprev .wp-fig { display: block; margin: 12px 0 0; max-width: 100%; border-radius: 8px; box-shadow: 0 0 0 1px var(--hairline); background: var(--bone); padding: 8px; }
+.qz-webprev .wp-sql { margin: 12px 0 0; background: #0f172a; color: #e2e8f0; border-radius: 8px; padding: 12px 14px; overflow-x: auto; font-family: Consolas, monospace; font-size: 13px; }
+.qz-webprev .wp-table { border-collapse: collapse; margin: 12px 0 0; font-size: 13.5px; }
+.qz-webprev .wp-table th, .qz-webprev .wp-table td { padding: 6px 12px; text-align: center; box-shadow: inset 0 0 0 1px var(--hairline); }
+.qz-webprev p { margin: .45em 0; }
+.qz-webprev *:first-child { margin-top: 0; }
